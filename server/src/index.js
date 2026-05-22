@@ -19,6 +19,7 @@ const swaggerUi = require('swagger-ui-express');
 const swaggerSpec = require('./swagger');
 
 const pagosRoutes = require('./routes/pagos');
+const nexusAuth   = require('./middleware/nexusAuth');
 
 const app = express();
 
@@ -44,10 +45,12 @@ app.get('/api/health', (_req, res) => {
     module: 'pagos',
     meritop: { enabled: process.env.MERITOP_ENABLED !== 'false', mock: process.env.MERITOP_MOCK === 'true' },
     sypago:  { mock: process.env.SYPAGO_MOCK === 'true', url: process.env.SYPAGO_URL || null },
+    nexusAuth: process.env.NEXUS_AUTH_ENABLED === 'true',
   });
 });
 
-app.use('/api/payments', pagosRoutes);
+// Multi-tenant: todos los endpoints de pago requieren nexus_token
+app.use('/api/payments', nexusAuth, pagosRoutes);
 
 app.use((err, _req, res, _next) => {
   console.error('[modulo-pagos] error:', err);
