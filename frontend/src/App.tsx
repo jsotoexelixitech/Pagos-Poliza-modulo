@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { useWizardStore } from './store/wizardStore';
-import { publish } from '../../../shared/src/index';
 import { SidebarNav } from './components/SidebarNav';
 import { TopProgressBar } from './components/TopProgressBar';
 import { AuroraBackground } from './components/AuroraBackground';
@@ -66,16 +65,6 @@ export default function App() {
         `Número ${result.policy.cnpoliza}${result.policy.urlpoliza ? ' · PDF abierto en nueva pestaña' : ''}`,
         6000,
       );
-      // Publicar evento de pago completado para módulos en el mismo contexto
-      publish({
-        source: 'pagos',
-        type: 'pagos:complete',
-        payload: {
-          method    : store.paymentMethod as 'mobile' | 'otp',
-          reference : result.policy.cnrecibo ?? result.policy.cnpoliza,
-          amount    : store.quote?.mprimaext ?? store.selectedPlan?.priceNum ?? 0,
-        },
-      });
       goTo(6);
     } catch (err) {
       handleEmissionError(err);
