@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+﻿import { useEffect, useRef, useState } from 'react';
 import { useWizardStore } from '../../store/wizardStore';
 import { Field, Input } from '../../components/ui/FormField';
 import { BankSearchSelect } from '../../components/ui/BankSearchSelect';
@@ -17,6 +17,7 @@ import {
   sypagoConfirmOtp,
   type SypagoOtpConfirmResponse,
   SypagoError,
+  quotePolicy,
 } from '../../lib/api';
 
 // ── Lista completa de 26 bancos venezolanos (fuente: sudeban / notilogia 2026)
@@ -67,7 +68,31 @@ type OtpStep = 'form' | 'requesting' | 'awaiting_otp' | 'confirming' | 'done' | 
 const TODAY_ISO = new Date().toISOString().split('T')[0];
 
 export function PaymentStep() {
-  const { paymentMethod, setPaymentMethod, selectedPlan, quote, quoteState } = useWizardStore();
+  const {
+    paymentMethod, setPaymentMethod,
+    selectedPlan, quote, quoteState, vehicle,
+    setQuote, setQuoteState,
+  } = useWizardStore();
+
+  // Auto-cotizar al cargar pagos si el quote no viene del bridge o llegó en estado incorrecto.
+  // Esto hace que pagos sea autosuficiente aunque el estado del bridge no incluya el quote.
+  useEffect(() => {
+    if (quoteState === 'ready' || quoteState === 'loading') return;
+    const plan = selectedPlan?.cplan;
+    if (!plan || !vehicle?.cmarca || !vehicle?.cmodelo) return;
+
+    setQuoteState('loading');
+    quotePolicy({ state: { vehicle }, plan })
+      .then((r) => {
+        setQuote(
+          { mprima: r.mprima, mprimaext: r.mprimaext, ptasa: r.ptasa },
+          `${vehicle.cmarca}|${vehicle.cmodelo}|${plan}`,
+        );
+      })
+      .catch(() => setQuoteState('error'));
+  // Solo al montar — el plan y vehículo no cambian en pagos
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Campos compartidos ────────────────────────────────────────────────
   const [bankCode,    setBankCode]    = useState('');
