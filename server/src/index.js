@@ -13,8 +13,9 @@
  *   GET  /api/health
  */
 require('dotenv').config();
-const cors = require('cors');
+const cors    = require('cors');
 const express = require('express');
+const axios   = require('axios');
 const swaggerUi = require('swagger-ui-express');
 const swaggerSpec = require('./swagger');
 
@@ -48,6 +49,37 @@ app.get('/api/health', (_req, res) => {
     nexusAuth: process.env.NEXUS_AUTH_ENABLED === 'true',
   });
 });
+
+// ── Proxy a modulo-emision para cotizar y emitir pólizas ──────────────────
+// En producción el frontend de pagos (5184) no pasa por Vite, así que el
+// servidor de pagos actúa como proxy transparente hacia el backend de emisión.
+const EMISION_URL = (process.env.EMISION_API_URL ?? 'http://localhost:4004').replace(/\/$/, '');
+
+async function _proxyToEmision(req, res) {
+  try {
+    const upstream = await axios({
+      method: req.method,
+      url: `${EMISION_URL}${req.originalUrl}`,
+      data: req.body,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(req.headers.authorization ? { Authorization: req.headers.authorization } : {}),
+      },
+      timeout: 90_000,
+      validateStatus: () => true,
+    });
+    res.status(upstream.status).json(upstream.data);
+  } catch (err) {
+    console.error('[pagos → emision proxy]', err.message);
+    res.status(502).json({ success: false, code: 'EMISION_PROXY_ERROR', message: err.message });
+  }
+}
+
+app.post('/api/policies/emit',  nexusAuth, _proxyToEmision);
+app.post('/api/policies/quote', nexusAuth, _proxyToEmision);
+// Catálogos INMA (para mostrar datos del vehículo en el checkout)
+app.get('/api/catalogo/:path(*)', _proxyToEmision);
+app.get('/api/valrep/:path(*)',   _proxyToEmision);
 
 // Multi-tenant: todos los endpoints de pago requieren nexus_token
 app.use('/api/payments', nexusAuth, pagosRoutes);

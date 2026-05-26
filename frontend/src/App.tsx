@@ -29,6 +29,8 @@ export default function App() {
         tomador: store.tomador,
         sameInsured: store.sameInsured,
         asegurado: store.asegurado,
+        differentPayer: store.differentPayer,
+        pagador: store.pagador,
         hasBeneficiary: store.hasBeneficiary,
         beneficiario: store.beneficiario,
         hasDriver: store.hasDriver,
@@ -39,9 +41,12 @@ export default function App() {
         paymentMethod: store.paymentMethod,
       };
 
+      // Usa el cplan real elegido en el paso de planes; RCVBAS solo como fallback.
+      const planCode = store.selectedPlan?.cplan ?? 'RCVBAS';
+
       const result = await emitPolicy({
         state: wizardState,
-        plan: 'RCVBAS',
+        plan: planCode as 'RCVBAS' | 'RUSPAT',
         frecuencia: 'A',
       });
 
