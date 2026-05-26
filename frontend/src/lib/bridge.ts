@@ -181,9 +181,10 @@ function makeBridge(): BridgeAPI {
       if (r?.data?.data) {
         applyHydration(r.data.data);
         // Restaurar nexus_token en sessionStorage para que api.ts lo inyecte
-        const token = r.data.data.nexus_token;
-        if (token && typeof token === 'string') {
-          sessionStorage.setItem(getModuleTokenKey(), token);
+        const urlToken = getNexusTokenFromUrl();
+        const sessionToken = r.data.data.nexus_token;
+        if (!urlToken && sessionToken && typeof sessionToken === 'string') {
+          sessionStorage.setItem(getModuleTokenKey(), sessionToken);
         }
       }
       // eslint-disable-next-line no-console
