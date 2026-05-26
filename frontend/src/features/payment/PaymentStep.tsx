@@ -74,19 +74,29 @@ export function PaymentStep() {
     setQuote, setQuoteState,
   } = useWizardStore();
 
-  // Auto-cotizar al cargar pagos si el quote no viene del bridge o llegó en estado incorrecto.
-  // Esto hace que pagos sea autosuficiente aunque el estado del bridge no incluya el quote.
+  // Si el bridge hidró `quote` pero excluyó `quoteState` (está en HYDRATE_EXCLUDE),
+  // el store tiene un quote válido pero quoteState='idle'. Lo corregimos aquí.
+  useEffect(() => {
+    if (quote !== null && quoteState === 'idle') {
+      setQuoteState('ready');
+    }
+  }, [quote, quoteState, setQuoteState]);
+
+  // Auto-cotizar si no hay quote del bridge (pagos autosuficiente).
+  // No requiere cmarca/cmodelo: el backend usa resolución por texto como fallback.
   useEffect(() => {
     if (quoteState === 'ready' || quoteState === 'loading') return;
+    if (quote !== null) return; // ya hay quote (caso anterior lo activará)
     const plan = selectedPlan?.cplan;
-    if (!plan || !vehicle?.cmarca || !vehicle?.cmodelo) return;
+    if (!plan || !vehicle) return;
 
     setQuoteState('loading');
     quotePolicy({ state: { vehicle }, plan })
       .then((r) => {
+        const sig = `${vehicle.cmarca ?? vehicle.marca ?? '?'}|${vehicle.cmodelo ?? vehicle.modelo ?? '?'}|${plan}`;
         setQuote(
           { mprima: r.mprima, mprimaext: r.mprimaext, ptasa: r.ptasa },
-          `${vehicle.cmarca}|${vehicle.cmodelo}|${plan}`,
+          sig,
         );
       })
       .catch(() => setQuoteState('error'));

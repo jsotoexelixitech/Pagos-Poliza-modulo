@@ -214,7 +214,7 @@ export async function emitPolicy(payload: EmitPolicyPayload): Promise<EmitPolicy
 
 export interface QuotePolicyPayload {
   state: unknown;
-  plan?: 'RCVBAS' | 'RUSPAT';
+  plan?: string;
 }
 
 export interface QuotePolicyResponse {
