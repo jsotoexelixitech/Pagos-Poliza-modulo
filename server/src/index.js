@@ -24,7 +24,7 @@ const nexusAuth   = require('./middleware/nexusAuth');
 
 const app = express();
 
-const PORT = parseInt(process.env.PORT, 10) || 4003;
+const PORT = parseInt(process.env.PORT, 10) || 3001;
 const CORS_ORIGINS = (process.env.CORS_ORIGINS || '*').split(',').map(s => s.trim());
 
 app.use(cors({
@@ -51,7 +51,7 @@ app.get('/api/health', (_req, res) => {
 });
 
 // ── Proxy a modulo-emision para cotizar y emitir pólizas ──────────────────
-// En producción el frontend de pagos (5184) no pasa por Vite, así que el
+// En producción el frontend de pagos (5180) no pasa por Vite, así que el
 // servidor de pagos actúa como proxy transparente hacia el backend de emisión.
 const EMISION_URL = (process.env.EMISION_API_URL ?? 'http://localhost:4004').replace(/\/$/, '');
 

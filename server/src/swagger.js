@@ -42,7 +42,7 @@ para emitir la póliza definitiva.
       },
     },
     servers: [
-      { url: 'http://localhost:4003', description: 'Desarrollo local' },
+      { url: 'http://localhost:3001', description: 'Desarrollo local' },
     ],
     tags: [
       { name: 'Pago Móvil', description: 'Verificación de pago móvil interbancario via Meritop' },

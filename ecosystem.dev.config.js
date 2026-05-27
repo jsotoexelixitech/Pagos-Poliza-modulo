@@ -22,7 +22,7 @@ module.exports = {
       restart_delay: 3000,
       env: {
         NODE_ENV: 'development',
-        PORT: 4003,
+        PORT: 3001,
       },
       out_file:   path.join(ROOT, 'logs', 'pagos-api.out.log'),
       error_file: path.join(ROOT, 'logs', 'pagos-api.err.log'),

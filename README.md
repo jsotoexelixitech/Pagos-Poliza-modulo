@@ -65,9 +65,9 @@ modulo-pagos/
 
 | Componente | Puerto | Proceso PM2   |
 |:-----------|:------:|:-------------:|
-| Backend API | `4003` | `pagos-api`  |
-| Frontend    | `5184` | `pagos-web`  |
-| Swagger UI  | `4003/docs` | — |
+| Backend API | `3001` | `pagos-api`  |
+| Frontend    | `5180` | `pagos-web`  |
+| Swagger UI  | `3001/docs` | — |
 
 ---
 
@@ -105,8 +105,8 @@ Edita `server/.env`:
 
 ```env
 NODE_ENV=production
-PORT=4003
-CORS_ORIGINS=http://localhost:5184
+PORT=3001
+CORS_ORIGINS=http://localhost:5180
 
 # Meritop — Pago Móvil (Banco Activo)
 MERITOP_URL=http://172.30.147.26:9020
@@ -141,14 +141,14 @@ pm2 start ecosystem.dev.config.js
 ### 6. Verificar
 
 ```bash
-curl http://localhost:4003/api/health
+curl http://localhost:3001/api/health
 # {"status":"ok","module":"pagos","meritop":{"enabled":true,"mock":false},"sypago":{"mock":false}}
 ```
 
 Probar verificación de Pago Móvil:
 
 ```bash
-curl -X POST http://localhost:4003/api/payments/verify-mobile \
+curl -X POST http://localhost:3001/api/payments/verify-mobile \
   -H "Content-Type: application/json" \
   -d '{
     "sourcePhoneNumber": "04141234567",
@@ -194,7 +194,7 @@ Solicita la clave OTP a SyPago para débito directo.
 ### `POST /api/payments/otp/confirm`
 Confirma el débito con la OTP recibida por el usuario.
 
-La especificación completa está en **Swagger UI**: `http://localhost:4003/docs`
+La especificación completa está en **Swagger UI**: `http://localhost:3001/docs`
 
 ---
 
