@@ -31,7 +31,11 @@ app.use(cors({
   origin: CORS_ORIGINS.includes('*') ? true : CORS_ORIGINS,
   credentials: true,
 }));
-app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || '1mb' }));
+app.use(express.json({
+  limit: process.env.JSON_BODY_LIMIT || '1mb',
+  // Guardamos el body crudo para validar la firma del webhook de SyPago.
+  verify: (req, _res, buf) => { req.rawBody = buf.toString('utf8'); },
+}));
 
 // ── Swagger UI ────────────────────────────────────────────────────────────
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
@@ -80,6 +84,10 @@ app.post('/api/policies/quote', nexusAuth, _proxyToEmision);
 // Catálogos INMA (para mostrar datos del vehículo en el checkout)
 app.get('/api/catalogo/:path(*)', _proxyToEmision);
 app.get('/api/valrep/:path(*)',   _proxyToEmision);
+
+// Webhook de SyPago — PÚBLICO (lo invoca SyPago, valida con firma propia).
+// Se monta antes del router protegido para que no exija nexus_token.
+app.post('/api/payments/otp/webhook', pagosRoutes.handleSypagoWebhook);
 
 // Multi-tenant: todos los endpoints de pago requieren nexus_token
 app.use('/api/payments', nexusAuth, pagosRoutes);

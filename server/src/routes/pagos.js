@@ -10,6 +10,7 @@ const crypto  = require('crypto');
 const rateLimit = require('express-rate-limit');
 const { verifyMobilePayment } = require('../services/meritopClient');
 const sypagoClient = require('../services/sypagoClient');
+const sypagoStore  = require('../services/sypagoStore');
 
 const router = express.Router();
 
@@ -278,7 +279,16 @@ router.post('/otp/confirm', otpConfirmLimiter, async (req, res) => {
       otp           : parsedOtp,
       concept,
     });
-    const responseBody = { success: true, ...result };
+    // Guardamos operation_secret (para validar la firma del webhook) y el
+    // estado inicial. La respuesta definitiva (ACCP/RJCT) llega por webhook.
+    if (result && result.transaction_id) {
+      sypagoStore.put(result.transaction_id, {
+        operationSecret: result.operation_secret || null,
+        status         : 'PEND',
+        statusInfo     : sypagoClient.normalizeStatus('PEND'),
+      });
+    }
+    const responseBody = { success: true, ...result, statusInfo: sypagoClient.normalizeStatus('PEND') };
     _otpIdemSet(idemKey, responseBody);
     return res.status(200).json(responseBody);
   } catch (err) {
@@ -287,13 +297,78 @@ router.post('/otp/confirm', otpConfirmLimiter, async (req, res) => {
 });
 
 router.get('/otp/status/:transactionId', async (req, res) => {
+  const { transactionId } = req.params;
   try {
-    const result = await sypagoClient.getTransactionStatus(req.params.transactionId);
+    const result = await sypagoClient.getTransactionStatus(transactionId);
+    // Reflejamos el último estado consultado en el store local.
+    sypagoStore.update(transactionId, { status: result.status, statusInfo: result.statusInfo });
     return res.status(200).json({ success: true, ...result });
   } catch (err) {
+    // Si SyPago no respondió pero ya recibimos el webhook, devolvemos el estado local.
+    const local = sypagoStore.get(transactionId);
+    if (local && local.statusInfo) {
+      return res.status(200).json({
+        success       : true,
+        transaction_id: transactionId,
+        status        : local.status,
+        statusInfo    : local.statusInfo,
+        source        : 'webhook',
+      });
+    }
     return _sendSypagoError(res, err);
   }
 });
+
+/**
+ * Webhook de notificación de SyPago (resultado definitivo de la transacción).
+ *
+ * SyPago firma el mensaje: stringToSign = "{payload}.{nonce}.{operationSecret}"
+ * (SHA-256 + ECDSA, Base64) y lo envía en los headers:
+ *   X-Signature        firma en Base64
+ *   X-Signature-Nonce  nonce usado
+ *
+ * Este handler es PÚBLICO (lo invoca SyPago, no lleva nexus_token). Se monta
+ * fuera del router protegido, en index.js.
+ */
+function handleSypagoWebhook(req, res) {
+  const signatureB64 = req.headers['x-signature'];
+  const nonce        = req.headers['x-signature-nonce'];
+  const payload      = req.body || {};
+  const transactionId = payload.transaction_id || payload.internal_id;
+  const rawPayload   = req.rawBody != null ? req.rawBody : JSON.stringify(payload);
+
+  const entry = transactionId ? sypagoStore.get(transactionId) : null;
+  const operationSecret = entry?.operationSecret || null;
+
+  const publicKeyPem = (process.env.SYPAGO_WEBHOOK_PUBLIC_KEY || '').replace(/\\n/g, '\n');
+  const { valid, reason } = sypagoClient.verifyWebhookSignature({
+    rawPayload, nonce, operationSecret, signatureB64, publicKeyPem,
+  });
+
+  // Si hay clave pública configurada, exigimos firma válida.
+  if (publicKeyPem && !valid) {
+    console.warn(`[SyPago webhook] firma inválida (${reason}) tx=${transactionId}`);
+    return res.status(401).json({ success: false, code: 'SYPAGO_WEBHOOK_INVALID_SIGNATURE', reason });
+  }
+  if (!publicKeyPem) {
+    console.warn('[SyPago webhook] SYPAGO_WEBHOOK_PUBLIC_KEY no configurada: firma NO verificada.');
+  }
+
+  const statusInfo = sypagoClient.normalizeStatus(payload.status);
+  if (transactionId) {
+    sypagoStore.put(transactionId, {
+      operationSecret,
+      status      : statusInfo.code,
+      statusInfo,
+      rejectedCode: payload.rejected_code || payload.RejectedCode || null,
+      signatureOk : valid,
+    });
+  }
+  console.log(`[SyPago webhook] tx=${transactionId} status=${statusInfo.code} (${statusInfo.label}) firmaOk=${valid}`);
+
+  // SyPago espera 200 para no reintentar.
+  return res.status(200).json({ success: true });
+}
 
 function _sendSypagoError(res, err) {
   const code = err.code || 'SYPAGO_ERROR';
@@ -305,3 +380,4 @@ function _sendSypagoError(res, err) {
 }
 
 module.exports = router;
+module.exports.handleSypagoWebhook = handleSypagoWebhook;

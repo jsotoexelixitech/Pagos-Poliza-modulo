@@ -30,36 +30,111 @@
 
 'use strict';
 
-const axios = require('axios');
+const axios  = require('axios');
+const crypto = require('crypto');
 
 const DEFAULT_TIMEOUT = 20_000;
+
+// Estados oficiales de transacción (campo `status` en la mensajería SyPago).
+const STATUS_MAP = {
+  PEND: { label: 'Pendiente',  state: 'pending'  },
+  PROC: { label: 'En proceso', state: 'pending'  },
+  ACCP: { label: 'Aceptado',   state: 'approved' },
+  RJCT: { label: 'Rechazado',  state: 'rejected' },
+  CANC: { label: 'Cancelado',  state: 'rejected' },
+};
+
+/** Normaliza el código de estado de SyPago a { code, label, state }. */
+function normalizeStatus(raw) {
+  const code = String(raw || '').toUpperCase();
+  const map  = STATUS_MAP[code] || { label: code || 'Desconocido', state: 'pending' };
+  return { code, ...map };
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function _getConfig() {
   return {
     baseUrl      : (process.env.SYPAGO_URL || 'https://pruebas.api.sypago.net').replace(/\/$/, ''),
-    bearerToken  : process.env.SYPAGO_BEARER_TOKEN || '',
+    bearerToken  : process.env.SYPAGO_BEARER_TOKEN || '',   // JWT fijo (sin expiración)
+    clientId     : process.env.SYPAGO_CLIENT_ID || '',      // API Key dinámica
+    secret       : process.env.SYPAGO_SECRET || '',
     bankCode     : process.env.SYPAGO_BANK_CODE || '',
     accountType  : process.env.SYPAGO_TYPE || 'CNTA',
     accountNumber: process.env.SYPAGO_NUMBER || '',
     webhookUrl   : process.env.SYPAGO_WEBHOOK_URL || '',
+    publicKey    : (process.env.SYPAGO_WEBHOOK_PUBLIC_KEY || '').replace(/\\n/g, '\n'),
     mock         : process.env.SYPAGO_MOCK === 'true',
     timeout      : parseInt(process.env.SYPAGO_TIMEOUT, 10) || DEFAULT_TIMEOUT,
   };
 }
 
-function _headers(cfg) {
-  if (!cfg.bearerToken) {
+// ── Autenticación ───────────────────────────────────────────────────────────
+// SyPago soporta dos modalidades:
+//   1) JWT fijo (SYPAGO_BEARER_TOKEN) → se envía directo en el Bearer.
+//   2) API Key dinámica (client_id + secret) → POST /api/v1/auth/token → access_token.
+let _tokenCache = { token: null, expiresAt: 0 };
+
+async function _getAccessToken(cfg) {
+  if (cfg.bearerToken) return cfg.bearerToken;
+
+  if (!cfg.clientId || !cfg.secret) {
     throw Object.assign(
-      new Error('Token SyPago no configurado (SYPAGO_BEARER_TOKEN vacío).'),
+      new Error('Falta SYPAGO_BEARER_TOKEN (token fijo) o SYPAGO_CLIENT_ID + SYPAGO_SECRET (API Key dinámica).'),
       { code: 'SYPAGO_MISSING_TOKEN' }
     );
   }
+
+  // Reusar token cacheado si sigue vigente (margen de 60 s).
+  if (_tokenCache.token && _tokenCache.expiresAt - 60_000 > Date.now()) {
+    return _tokenCache.token;
+  }
+
+  try {
+    const resp = await axios.post(
+      `${cfg.baseUrl}/api/v1/auth/token`,
+      { client_id: cfg.clientId, secret: cfg.secret },
+      { headers: { 'Content-Type': 'application/json' }, timeout: cfg.timeout }
+    );
+    const token     = resp.data?.access_token;
+    const expiresIn = Number(resp.data?.expires_in) || 3600;
+    if (!token) {
+      throw Object.assign(new Error('SyPago no devolvió access_token.'), { code: 'SYPAGO_AUTH_ERROR', httpStatus: 502 });
+    }
+    _tokenCache = { token, expiresAt: Date.now() + expiresIn * 1000 };
+    return token;
+  } catch (err) {
+    if (err.code && String(err.code).startsWith('SYPAGO_')) throw err;
+    _handleError(err, 'auth/token');
+  }
+}
+
+async function _authHeaders(cfg) {
+  const token = await _getAccessToken(cfg);
   return {
-    Authorization : `Bearer ${cfg.bearerToken}`,
+    Authorization : `Bearer ${token}`,
     'Content-Type': 'application/json',
   };
+}
+
+/**
+ * Verifica la firma de una notificación webhook de SyPago.
+ * stringToSign = "{payload}.{nonce}.{operationSecret}" → SHA-256 + ECDSA, firma en Base64.
+ * @returns {{ valid: boolean, reason: string }}
+ */
+function verifyWebhookSignature({ rawPayload, nonce, operationSecret, signatureB64, publicKeyPem }) {
+  if (!publicKeyPem)                                return { valid: false, reason: 'no_public_key' };
+  if (!signatureB64 || !nonce || !operationSecret)  return { valid: false, reason: 'missing_fields' };
+  try {
+    const stringToSign = `${rawPayload}.${nonce}.${operationSecret}`;
+    const verifier = crypto.createVerify('SHA256');
+    verifier.update(stringToSign);
+    verifier.end();
+    const valid = verifier.verify(publicKeyPem, Buffer.from(signatureB64, 'base64'));
+    return { valid, reason: valid ? 'ok' : 'invalid_signature' };
+  } catch (err) {
+    return { valid: false, reason: err.message };
+  }
 }
 
 /** Genera un ID aleatorio de 12 hex en mayúsculas, compatible con el formato de SyPago */
@@ -89,7 +164,8 @@ function _handleError(err, operation) {
   if (err.response) {
     const status  = err.response.status;
     const data    = err.response.data || {};
-    const syCode  = data.code || data.rejectedCode || String(status);
+    // El código de rechazo viene como rejected_code / RejectedCode / rejectedCode según el mensaje.
+    const syCode  = data.code || data.rejected_code || data.RejectedCode || data.rejectedCode || String(status);
     const syMsg   = data.message || data.description || `Error HTTP ${status} de SyPago`;
 
     if (status === 401 || status === 403) {
@@ -159,7 +235,7 @@ async function requestOtp({ documentType, documentNumber, debtorBankCode, debtor
     const resp = await axios.post(
       `${cfg.baseUrl}/api/v1/request/otp`,
       payload,
-      { headers: _headers(cfg), timeout: cfg.timeout }
+      { headers: await _authHeaders(cfg), timeout: cfg.timeout }
     );
     return resp.data;
   } catch (err) {
@@ -235,7 +311,7 @@ async function confirmOtp({ documentType, documentNumber, debtorBankCode, debtor
     const resp = await axios.post(
       `${cfg.baseUrl}/api/v1/transaction/otp`,
       payload,
-      { headers: _headers(cfg), timeout: cfg.timeout }
+      { headers: await _authHeaders(cfg), timeout: cfg.timeout }
     );
     return resp.data; // { transaction_id, operation_secret }
   } catch (err) {
@@ -255,7 +331,8 @@ async function getTransactionStatus(transactionId) {
   if (cfg.mock) {
     return {
       transaction_id: transactionId,
-      status        : 'APPROVED',
+      status        : 'ACCP',
+      statusInfo    : normalizeStatus('ACCP'),
       mock          : true,
     };
   }
@@ -263,12 +340,19 @@ async function getTransactionStatus(transactionId) {
   try {
     const resp = await axios.get(
       `${cfg.baseUrl}/api/v1/transaction/${transactionId}`,
-      { headers: _headers(cfg), timeout: cfg.timeout }
+      { headers: await _authHeaders(cfg), timeout: cfg.timeout }
     );
-    return resp.data;
+    const data = resp.data || {};
+    return { ...data, statusInfo: normalizeStatus(data.status) };
   } catch (err) {
     _handleError(err, 'getTransactionStatus');
   }
 }
 
-module.exports = { requestOtp, confirmOtp, getTransactionStatus };
+module.exports = {
+  requestOtp,
+  confirmOtp,
+  getTransactionStatus,
+  normalizeStatus,
+  verifyWebhookSignature,
+};
