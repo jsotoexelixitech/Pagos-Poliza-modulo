@@ -31,15 +31,30 @@ const axios = require('axios');
 
 const DEFAULT_TIMEOUT = 15_000;
 
-// ── Códigos de resultado documentados por Meritop ─────────────────────────
+// ── Códigos de resultado documentados por Banco Activo (Meritop) ───────────
+// Fuente: "Documentacion Apis Proxies BA (Verificar Pago Movil).pdf"
 const RESULT_CODES = {
-  B000: 'Transacción encontrada (ya usada)',
+  // Códigos de negocio del verify (HTTP 400)
+  B000: 'Transacción encontrada (pago ya usado por el cliente)',
   B001: 'Transacción no encontrada',
-  B002: 'Transacción duplicada (pago ya registrado en otra operación)',
-  B003: 'Error de parámetros (campo vacío)',
+  B002: 'Transacción duplicada (pago ya registrado para una compra)',
+  B003: 'Error de parámetros (algún campo vacío)',
   B004: 'Error de conexión con el Gateway',
   B005: 'Error de conexión Gateway-AS400',
   B010: 'Transacción encontrada y disponible',
+  // Errores generales del verify (HTTP 400)
+  701: 'Faltan parámetros requeridos',
+  750: 'Número de teléfono inválido',
+  751: 'Código de banco inválido',
+  752: 'Monto inválido',
+  753: 'Fecha de pago inválida',
+  // Error interno (HTTP 500)
+  210: 'Error interno del proveedor',
+  // Errores de autenticación (login, HTTP 401)
+  601: 'API Key no encontrada',
+  602: 'API Key con formato GUID inválido',
+  603: 'API Key inválida',
+  604: 'IP de origen inválida',
 };
 
 // ── Cache del token JWT ────────────────────────────────────────────────────
@@ -195,21 +210,30 @@ async function verifyMobilePayment({ sourcePhoneNumber, bankCode, amount, paidOn
     } catch (err) {
       const status  = err.response?.status;
       const data    = err.response?.data || {};
-      const errCode = String(data.code || '');
-      const errMsg  = data.message || err.message;
+      // El 500 puede venir como { error: { code, message } } o { code, message }.
+      const nested  = data.error && typeof data.error === 'object' ? data.error : data;
+      const errCode = String(nested.code || data.code || '');
+      const errMsg  = nested.message || data.message || err.message;
 
       // 401 → token expirado → refrescar en segundo intento
       if (status === 401 && attempt === 1) {
         _tokenCache = { token: null, expiresAt: null };
         continue;
       }
+      // 401 en segundo intento → token sigue inválido
+      if (status === 401) {
+        throw Object.assign(
+          new Error('Token de Meritop inválido o expirado tras reintento.'),
+          { code: 'MERITOP_AUTH_ERROR', baCode: errCode || null, baMessage: errMsg }
+        );
+      }
 
-      // 400 → errores de negocio/parámetros
-      if (status === 400) {
+      // 400 / 404 → errores de negocio o parámetros (B0xx, 7xx)
+      if (status === 400 || status === 404) {
         const friendlyMsg = RESULT_CODES[errCode] || errMsg;
         throw Object.assign(new Error(friendlyMsg), {
-          code     : `MERITOP_${errCode || 'BAD_REQUEST'}`,
-          baCode   : errCode,
+          code     : `MERITOP_${errCode || (status === 404 ? 'NOT_FOUND' : 'BAD_REQUEST')}`,
+          baCode   : errCode || null,
           baMessage: errMsg,
         });
       }
@@ -222,20 +246,48 @@ async function verifyMobilePayment({ sourcePhoneNumber, bankCode, amount, paidOn
         );
       }
 
+      // 500 u otros → error del proveedor
+      const friendlyMsg = RESULT_CODES[errCode] || errMsg || `Error del proveedor (HTTP ${status}).`;
       throw Object.assign(
-        new Error(`Error inesperado de Meritop (HTTP ${status}): ${errMsg}`),
-        { code: 'MERITOP_UNEXPECTED_ERROR' }
+        new Error(friendlyMsg),
+        { code: `MERITOP_${errCode || 'UNEXPECTED_ERROR'}`, baCode: errCode || null, baMessage: errMsg }
       );
     }
 
-    const d = res.data;
+    const d = res.data || {};
+
+    // La respuesta de Banco Activo no es consistente en la capitalización de
+    // los campos (isverified / isVerified / IsVerified). Buscamos sin importar
+    // mayúsculas para no depender de un casing exacto.
+    const pick = (...keys) => {
+      for (const k of keys) {
+        const match = Object.keys(d).find(dk => dk.toLowerCase() === k.toLowerCase());
+        if (match !== undefined && d[match] !== undefined && d[match] !== null) {
+          return d[match];
+        }
+      }
+      return undefined;
+    };
+
+    const baCode = String(pick('code') ?? '').toUpperCase();
+    const flagRaw = pick('isVerified', 'verified');
+    const flag =
+      typeof flagRaw === 'boolean'
+        ? flagRaw
+        : flagRaw === 'true' || flagRaw === 1 || flagRaw === '1';
+
+    // B010 = transacción encontrada y DISPONIBLE → pago válido y no usado.
+    // B000 = transacción encontrada pero YA USADA → se rechaza para evitar
+    //        reutilizar un mismo pago en más de una póliza.
+    const isVerified = baCode === 'B010' || (flag && baCode !== 'B000');
+
     return {
-      isVerified     : Boolean(d.isverified),
-      reference      : d.bankreference  || null,
-      verifiedAmount : d.verifiedAmount ?? null,
-      verifiedOn     : d.verifiedOn     || null,
-      message        : d.message        || '',
-      code           : 'B010',
+      isVerified,
+      reference      : pick('bankReference', 'reference', 'referencia') ?? null,
+      verifiedAmount : pick('verifiedAmount', 'amount') ?? null,
+      verifiedOn     : pick('verifiedOn', 'verifiedDate') ?? null,
+      message        : pick('message') ?? '',
+      code           : baCode || 'B010',
     };
   }
 
