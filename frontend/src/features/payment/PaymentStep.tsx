@@ -186,14 +186,17 @@ export function PaymentStep() {
   const annualUsd = hasRealQuote ? quote!.mprimaext      : (selectedPlan?.priceNum ?? 0) * 12;
   const annualVes = hasRealQuote ? vesAnnual(quote)       : 0;
 
-  // ── Validaciones transferencia ──────────────────────────────────────
   // ── Validaciones pago móvil (Meritop) ─────────────────────────────
+  // La fecha+hora del pago no puede ser futura (el banco no tendría ese pago).
+  const paidOnDateM = fechaPagoM && horaPagoM ? new Date(`${fechaPagoM}T${horaPagoM}:00`) : null;
+  const paidOnFuture = paidOnDateM != null && !isNaN(paidOnDateM.getTime()) && paidOnDateM.getTime() > Date.now();
+
   const movErrors = {
     banco    : !bankCode                                          ? 'Selecciona el banco'                : '',
     telefono : telefonoPago.length > 0 && !/^04\d{9}$/.test(telefonoPago) ? 'Formato inválido: 04XXXXXXXXX' : !telefonoPago ? 'El teléfono es obligatorio' : '',
     monto    : !montoPagoM                                        ? 'El monto es obligatorio'            : isNaN(parseFloat(montoPagoM)) || parseFloat(montoPagoM) <= 0 ? 'Monto inválido' : '',
-    fecha    : !fechaPagoM                                        ? 'La fecha es obligatoria'            : '',
-    hora     : !horaPagoM                                        ? 'La hora es obligatoria'             : '',
+    fecha    : !fechaPagoM                                        ? 'La fecha es obligatoria'            : fechaPagoM > TODAY_ISO ? 'La fecha no puede ser futura' : '',
+    hora     : !horaPagoM                                        ? 'La hora es obligatoria'             : paidOnFuture ? 'La fecha y hora no pueden ser futuras' : '',
   };
   const pagoMovilListo = Object.values(movErrors).every(e => !e) && telefonoPago.length === 11;
 
@@ -281,7 +284,8 @@ export function PaymentStep() {
   }
 
   async function handleOtpConfirm() {
-    if (!otpCode.trim()) return;
+    // La clave OTP de SyPago tiene entre 6 y 8 dígitos numéricos.
+    if (!/^\d{6,8}$/.test(otpCode.trim())) return;
 
     // Bloqueo síncrono — impide que dos clicks simultáneos pasen al mismo tiempo
     if (confirmInFlight.current) return;
