@@ -160,13 +160,22 @@ async function _getToken(forceRefresh = false) {
  */
 function _mockResponse({ sourcePhoneNumber, bankCode, amount }) {
   const ref = 'REF' + Date.now().toString().slice(-9);
+  const verifiedOn = new Date().toISOString();
   return {
     isVerified     : true,
     reference      : ref,
     verifiedAmount : amount,
-    verifiedOn     : new Date().toISOString(),
+    verifiedOn,
     message        : 'Transacción encontrada y disponible [MODO PRUEBA]',
     code           : 'B010',
+    raw            : {
+      isverified    : true,
+      bankreference : ref,
+      verifiedAmount: amount,
+      verifiedOn,
+      message       : 'Transacción encontrada y disponible [MODO PRUEBA]',
+      sourcePhoneNumber, bankCode,
+    },
   };
 }
 
@@ -256,6 +265,9 @@ async function verifyMobilePayment({ sourcePhoneNumber, bankCode, amount, paidOn
 
     const d = res.data || {};
 
+    // Log del cuerpo crudo del banco para inspección (campos y capitalización reales).
+    console.log('[Meritop] verifymobilepayment respuesta cruda →', JSON.stringify(d));
+
     // La respuesta de Banco Activo no es consistente en la capitalización de
     // los campos (isverified / isVerified / IsVerified). Buscamos sin importar
     // mayúsculas para no depender de un casing exacto.
@@ -283,11 +295,14 @@ async function verifyMobilePayment({ sourcePhoneNumber, bankCode, amount, paidOn
 
     return {
       isVerified,
-      reference      : pick('bankReference', 'reference', 'referencia') ?? null,
-      verifiedAmount : pick('verifiedAmount', 'amount') ?? null,
-      verifiedOn     : pick('verifiedOn', 'verifiedDate') ?? null,
+      reference      : pick('bankReference', 'bankreference', 'reference', 'referencia') ?? null,
+      verifiedAmount : pick('verifiedAmount', 'verifiedamount', 'amount') ?? null,
+      verifiedOn     : pick('verifiedOn', 'verifiedon', 'verifiedDate') ?? null,
       message        : pick('message') ?? '',
       code           : baCode || 'B010',
+      // Cuerpo completo tal cual lo devuelve Banco Activo, para no perder
+      // ningún dato (referencia, campos adicionales, capitalización real, etc.).
+      raw            : d,
     };
   }
 
