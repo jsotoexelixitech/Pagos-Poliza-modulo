@@ -8,7 +8,7 @@ import { WelcomeSplash } from './components/WelcomeSplash';
 import { Button } from './components/ui/Button';
 import { PaymentStep } from './features/payment/PaymentStep';
 import { SuccessStep } from './features/payment/SuccessStep';
-import { emitPolicy, PolicyEmitError } from './lib/api';
+import { emitPolicy, emitFuneral, PolicyEmitError } from './lib/api';
 import { toast } from './store/toastStore';
 import { Zap, ShieldCheck, HelpCircle, Sparkles } from 'lucide-react';
 
@@ -25,8 +25,12 @@ export default function App() {
   async function handleEmitir() {
     setEmitting(true);
     try {
+      const isFuneral = store.product === 'funerario';
+
       const wizardState = {
+        product: store.product,
         tomador: store.tomador,
+        funeral: store.funeral,
         sameInsured: store.sameInsured,
         asegurado: store.asegurado,
         differentPayer: store.differentPayer,
@@ -41,14 +45,22 @@ export default function App() {
         paymentMethod: store.paymentMethod,
       };
 
-      // Usa el cplan real elegido en el paso de planes; RCVBAS solo como fallback.
-      const planCode = store.selectedPlan?.cplan ?? 'RCVBAS';
-
-      const result = await emitPolicy({
-        state: wizardState,
-        plan: planCode as 'RCVBAS' | 'RUSPAT',
-        frecuencia: 'A',
-      });
+      let result;
+      if (isFuneral) {
+        // Funerario: el backend cotiza (spCalculoPer) y emite con la prima vigente.
+        result = await emitFuneral({
+          state: wizardState,
+          frecuencia: (store.funeral?.frecuencia as 'A' | 'S' | 'M' | 'T' | 'C') ?? 'M',
+        });
+      } else {
+        // RCV: usa el cplan real elegido en el paso de planes; RCVBAS solo como fallback.
+        const planCode = store.selectedPlan?.cplan ?? 'RCVBAS';
+        result = await emitPolicy({
+          state: wizardState,
+          plan: planCode as 'RCVBAS' | 'RUSPAT',
+          frecuencia: 'A',
+        });
+      }
 
       setPolicy({
         number: result.policy.number,

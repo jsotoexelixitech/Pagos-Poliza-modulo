@@ -212,6 +212,39 @@ export async function emitPolicy(payload: EmitPolicyPayload): Promise<EmitPolicy
   }
 }
 
+/**
+ * Emite una póliza del producto Funerario (personas, ramo 9). El backend de
+ * emisión cotiza (spCalculoPer) y emite (vista eePoliza_Personas_General) en un
+ * solo llamado a partir del `state` completo del wizard.
+ */
+export async function emitFuneral(payload: EmitPolicyPayload): Promise<EmitPolicyResponse> {
+  try {
+    const response = await api.post<EmitPolicyResponse>('/personas/emision', payload);
+    return response.data;
+  } catch (err) {
+    const axErr = err as AxiosError<{
+      success?: boolean;
+      code?: string;
+      message?: string;
+      details?: string[];
+      internalPolicyId?: string;
+      stage?: string;
+    }>;
+    const data = axErr.response?.data;
+    if (data && (data.code || data.message)) {
+      throw new PolicyEmitError({
+        code: data.code ?? 'PERSONAS_ERROR',
+        message: data.message ?? 'Error emitiendo la póliza funeraria.',
+        httpStatus: axErr.response?.status,
+        details: data.details,
+        internalPolicyId: data.internalPolicyId,
+        stage: data.stage,
+      });
+    }
+    throw err;
+  }
+}
+
 export interface QuotePolicyPayload {
   state: unknown;
   plan?: string;

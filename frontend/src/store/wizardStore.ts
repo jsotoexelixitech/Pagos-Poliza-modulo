@@ -11,6 +11,7 @@ import type {
   IssuedPolicy,
   PolicyQuote,
   QuoteState,
+  FuneralData,
 } from '../types';
 
 const defaultDoc = (): DocumentState => ({ status: 'idle', progress: 0 });
@@ -43,6 +44,15 @@ const defaultPerson = (): PersonData => ({
   relacion: '',
   telefono: '',
   email: '',
+});
+
+const defaultFuneral = (): FuneralData => ({
+  asegurados: [],
+  beneficiarios: [],
+  frecuencia: 'M',
+  diagnosticoEnfermedad: false,
+  descripcionEnfermedad: '',
+  aceptaTerminos: false,
 });
 
 const defaultVehicle = (): VehicleData => ({
@@ -86,6 +96,7 @@ interface WizardActions {
 
 const initialState: WizardState = {
   step: 1,
+  product: 'rcv',
   documents: {
     cedula: defaultDoc(),
     licencia: defaultDoc(),
@@ -94,6 +105,7 @@ const initialState: WizardState = {
   },
   ocrDone: false,
   tomador: defaultTomador(),
+  funeral: defaultFuneral(),
   sameInsured: true,
   asegurado: defaultPerson(),
   differentPayer: false,

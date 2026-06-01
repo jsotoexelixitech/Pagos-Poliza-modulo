@@ -1,5 +1,8 @@
 export type DocType = 'cedula' | 'licencia' | 'certificado' | 'rif';
 
+/** Producto de seguro que se está suscribiendo en el flujo. */
+export type ProductId = 'rcv' | 'funerario';
+
 export type DocStatus = 'idle' | 'uploading' | 'processing' | 'done' | 'error';
 
 export interface DocumentFile {
@@ -91,6 +94,37 @@ export interface Plan {
 
 export type PaymentMethod = 'card' | 'transfer' | 'mobile' | 'otp';
 
+/**
+ * Persona (asegurado o beneficiario) del producto Funerario.
+ * Mapea a los campos de la API de Personas (ramo 9).
+ */
+export interface FuneralPerson {
+  tipoDoc: string;
+  identificacion: string;
+  nombre: string;
+  apellido: string;
+  fechaNac: string;
+  sexo: string;
+  /** Código de parentesco La Mundial (1=Titular, 2=Cónyuge, 3=Hijo(a)…). */
+  parentesco: string;
+}
+
+/** Datos del producto Funerario (personas). Solo se usa si product = 'funerario'. */
+export interface FuneralData {
+  /** Personas aseguradas. El primer elemento es el titular (parentesco=1). */
+  asegurados: FuneralPerson[];
+  /** Beneficiarios de la póliza (opcional según el plan). */
+  beneficiarios: FuneralPerson[];
+  /** Frecuencia de pago (A, S, C, T, M). */
+  frecuencia: string;
+  /** Declara haber sido diagnosticado con alguna enfermedad. */
+  diagnosticoEnfermedad: boolean;
+  /** Descripción de la enfermedad (si diagnosticoEnfermedad = true). */
+  descripcionEnfermedad: string;
+  /** Acepta términos y condiciones (obligatorio para emitir). */
+  aceptaTerminos: boolean;
+}
+
 export interface VehicleData {
   placa: string;
   /** Tipo de placa: nacional (formato venezolano AAA000A/AAA000) o extranjera. */
@@ -151,9 +185,13 @@ export interface IssuedPolicy {
 
 export interface WizardState {
   step: number;
+  /** Producto activo del flujo (rcv | funerario). Se propaga entre módulos. */
+  product: ProductId;
   documents: Record<DocType, DocumentState>;
   ocrDone: boolean;
   tomador: TomadorData;
+  /** Datos del producto Funerario (personas). Solo se usa si product = 'funerario'. */
+  funeral: FuneralData;
   sameInsured: boolean;
   asegurado: PersonData;
   /** True cuando quien rellena el formulario NO es quien va a pagar la póliza. */

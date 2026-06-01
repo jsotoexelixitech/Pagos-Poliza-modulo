@@ -81,6 +81,9 @@ async function _proxyToEmision(req, res) {
 
 app.post('/api/policies/emit',  nexusAuth, _proxyToEmision);
 app.post('/api/policies/quote', nexusAuth, _proxyToEmision);
+// Producto Funerario (personas, ramo 9): cotización y emisión viven en emisión.
+app.post('/api/personas/:path(*)', nexusAuth, _proxyToEmision);
+app.get('/api/personas/:path(*)',  nexusAuth, _proxyToEmision);
 // Catálogos INMA (para mostrar datos del vehículo en el checkout)
 app.get('/api/catalogo/:path(*)', _proxyToEmision);
 app.get('/api/valrep/:path(*)',   _proxyToEmision);
