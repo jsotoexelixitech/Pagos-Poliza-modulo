@@ -24,7 +24,8 @@ const PORT_TO_ORDER: Record<string, number> = {
   '5181': 1, // OCR
   '5182': 2, // Formulario
   '5183': 3, // Emisión
-  '5180': 4, // Pagos
+  '5180': 4, // Pagos (dev local)
+  '5184': 4, // Pagos (server)
 };
 
 // sessionStorage key usada por api.ts de cada módulo para inyectar el token
@@ -32,7 +33,8 @@ const PORT_TO_TOKEN_KEY: Record<string, string> = {
   '5181': 'nexus_access_token_ocr',
   '5182': 'nexus_access_token_formulario',
   '5183': 'nexus_access_token_emision',
-  '5180': 'nexus_access_token_pagos',
+  '5180': 'nexus_access_token_pagos', // dev local
+  '5184': 'nexus_access_token_pagos', // server
 };
 
 function getModuleTokenKey(): string {
