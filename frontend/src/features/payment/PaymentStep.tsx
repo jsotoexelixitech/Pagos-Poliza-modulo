@@ -9,6 +9,8 @@ import {
   CheckCircle2, XCircle, RefreshCw, Send, ClipboardCheck,
 } from 'lucide-react';
 import { formatUsdShort, vesAnnual } from '../../lib/money';
+import { formatTelefono } from '@exelixi/shared';
+
 import {
   verifyMobilePayment,
   MobilePaymentVerifyError,
@@ -195,7 +197,7 @@ export function PaymentStep() {
 
   const movErrors = {
     banco    : !bankCode                                          ? 'Selecciona el banco'                : '',
-    telefono : telefonoPago.length > 0 && (!/^04\d{9}$/.test(telefonoPago) && !/^02\d{9}$/.test(telefonoPago)) ? 'El prefijo debe ser válido en Venezuela (ej. 0414, 0412, 0212)' : !telefonoPago ? 'El teléfono es obligatorio' : '',
+    telefono : telefonoPago.length > 0 && telefonoPago.length < 11 ? 'Prefijo inválido o incompleto (11 dígitos)' : !telefonoPago ? 'El teléfono es obligatorio' : '',
     monto    : !montoPagoM                                        ? 'El monto es obligatorio'            : isNaN(parseFloat(montoPagoM)) || parseFloat(montoPagoM) <= 0 ? 'Monto inválido' : '',
     fecha    : !fechaPagoM                                        ? 'La fecha es obligatoria'            : fechaPagoM > TODAY_ISO ? 'La fecha no puede ser futura' : '',
     hora     : !horaPagoM                                        ? 'La hora es obligatoria'             : paidOnFuture ? 'La fecha y hora no pueden ser futuras' : '',
@@ -246,8 +248,8 @@ export function PaymentStep() {
 
     bank   : !otpBankCode ? 'Selecciona el banco' : '',
 
-    phone  : otpPhone.length > 0 && !/^04\d{9}$/.test(otpPhone)
-               ? 'Formato inválido: 04XXXXXXXXX'
+    phone  : otpPhone.length > 0 && otpPhone.length < 11
+               ? 'Prefijo inválido o incompleto (11 dígitos)'
                : !otpPhone ? 'Teléfono obligatorio' : '',
 
     amount : otpAmount.length > 0 && (isNaN(parseFloat(otpAmount)) || parseFloat(otpAmount) <= 0)
@@ -463,7 +465,7 @@ export function PaymentStep() {
               <Field label="Teléfono de origen" hint="Número que realizó el pago" error={movErrors.telefono}>
                 <Input
                   value={telefonoPago}
-                  onChange={(e) => { setTelPago(e.target.value.replace(/\D/g, '').slice(0, 11)); setVerifyStatus('idle'); setPaymentVerified(false); }}
+                  onChange={(e) => { setTelPago(formatTelefono(e.target.value)); setVerifyStatus('idle'); setPaymentVerified(false); }}
                   placeholder="04121234567"
                   type="tel"
                   inputMode="numeric"
@@ -673,7 +675,7 @@ export function PaymentStep() {
                     error={otpErrors.phone}>
                     <Input
                       value={otpPhone}
-                      onChange={(e) => setOtpPhone(e.target.value.replace(/\D/g, '').slice(0, 11))}
+                      onChange={(e) => setOtpPhone(formatTelefono(e.target.value))}
                       placeholder="04141234567"
                       type="tel"
                       inputMode="numeric"
