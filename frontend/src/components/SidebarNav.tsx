@@ -4,11 +4,9 @@ import {
 } from 'lucide-react';
 import { useWizardStore } from '../store/wizardStore';
 
-import { getProductConfig } from '../lib/product';
-
 export function SidebarNav() {
-  const { step, tomador, vehicle, selectedPlan, paymentMethod, quote, quoteState } = useWizardStore();
-  const product = getProductConfig();
+  const { step, tomador, vehicle, selectedPlan, paymentMethod, quote, quoteState, product: productType } = useWizardStore();
+  const product = { hasVehicle: productType === 'rcv' };
 
   const STEPS = [
     { n: 1, label: 'Documentos', sub: 'OCR y validación',   Icon: FileText },

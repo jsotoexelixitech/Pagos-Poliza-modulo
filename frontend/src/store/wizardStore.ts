@@ -92,7 +92,6 @@ interface WizardActions {
   setQuoteState: (s: QuoteState, error?: string | null) => void;
   clearQuote: () => void;
   reset: () => void;
-  paymentVerified: boolean;
   setPaymentVerified: (v: boolean) => void;
 }
 
@@ -120,8 +119,6 @@ const initialState: WizardState = {
   category: '',
   selectedPlan: null,
   paymentVerified: false,
-  // 'mobile' (Pago MÃ³vil vÃ­a Banco Activo) es el mÃ©todo activo por defecto.
-  // 'transfer' estÃ¡ oculto en la UI por ahora; se mantendrÃ¡ el tipo para compat.
   paymentMethod: 'mobile',
   policy: null,
   quote: null,
@@ -210,9 +207,7 @@ export const useWizardStore = create<WizardState & WizardActions>()((set) => ({
   setQuoteState: (quoteState, quoteError = null) =>
     set({ quoteState, quoteError }),
 
-  clearQuote: () =>
-    set({ quote: null, quoteState: 'idle', quoteError: null, quoteVehicleSignature: null }),
-
+  clearQuote: () => set({ quote: null, quoteState: 'idle', quoteError: null, quoteVehicleSignature: null }),
   reset: () => set(initialState),
 }));
 

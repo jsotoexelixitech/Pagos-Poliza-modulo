@@ -206,6 +206,7 @@ export interface WizardState {
   category: string;
   selectedPlan: Plan | null;
   paymentMethod: PaymentMethod;
+  paymentVerified: boolean;
   policy: IssuedPolicy | null;
   /** Cotizacion vigente desde La Mundial (mprima/mprimaext/ptasa). */
   quote: PolicyQuote | null;

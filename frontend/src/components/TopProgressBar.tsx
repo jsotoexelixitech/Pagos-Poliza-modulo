@@ -1,14 +1,12 @@
 import { useWizardStore } from '../store/wizardStore';
 
-import { getProductConfig } from '../lib/product';
-
 const TOTAL_STEPS = 5;
 
 export function TopProgressBar() {
-  const step = useWizardStore((s) => s.step);
+  const { step, product: productType } = useWizardStore();
+  const product = { hasVehicle: productType === 'rcv' };
   const segments = Array.from({ length: TOTAL_STEPS }, (_, i) => i + 1);
   const safeStep = Math.min(step, TOTAL_STEPS);
-  const product = getProductConfig();
   
   const MOBILE_LABELS: Record<number, string> = {
     1: 'Documentos',
