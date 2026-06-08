@@ -1,4 +1,4 @@
-﻿import { create } from 'zustand';
+import { create } from 'zustand';
 import type {
   WizardState,
   DocType,
@@ -92,6 +92,8 @@ interface WizardActions {
   setQuoteState: (s: QuoteState, error?: string | null) => void;
   clearQuote: () => void;
   reset: () => void;
+  paymentVerified: boolean;
+  setPaymentVerified: (v: boolean) => void;
 }
 
 const initialState: WizardState = {
@@ -117,6 +119,7 @@ const initialState: WizardState = {
   vehicle: defaultVehicle(),
   category: '',
   selectedPlan: null,
+  paymentVerified: false,
   // 'mobile' (Pago MÃ³vil vÃ­a Banco Activo) es el mÃ©todo activo por defecto.
   // 'transfer' estÃ¡ oculto en la UI por ahora; se mantendrÃ¡ el tipo para compat.
   paymentMethod: 'mobile',
@@ -191,6 +194,8 @@ export const useWizardStore = create<WizardState & WizardActions>()((set) => ({
   setSelectedPlan: (selectedPlan) => set({ selectedPlan }),
 
   setPaymentMethod: (paymentMethod) => set({ paymentMethod }),
+
+  setPaymentVerified: (paymentVerified) => set({ paymentVerified }),
 
   setPolicy: (policy) => set({ policy }),
 

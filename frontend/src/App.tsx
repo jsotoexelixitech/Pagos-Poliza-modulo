@@ -144,7 +144,7 @@ export default function App() {
                   <Button
                     variant="primary"
                     onClick={handleEmitir}
-                    disabled={emitting}
+                    disabled={emitting || !store.paymentVerified}
                     className="min-w-[180px]"
                   >
                     {emitting ? (
@@ -173,7 +173,7 @@ export default function App() {
             variant="primary"
             className="w-full"
             onClick={handleEmitir}
-            disabled={emitting}
+            disabled={emitting || !store.paymentVerified}
           >
             {emitting ? 'Emitiendo...' : 'Emitir póliza'}
           </Button>

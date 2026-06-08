@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useWizardStore } from '../../store/wizardStore';
 import { Field, Input } from '../../components/ui/FormField';
 import { BankSearchSelect } from '../../components/ui/BankSearchSelect';
@@ -72,6 +72,7 @@ export function PaymentStep() {
     paymentMethod, setPaymentMethod,
     selectedPlan, quote, quoteState, vehicle,
     setQuote, setQuoteState,
+    setPaymentVerified,
   } = useWizardStore();
 
   // Si el bridge hidró `quote` pero excluyó `quoteState` (está en HYDRATE_EXCLUDE),
@@ -149,8 +150,9 @@ export function PaymentStep() {
     setOtpCode('');
     setOtpSubmitted(false);
     setOtpCooldown(0);
+    setPaymentVerified(false);
     confirmInFlight.current = false;
-  }, [paymentMethod]);
+  }, [paymentMethod, setPaymentVerified]);
 
   // Sincroniza el monto en Bs con la cotización oficial cada vez que cambia.
   // No es editable por el usuario: es el monto exacto a pagar (prima anual a tasa BCV).
@@ -193,7 +195,7 @@ export function PaymentStep() {
 
   const movErrors = {
     banco    : !bankCode                                          ? 'Selecciona el banco'                : '',
-    telefono : telefonoPago.length > 0 && !/^04\d{9}$/.test(telefonoPago) ? 'Formato inválido: 04XXXXXXXXX' : !telefonoPago ? 'El teléfono es obligatorio' : '',
+    telefono : telefonoPago.length > 0 && (!/^04\d{9}$/.test(telefonoPago) && !/^02\d{9}$/.test(telefonoPago)) ? 'El prefijo debe ser válido en Venezuela (ej. 0414, 0412, 0212)' : !telefonoPago ? 'El teléfono es obligatorio' : '',
     monto    : !montoPagoM                                        ? 'El monto es obligatorio'            : isNaN(parseFloat(montoPagoM)) || parseFloat(montoPagoM) <= 0 ? 'Monto inválido' : '',
     fecha    : !fechaPagoM                                        ? 'La fecha es obligatoria'            : fechaPagoM > TODAY_ISO ? 'La fecha no puede ser futura' : '',
     hora     : !horaPagoM                                        ? 'La hora es obligatoria'             : paidOnFuture ? 'La fecha y hora no pueden ser futuras' : '',
@@ -219,12 +221,14 @@ export function PaymentStep() {
 
       setVerifyResult(result);
       setVerifyStatus(result.isVerified ? 'success' : 'failed');
+      setPaymentVerified(result.isVerified);
     } catch (err) {
       const msg = err instanceof MobilePaymentVerifyError
         ? err.message
         : 'Error inesperado al verificar el pago.';
       setVerifyError(msg);
       setVerifyStatus('error');
+      setPaymentVerified(false);
     }
   }
 
@@ -306,10 +310,12 @@ export function PaymentStep() {
       });
       setOtpResult(result);
       setOtpStep('done');
+      setPaymentVerified(true);
       // Latch queda activo en 'done' — no se puede volver a confirmar
     } catch (err) {
       setOtpError(err instanceof SypagoError ? err.message : 'Error al confirmar pago.');
       setOtpStep('error');
+      setPaymentVerified(false);
       // Liberar latch solo en error para permitir reintentar
       confirmInFlight.current = false;
     }
@@ -449,6 +455,7 @@ export function PaymentStep() {
                     setBankCode(code);
                     setBankLabel(found?.label ?? '');
                     setVerifyStatus('idle');
+                    setPaymentVerified(false);
                   }}
                 />
               </Field>
@@ -456,7 +463,7 @@ export function PaymentStep() {
               <Field label="Teléfono de origen" hint="Número que realizó el pago" error={movErrors.telefono}>
                 <Input
                   value={telefonoPago}
-                  onChange={(e) => { setTelPago(e.target.value.replace(/\D/g, '').slice(0, 11)); setVerifyStatus('idle'); }}
+                  onChange={(e) => { setTelPago(e.target.value.replace(/\D/g, '').slice(0, 11)); setVerifyStatus('idle'); setPaymentVerified(false); }}
                   placeholder="04121234567"
                   type="tel"
                   inputMode="numeric"
@@ -469,7 +476,7 @@ export function PaymentStep() {
                 <Input
                   type="date"
                   value={fechaPagoM}
-                  onChange={(e) => { setFechaM(e.target.value); setVerifyStatus('idle'); }}
+                  onChange={(e) => { setFechaM(e.target.value); setVerifyStatus('idle'); setPaymentVerified(false); }}
                   max={TODAY_ISO}
                 />
               </Field>
@@ -478,7 +485,7 @@ export function PaymentStep() {
                 <Input
                   type="time"
                   value={horaPagoM}
-                  onChange={(e) => { setHoraM(e.target.value); setVerifyStatus('idle'); }}
+                  onChange={(e) => { setHoraM(e.target.value); setVerifyStatus('idle'); setPaymentVerified(false); }}
                 />
               </Field>
 
@@ -501,6 +508,7 @@ export function PaymentStep() {
                     if (hasRealQuote) return; // bloqueado si hay cotización oficial
                     setMontoM(e.target.value.replace(/[^0-9.]/g, ''));
                     setVerifyStatus('idle');
+                    setPaymentVerified(false);
                   }}
                   placeholder="198114.50"
                   inputMode="decimal"
