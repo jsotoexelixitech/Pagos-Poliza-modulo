@@ -10,6 +10,9 @@ import {
 } from 'lucide-react';
 import { formatUsdShort, vesAnnual } from '../../lib/money';
 import { formatTelefono } from '@exelixi/shared';
+import { useProductConfig } from '../../hooks/useProductConfig';
+
+const EMPRESA_ID = Number(import.meta.env.VITE_EMPRESA_ID ?? 1);
 
 import {
   verifyMobilePayment,
@@ -76,6 +79,14 @@ export function PaymentStep() {
     setQuote, setQuoteState,
     setPaymentVerified,
   } = useWizardStore();
+
+  const producto = new URLSearchParams(window.location.search).get('product') as 'rcv' | 'funerario' ?? 'rcv';
+  const { config } = useProductConfig(EMPRESA_ID, producto, 'pagos');
+
+  const availableMethods = PAYMENT_OPTIONS.filter(opt => {
+    if (!config?.metodos) return true;
+    return config.metodos[opt.method]?.activo ?? true;
+  });
 
   // Si el bridge hidró `quote` pero excluyó `quoteState` (está en HYDRATE_EXCLUDE),
   // el store tiene un quote válido pero quoteState='idle'. Lo corregimos aquí.
@@ -174,14 +185,13 @@ export function PaymentStep() {
   }, [otpCooldown]);
 
   // Si el store quedó con un método legacy ('card' / 'transfer' que ya no se
-  // ofrecen en PAYMENT_OPTIONS), redirigimos a 'mobile' para evitar pantalla
-  // vacía. Esto puede ocurrir si el usuario tenía estado previo persistido o
-  // si el flujo cambió entre versiones.
+  // ofrecen en PAYMENT_OPTIONS), o si el método actual está desactivado, redirigimos 
+  // al primer método disponible para evitar pantalla vacía.
   useEffect(() => {
-    if (paymentMethod === 'card' || paymentMethod === 'transfer') {
-      setPaymentMethod('mobile');
+    if (availableMethods.length > 0 && (!paymentMethod || !availableMethods.some(m => m.method === paymentMethod))) {
+      setPaymentMethod(availableMethods[0].method);
     }
-  }, [paymentMethod, setPaymentMethod]);
+  }, [paymentMethod, setPaymentMethod, availableMethods]);
 
   const isLoadingQuote = quoteState === 'loading';
   const hasRealQuote   = quoteState === 'ready' && Boolean(quote);
@@ -395,8 +405,14 @@ export function PaymentStep() {
           <Sparkles size={11} className="text-indigo-500" />
           Método de pago
         </p>
+        {availableMethods.length === 0 ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-center">
+            <p className="text-sm font-bold text-amber-800">No hay métodos de pago disponibles</p>
+            <p className="text-xs text-amber-700 mt-1">Por favor, contacta a soporte o revisa la configuración del producto.</p>
+          </div>
+        ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {PAYMENT_OPTIONS.map(({ method, label, sub, Icon }) => (
+          {availableMethods.map(({ method, label, sub, Icon }) => (
             <button
               key={method}
               type="button"
@@ -428,6 +444,7 @@ export function PaymentStep() {
             </button>
           ))}
         </div>
+        )}
       </div>
 
       {/* Formularios */}
