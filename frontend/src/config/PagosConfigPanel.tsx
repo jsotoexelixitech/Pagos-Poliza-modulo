@@ -39,7 +39,10 @@ export function PagosConfigPanel() {
     transferencia: true,
     zelle: false,
     tarjetaCredito: false,
+    domiciliacion: false,
   });
+  const [fraccionamientoCuotas, setFraccionamientoCuotas] = useState(false);
+  const [frecuencias, setFrecuencias] = useState({ mensual: true, trimestral: false, anual: true });
 
   useEffect(() => {
     if (!config) return;
@@ -47,6 +50,8 @@ export function PagosConfigPanel() {
     if (config.metodos) {
       setMetodos(config.metodos);
     }
+    setFraccionamientoCuotas(config.fraccionamientoCuotas ?? false);
+    if (config.frecuencias) setFrecuencias(config.frecuencias);
   }, [config]);
 
   const toggleMetodo = (key: keyof typeof metodos) => {
@@ -70,7 +75,7 @@ export function PagosConfigPanel() {
   };
 
   async function handleSave() {
-    await saveConfig({ apiMap, metodos });
+    await saveConfig({ apiMap, metodos, fraccionamientoCuotas, frecuencias });
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
   }
@@ -83,7 +88,7 @@ export function PagosConfigPanel() {
         <header className="mb-8 animate-fade-in">
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div className="min-w-0">
-              <p className="text-[0.68rem] font-black tracking-[0.22em] gradient-text-indigo uppercase mb-2 inline-flex items-center gap-1.5">
+              <p className="text-[0.68rem] font-black tracking-[0.22em] text-indigo-500 uppercase mb-2 inline-flex items-center gap-1.5">
                 <Sparkles size={11} className="text-indigo-500" />
                 PARAMETRIZADOR · {producto}
               </p>
@@ -100,7 +105,7 @@ export function PagosConfigPanel() {
           </div>
         </header>
 
-        <section className="surface-card overflow-hidden animate-fade-in">
+        <section className="bg-white/80 backdrop-blur-xl border border-white/40 shadow-xl rounded-3xl overflow-hidden animate-fade-in">
           <div className="p-6 sm:p-8 lg:p-10">
             {/* Tabs */}
             <div className="flex flex-col sm:flex-row gap-2 mb-8 bg-slate-100/50 p-1.5 rounded-xl border border-slate-200/50 backdrop-blur-sm">
@@ -108,7 +113,7 @@ export function PagosConfigPanel() {
                 <button
                   key={t}
                   onClick={() => setTab(t as Tab)}
-                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-bold transition-all ${tab === t ? 'bg-white shadow-sm text-indigo-700' : 'text-slate-500 hover:text-slate-700'}`}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold transition-all ${tab === t ? 'bg-white shadow-sm text-indigo-700' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'}`}
                 >
                   <Icon size={15} />{label}
                 </button>
@@ -138,34 +143,73 @@ export function PagosConfigPanel() {
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <label className={`rounded-2xl border p-4 flex items-start gap-3 cursor-pointer transition-all ${metodos.pagoMovil ? 'border-indigo-200 bg-white shadow-sm' : 'border-slate-200 bg-slate-50/60'}`}>
+                      <label className={`rounded-2xl border p-5 flex items-start gap-4 cursor-pointer transition-all hover:-translate-y-0.5 ${metodos.pagoMovil ? 'border-indigo-300 bg-white shadow-md ring-2 ring-indigo-500/10' : 'border-slate-200 bg-white/50 hover:bg-white hover:shadow-sm'}`}>
                         <input type="checkbox" checked={metodos.pagoMovil} onChange={() => toggleMetodo('pagoMovil')} className="rounded w-5 h-5 text-indigo-600 focus:ring-indigo-500 border-slate-300 mt-0.5" />
                         <div>
                           <span className="text-sm text-slate-800 font-bold block mb-1">Pago Móvil</span>
                           <span className="text-xs text-slate-500">Permitir pagos vía pago móvil (requiere datos del banco destino).</span>
                         </div>
                       </label>
-                      <label className={`rounded-2xl border p-4 flex items-start gap-3 cursor-pointer transition-all ${metodos.transferencia ? 'border-indigo-200 bg-white shadow-sm' : 'border-slate-200 bg-slate-50/60'}`}>
+                      <label className={`rounded-2xl border p-5 flex items-start gap-4 cursor-pointer transition-all hover:-translate-y-0.5 ${metodos.transferencia ? 'border-indigo-300 bg-white shadow-md ring-2 ring-indigo-500/10' : 'border-slate-200 bg-white/50 hover:bg-white hover:shadow-sm'}`}>
                         <input type="checkbox" checked={metodos.transferencia} onChange={() => toggleMetodo('transferencia')} className="rounded w-5 h-5 text-indigo-600 focus:ring-indigo-500 border-slate-300 mt-0.5" />
                         <div>
                           <span className="text-sm text-slate-800 font-bold block mb-1">Transferencia</span>
                           <span className="text-xs text-slate-500">Permitir transferencias bancarias nacionales.</span>
                         </div>
                       </label>
-                      <label className={`rounded-2xl border p-4 flex items-start gap-3 cursor-pointer transition-all ${metodos.zelle ? 'border-indigo-200 bg-white shadow-sm' : 'border-slate-200 bg-slate-50/60'}`}>
+                      <label className={`rounded-2xl border p-5 flex items-start gap-4 cursor-pointer transition-all hover:-translate-y-0.5 ${metodos.zelle ? 'border-indigo-300 bg-white shadow-md ring-2 ring-indigo-500/10' : 'border-slate-200 bg-white/50 hover:bg-white hover:shadow-sm'}`}>
                         <input type="checkbox" checked={metodos.zelle} onChange={() => toggleMetodo('zelle')} className="rounded w-5 h-5 text-indigo-600 focus:ring-indigo-500 border-slate-300 mt-0.5" />
                         <div>
                           <span className="text-sm text-slate-800 font-bold block mb-1">Zelle</span>
                           <span className="text-xs text-slate-500">Pagos en divisa mediante plataforma Zelle.</span>
                         </div>
                       </label>
-                      <label className={`rounded-2xl border p-4 flex items-start gap-3 cursor-pointer transition-all ${metodos.tarjetaCredito ? 'border-indigo-200 bg-white shadow-sm' : 'border-slate-200 bg-slate-50/60'}`}>
+                      <label className={`rounded-2xl border p-5 flex items-start gap-4 cursor-pointer transition-all hover:-translate-y-0.5 ${metodos.tarjetaCredito ? 'border-indigo-300 bg-white shadow-md ring-2 ring-indigo-500/10' : 'border-slate-200 bg-white/50 hover:bg-white hover:shadow-sm'}`}>
                         <input type="checkbox" checked={metodos.tarjetaCredito} onChange={() => toggleMetodo('tarjetaCredito')} className="rounded w-5 h-5 text-indigo-600 focus:ring-indigo-500 border-slate-300 mt-0.5" />
                         <div>
                           <span className="text-sm text-slate-800 font-bold block mb-1">Tarjeta de Crédito</span>
                           <span className="text-xs text-slate-500">Pasarela de pagos en línea (TDC nacional/internacional).</span>
                         </div>
                       </label>
+                      {producto === 'funerario' && (
+                        <label className={`rounded-2xl border p-5 flex items-start gap-4 cursor-pointer transition-all hover:-translate-y-0.5 ${metodos.domiciliacion ? 'border-indigo-300 bg-white shadow-md ring-2 ring-indigo-500/10' : 'border-slate-200 bg-white/50 hover:bg-white hover:shadow-sm'}`}>
+                          <input type="checkbox" checked={metodos.domiciliacion} onChange={() => toggleMetodo('domiciliacion')} className="rounded w-5 h-5 text-indigo-600 focus:ring-indigo-500 border-slate-300 mt-0.5" />
+                          <div>
+                            <span className="text-sm text-slate-800 font-bold block mb-1">Domiciliación Bancaria</span>
+                            <span className="text-xs text-slate-500">Cobro automático y recurrente a tarjetas o cuentas.</span>
+                          </div>
+                        </label>
+                      )}
+                    </div>
+
+                    <hr className="border-slate-100" />
+
+                    <div className="space-y-4">
+                      <p className="text-xs font-black text-slate-500 uppercase tracking-widest">Opciones de Cobro</p>
+                      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-4">
+                        {producto === 'rcv' && (
+                          <label className="flex items-start gap-3 cursor-pointer p-2 rounded-xl hover:bg-slate-50 transition-colors">
+                            <input type="checkbox" checked={fraccionamientoCuotas} onChange={e => { setFraccionamientoCuotas(e.target.checked); setSaved(false); }} className="rounded w-5 h-5 text-indigo-600 focus:ring-indigo-500 border-slate-300 mt-0.5" />
+                            <div>
+                              <span className="text-sm text-slate-800 font-bold block mb-1">Permitir pago fraccionado (Cuotas)</span>
+                              <span className="text-xs text-slate-500">El cliente podrá dividir el pago del RCV en varias cuotas.</span>
+                            </div>
+                          </label>
+                        )}
+                        {producto === 'funerario' && (
+                          <div className="p-2">
+                            <span className="text-sm text-slate-800 font-bold block mb-3">Frecuencias de pago permitidas</span>
+                            <div className="flex gap-4 flex-wrap">
+                              {(['mensual', 'trimestral', 'anual'] as const).map(freq => (
+                                <label key={freq} className="flex items-center gap-2 cursor-pointer">
+                                  <input type="checkbox" checked={frecuencias[freq]} onChange={e => { setFrecuencias(p => ({...p, [freq]: e.target.checked})); setSaved(false); }} className="rounded w-4 h-4 text-indigo-600 focus:ring-indigo-500 border-slate-300" />
+                                  <span className="text-sm text-slate-700 capitalize">{freq}</span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -191,7 +235,7 @@ export function PagosConfigPanel() {
 
                     <div className="space-y-3">
                       {apiMap.map((entry, idx) => (
-                        <div key={idx} className="rounded-2xl border border-slate-200 bg-white p-4 grid grid-cols-1 md:grid-cols-[1fr_1fr_auto_auto] gap-4 items-end shadow-sm hover:shadow-md transition-shadow">
+                        <div key={idx} className="rounded-2xl border border-indigo-100 bg-white/50 backdrop-blur-sm p-5 grid grid-cols-1 md:grid-cols-[1fr_1fr_auto_auto] gap-5 items-end shadow-sm hover:shadow-md hover:bg-white transition-all group">
                           <div>
                             <label className="text-[11px] font-bold text-slate-500 block mb-1.5">Campo origen</label>
                             <select className="w-full text-sm border border-slate-200 rounded-xl px-3 py-2 bg-slate-50 font-mono outline-none focus:border-indigo-400" value={entry.internalKey} onChange={e => updateMapEntry(idx, 'internalKey', e.target.value)}>
@@ -212,7 +256,7 @@ export function PagosConfigPanel() {
                               <option value="number">A Número</option>
                             </select>
                           </div>
-                          <button onClick={() => removeMapEntry(idx)} className="p-2.5 rounded-xl text-rose-400 hover:bg-rose-50 hover:text-rose-600 transition-colors">
+                          <button onClick={() => removeMapEntry(idx)} className="p-2.5 rounded-xl text-slate-300 hover:bg-rose-50 hover:text-rose-600 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100">
                             <Trash2 size={16} />
                           </button>
                         </div>
