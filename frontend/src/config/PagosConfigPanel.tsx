@@ -270,7 +270,7 @@ export function PagosConfigPanel() {
             </div>
 
             {loadState === 'loading' && (
-              <div className="flex items-center justify-center gap-3 py-20 text-slate-400">
+              <div className="flex items-center justify-center gap-3 py-20 text-slate-500">
                 <Loader2 size={20} className="animate-spin" /><span className="text-sm">Cargando configuración...</span>
               </div>
             )}
@@ -341,7 +341,7 @@ export function PagosConfigPanel() {
                                 value={m.label}
                                 onChange={e => { updateMetodo(m.key, { label: e.target.value }); setSaved(false); }}
                               />
-                              <p className="text-[10px] text-slate-400 mt-0.5 capitalize">{m.tipo === 'custom' ? 'Personalizado' : m.tipo}</p>
+                              <p className="text-[10px] text-slate-500 mt-0.5 capitalize">{m.tipo === 'custom' ? 'Personalizado' : m.tipo}</p>
                             </div>
 
                             {/* Controls */}
@@ -360,7 +360,7 @@ export function PagosConfigPanel() {
                               <button
                                 type="button"
                                 onClick={() => setExpandedKey(k => k === m.key ? null : m.key)}
-                                className="p-2 rounded-xl text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"
+                                className="p-2 rounded-xl text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"
                                 title="Configurar datos"
                               >
                                 {expandedKey === m.key ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
@@ -432,7 +432,7 @@ export function PagosConfigPanel() {
                     <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
                       <div>
                         <p className="text-xs font-black text-slate-500 uppercase tracking-widest">Mapeador de campos API</p>
-                        <p className="text-xs text-slate-400 mt-1">Traduce los campos del pago al formato de la API destino.</p>
+                        <p className="text-xs text-slate-500 mt-1">Traduce los campos del pago al formato de la API destino.</p>
                       </div>
                       <button onClick={addMapEntry} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600/10 text-indigo-700 text-xs font-bold hover:bg-indigo-600/20 transition-colors">
                         <Plus size={14} /> Nueva regla
@@ -440,7 +440,7 @@ export function PagosConfigPanel() {
                     </div>
 
                     {apiMap.length === 0 && (
-                      <div className="text-center py-12 text-slate-400 text-sm rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50">
+                      <div className="text-center py-12 text-slate-500 text-sm rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50">
                         No hay mapeos. Los campos se enviarán con el nombre interno.
                       </div>
                     )}
