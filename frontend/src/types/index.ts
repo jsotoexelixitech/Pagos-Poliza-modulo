@@ -75,6 +75,13 @@ export type PersonData = {
   relacion?: string;
   telefono?: string;
   email?: string;
+  sexo?: string;
+  estadoCivil?: string;
+  estado?: string;
+  cestado?: number;
+  ciudad?: string;
+  cciudad?: number;
+  direccion?: string;
 };
 
 export interface Plan {
@@ -94,10 +101,7 @@ export interface Plan {
 
 export type PaymentMethod = 'card' | 'transfer' | 'mobile' | 'otp';
 
-/**
- * Persona (asegurado o beneficiario) del producto Funerario.
- * Mapea a los campos de la API de Personas (ramo 9).
- */
+/** Persona (asegurado/beneficiario) del producto Funerario. */
 export interface FuneralPerson {
   tipoDoc: string;
   identificacion: string;
@@ -107,21 +111,17 @@ export interface FuneralPerson {
   sexo: string;
   /** Código de parentesco La Mundial (1=Titular, 2=Cónyuge, 3=Hijo(a)…). */
   parentesco: string;
+  telefono?: string;
+  email?: string;
 }
 
-/** Datos del producto Funerario (personas). Solo se usa si product = 'funerario'. */
+/** Datos del producto Funerario (personas). Se usa cuando product = 'funerario'. */
 export interface FuneralData {
-  /** Personas aseguradas. El primer elemento es el titular (parentesco=1). */
   asegurados: FuneralPerson[];
-  /** Beneficiarios de la póliza (opcional según el plan). */
   beneficiarios: FuneralPerson[];
-  /** Frecuencia de pago (A, S, C, T, M). */
   frecuencia: string;
-  /** Declara haber sido diagnosticado con alguna enfermedad. */
   diagnosticoEnfermedad: boolean;
-  /** Descripción de la enfermedad (si diagnosticoEnfermedad = true). */
   descripcionEnfermedad: string;
-  /** Acepta términos y condiciones (obligatorio para emitir). */
   aceptaTerminos: boolean;
 }
 
@@ -206,7 +206,6 @@ export interface WizardState {
   category: string;
   selectedPlan: Plan | null;
   paymentMethod: PaymentMethod;
-  paymentVerified: boolean;
   policy: IssuedPolicy | null;
   /** Cotizacion vigente desde La Mundial (mprima/mprimaext/ptasa). */
   quote: PolicyQuote | null;
