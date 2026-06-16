@@ -186,6 +186,16 @@ export function SuccessStep() {
           <Download size={15} />
           Descargar Documentos
         </Button>
+        {conductorUrl && (
+          <Button
+            variant="secondary"
+            size="lg"
+            onClick={() => window.open(conductorUrl, '_blank', 'noopener,noreferrer')}
+          >
+            <Download size={15} />
+            Anexo Conductor
+          </Button>
+        )}
         <Button
           variant="secondary"
           size="lg"
