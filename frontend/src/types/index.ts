@@ -183,6 +183,8 @@ export interface IssuedPolicy {
   cnrecibo?: string;
   /** URL al PDF emitido por La Mundial. */
   urlpoliza?: string;
+  /** URL al PDF del Anexo Conductor Habitual generado internamente. */
+  url_conductor_habitual?: string;
   /** Identificador interno (no es el numero oficial). */
   internalPolicyId?: string;
   ncuota?: number;
