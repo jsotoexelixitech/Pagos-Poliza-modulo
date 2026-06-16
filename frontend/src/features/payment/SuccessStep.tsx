@@ -14,6 +14,7 @@ export function SuccessStep() {
   const policyNum = policy?.cnpoliza || policy?.number || 'LM-2026-000000';
   const reciboNum = policy?.cnrecibo || '';
   const pdfUrl = policy?.urlpoliza || '';
+  const conductorUrl = policy?.url_conductor_habitual || '';
   const emittedDate = policy?.emittedAt
     ? new Date(policy.emittedAt).toLocaleDateString('es-VE', { day: '2-digit', month: 'short', year: 'numeric' })
     : new Date().toLocaleDateString('es-VE', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -34,7 +35,15 @@ export function SuccessStep() {
   const downloadPdf = () => {
     if (pdfUrl) {
       window.open(pdfUrl, '_blank', 'noopener,noreferrer');
-      toast.success('Abriendo póliza', 'El PDF se abrió en una nueva pestaña.');
+      if (conductorUrl) {
+        window.open(conductorUrl, '_blank', 'noopener,noreferrer');
+      }
+      toast.success(
+        'Abriendo documentos',
+        conductorUrl 
+          ? 'La póliza y el anexo se abrieron en nuevas pestañas.'
+          : 'El PDF se abrió en una nueva pestaña.'
+      );
     } else {
       toast.warning(
         'PDF no disponible',
@@ -175,7 +184,7 @@ export function SuccessStep() {
           onClick={downloadPdf}
         >
           <Download size={15} />
-          Descargar PDF
+          Descargar Documentos
         </Button>
         <Button
           variant="secondary"

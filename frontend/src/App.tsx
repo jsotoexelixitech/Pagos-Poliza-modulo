@@ -67,6 +67,7 @@ export default function App() {
         cnpoliza: result.policy.cnpoliza,
         cnrecibo: result.policy.cnrecibo,
         urlpoliza: result.policy.urlpoliza,
+        url_conductor_habitual: result.policy.url_conductor_habitual,
         internalPolicyId: result.policy.internalPolicyId,
         ncuota: result.policy.ncuota,
         emittedAt: result.policy.emittedAt,
