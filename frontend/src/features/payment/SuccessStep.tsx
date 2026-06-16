@@ -168,6 +168,23 @@ export function SuccessStep() {
                 </a>
               </div>
             ) : null}
+
+            {conductorUrl ? (
+              <div className="pt-4 border-t border-slate-100">
+                <p className="text-[0.58rem] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                  Anexo Conductor Habitual
+                </p>
+                <a
+                  href={conductorUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-[0.7rem] font-semibold text-emerald-600 hover:text-emerald-800 transition-colors break-all underline-offset-2 hover:underline"
+                >
+                  <ExternalLink size={11} className="shrink-0" />
+                  <span className="truncate">{conductorUrl}</span>
+                </a>
+              </div>
+            ) : null}
           </div>
 
           <div className="mt-6 pt-4 border-t border-slate-100 flex items-center gap-2 text-[0.66rem] text-slate-500">
