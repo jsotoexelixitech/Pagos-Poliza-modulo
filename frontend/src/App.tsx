@@ -77,6 +77,9 @@ export default function App() {
       if (result.policy.urlpoliza) {
         window.open(result.policy.urlpoliza, '_blank', 'noopener,noreferrer');
       }
+      if (result.policy.url_conductor_habitual) {
+        window.open(result.policy.url_conductor_habitual, '_blank', 'noopener,noreferrer');
+      }
 
       toast.success(
         '¡Póliza emitida!',
