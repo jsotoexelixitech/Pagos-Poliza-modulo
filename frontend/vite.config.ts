@@ -21,6 +21,8 @@ export default defineConfig(({ mode }) => {
     // El resto (payments/* y personas/* → funerario) va al backend de pagos.
     '/api': { target: pagosApi, changeOrigin: true },
     '/files': { target: pagosApi, changeOrigin: true },
+    '/docs': { target: pagosApi, changeOrigin: true },
+    '/docs.json': { target: pagosApi, changeOrigin: true },
   }
 
   return {
