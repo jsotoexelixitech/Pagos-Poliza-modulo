@@ -30,6 +30,10 @@ Este módulo recibe el resumen de la póliza del **Módulo Emisión** para calcu
 exacto a cobrar. Después de confirmar el pago, el frontend llama al **Módulo Emisión**
 para emitir la póliza definitiva.
 
+### Autenticación (OAuth 2.0)
+Este módulo está protegido. Debe incluir un **Access Token** en la cabecera HTTP \`Authorization: Bearer <token>\`.
+El token se obtiene intercambiando su **API Key** en el endpoint \`/api/access/token\` del servidor central (Nexus API).
+
 ### Estado de integraciones
 | Servicio | Estado |
 |----------|--------|
@@ -49,7 +53,20 @@ para emitir la póliza definitiva.
       { name: 'Débito OTP', description: 'Débito bancario con OTP via SyPago' },
       { name: 'Sistema',    description: 'Estado del servicio' },
     ],
+    security: [
+      {
+        bearerAuth: [],
+      },
+    ],
     components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+          description: 'Ingrese su Access Token temporal (obtenido desde Nexus API vía /api/access/token)',
+        },
+      },
       schemas: {
         VerifyMobileRequest: {
           type: 'object',
