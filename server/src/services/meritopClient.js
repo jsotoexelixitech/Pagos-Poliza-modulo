@@ -56,7 +56,7 @@ function _getConfig() {
   const baseUrl = (process.env.LAMUNDIAL_PAYMENTS_URL || 'http://172.30.149.75:3000').replace(/\/$/, '');
   return {
     baseUrl,
-    apiKey    : process.env.LAMUNDIAL_APIKEY || '',
+    apiKey    : process.env.LAMUNDIAL_PAYMENTS_API_KEY || process.env.LAMUNDIAL_APIKEY || '',
     destPhone : process.env.LAMUNDIAL_PAYMENTS_DEST_PHONE || DEFAULT_DEST_PHONE,
     destBanco : process.env.LAMUNDIAL_PAYMENTS_DEST_BANCO || DEFAULT_DEST_BANCO,
     timeout   : Number(process.env.LAMUNDIAL_PAYMENTS_TIMEOUT || DEFAULT_TIMEOUT),
