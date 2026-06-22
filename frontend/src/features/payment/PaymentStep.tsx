@@ -200,17 +200,12 @@ export function PaymentStep() {
   const annualUsd = hasRealQuote ? quote!.mprimaext      : (selectedPlan?.priceNum ?? 0) * 12;
   const annualVes = hasRealQuote ? vesAnnual(quote)       : 0;
 
-  // ── Validaciones pago móvil (Meritop) ─────────────────────────────
-  // La fecha+hora del pago no puede ser futura (el banco no tendría ese pago).
-  const paidOnDateM = fechaPagoM && horaPagoM ? new Date(`${fechaPagoM}T${horaPagoM}:00`) : null;
-  const paidOnFuture = paidOnDateM != null && !isNaN(paidOnDateM.getTime()) && paidOnDateM.getTime() > Date.now();
-
+  // ── Validaciones pago móvil ───────────────────────────────────────────
   const movErrors = {
     banco    : !bankCode                                          ? 'Selecciona el banco'                : '',
     telefono : telefonoPago.length > 0 && telefonoPago.length < 11 ? 'Prefijo inválido o incompleto (11 dígitos)' : !telefonoPago ? 'El teléfono es obligatorio' : '',
     monto    : !montoPagoM                                        ? 'El monto es obligatorio'            : isNaN(parseFloat(montoPagoM)) || parseFloat(montoPagoM) <= 0 ? 'Monto inválido' : '',
     fecha    : !fechaPagoM                                        ? 'La fecha es obligatoria'            : fechaPagoM > TODAY_ISO ? 'La fecha no puede ser futura' : '',
-    hora     : !horaPagoM                                        ? 'La hora es obligatoria'             : paidOnFuture ? 'La fecha y hora no pueden ser futuras' : '',
   };
   const pagoMovilListo = Object.values(movErrors).every(e => !e) && telefonoPago.length === 11;
 
@@ -221,7 +216,8 @@ export function PaymentStep() {
     setVerifyResult(null);
     setVerifyError('');
 
-    const paidOn = `${fechaPagoM}T${horaPagoM}:00`;
+    // Solo se envía la fecha (YYYY-MM-DD) — la nueva API no requiere hora
+    const paidOn = fechaPagoM;
 
     try {
       const result = await verifyMobilePayment({
@@ -229,6 +225,7 @@ export function PaymentStep() {
         bankCode,
         amount            : parseFloat(montoPagoM),
         paidOn,
+        cci_rif           : flowData?.tomador?.rif ? `${flowData.tomador.tipo_cedula ?? 'V'}-${flowData.tomador.rif}` : '',
       });
 
       setVerifyResult(result);
@@ -463,6 +460,44 @@ export function PaymentStep() {
         {/* ── PAGO MÓVIL ── */}
         {paymentMethod === 'mobile' && (
           <div className="animate-fade-in space-y-4">
+
+            {/* Card datos del banco destino */}
+            <div className="rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50 to-violet-50 p-4">
+              <p className="text-[0.65rem] font-bold uppercase tracking-wider text-indigo-400 mb-3">Realiza tu pago a esta cuenta</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="flex items-center gap-3 rounded-xl bg-white/80 border border-indigo-100 px-3 py-2.5 shadow-sm">
+                  <div className="w-8 h-8 rounded-lg bg-indigo-500 grid place-items-center shrink-0 shadow-[0_3px_8px_rgba(99,102,241,0.35)]">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><path d="M2 10h20"/></svg>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[0.62rem] text-slate-500 font-semibold">Banco</p>
+                    <p className="text-sm font-bold text-slate-800 leading-tight truncate">Banco Activo</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 rounded-xl bg-white/80 border border-indigo-100 px-3 py-2.5 shadow-sm">
+                  <div className="w-8 h-8 rounded-lg bg-violet-500 grid place-items-center shrink-0 shadow-[0_3px_8px_rgba(139,92,246,0.35)]">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[0.62rem] text-slate-500 font-semibold">RIF</p>
+                    <p className="text-sm font-bold text-slate-800 leading-tight font-mono">J-000846448</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 rounded-xl bg-white/80 border border-indigo-100 px-3 py-2.5 shadow-sm">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-500 grid place-items-center shrink-0 shadow-[0_3px_8px_rgba(16,185,129,0.35)]">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.99 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.92 1.27h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9a16 16 0 0 0 6.29 6.29l1.079-1.079a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[0.62rem] text-slate-500 font-semibold">Teléfono</p>
+                    <p className="text-sm font-bold text-slate-800 leading-tight font-mono">0414-3966962</p>
+                  </div>
+                </div>
+              </div>
+              <p className="text-[0.62rem] text-indigo-400 mt-2.5 leading-relaxed">
+                ⚡ Envía el pago móvil a este número y luego ingresa los datos del movimiento para verificación automática.
+              </p>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* fila 1: banco · teléfono */}
               <Field label="Banco de origen" error={movErrors.banco}>
@@ -490,21 +525,13 @@ export function PaymentStep() {
                 />
               </Field>
 
-              {/* fila 2: fecha · hora */}
-              <Field label="Fecha del pago" error={movErrors.fecha}>
+              {/* fila 2: fecha (ancho completo — ya no se pide hora) */}
+              <Field label="Fecha del pago" error={movErrors.fecha} full>
                 <Input
                   type="date"
                   value={fechaPagoM}
                   onChange={(e) => { setFechaM(e.target.value); setVerifyStatus('idle'); setPaymentVerified(false); }}
                   max={TODAY_ISO}
-                />
-              </Field>
-
-              <Field label="Hora del pago" hint="Hora aproximada" error={movErrors.hora}>
-                <Input
-                  type="time"
-                  value={horaPagoM}
-                  onChange={(e) => { setHoraM(e.target.value); setVerifyStatus('idle'); setPaymentVerified(false); }}
                 />
               </Field>
 

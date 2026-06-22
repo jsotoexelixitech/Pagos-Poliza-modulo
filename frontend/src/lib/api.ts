@@ -268,14 +268,16 @@ export async function quotePolicy(payload: QuotePolicyPayload): Promise<QuotePol
 // ──────────────────────────────────────────────────────────────────────────
 
 export interface VerifyMobilePaymentPayload {
-  /** Teléfono de origen: 04XXXXXXXXX */
+  /** Teléfono de origen: 04XXXXXXXXX o 584XXXXXXXXX */
   sourcePhoneNumber: string;
-  /** Código de banco de 4 dígitos (ej. "0172" para Bancamiga) */
+  /** Código de banco de 4 dígitos (ej. "0174" para Banco Activo) */
   bankCode: string;
   /** Monto en Bs (decimal) */
   amount: number;
-  /** Fecha y hora del pago en ISO 8601 (ej. "2025-12-02T13:30:00") */
+  /** Fecha del pago en formato YYYY-MM-DD */
   paidOn: string;
+  /** RIF o cédula del cliente (ej. "V-19908817") — opcional */
+  cci_rif?: string;
 }
 
 export interface VerifyMobilePaymentResponse {
