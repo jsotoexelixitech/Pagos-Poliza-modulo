@@ -98,7 +98,7 @@ const otpConfirmLimiter = rateLimit({
  *         description: Gateway Meritop no disponible
  */
 router.post('/verify-mobile', async (req, res) => {
-  const { sourcePhoneNumber, bankCode, amount, paidOn } = req.body || {};
+  const { sourcePhoneNumber, bankCode, amount, paidOn, cci_rif } = req.body || {};
 
   const missing = [];
   if (!sourcePhoneNumber) missing.push('sourcePhoneNumber');
@@ -109,21 +109,22 @@ router.post('/verify-mobile', async (req, res) => {
 
   const phoneRe = /^(0|\+?58)4\d{9}$|^04\d{9}$/;
   if (!phoneRe.test(String(sourcePhoneNumber).replace(/\s/g, '')))
-    return res.status(400).json({ success: false, code: 'MERITOP_INVALID_PHONE', message: 'Telefono invalido. Formato: 04XXXXXXXXX' });
+    return res.status(400).json({ success: false, code: 'MERITOP_INVALID_PHONE', message: 'Telefono invalido. Formato: 04XXXXXXXXX o 584XXXXXXXXX' });
 
   const parsedAmount = parseFloat(amount);
   if (isNaN(parsedAmount) || parsedAmount <= 0)
     return res.status(400).json({ success: false, code: 'MERITOP_INVALID_AMOUNT', message: 'Monto debe ser positivo.' });
 
   if (isNaN(Date.parse(paidOn)))
-    return res.status(400).json({ success: false, code: 'MERITOP_INVALID_DATE', message: 'Fecha invalida (ISO 8601).' });
+    return res.status(400).json({ success: false, code: 'MERITOP_INVALID_DATE', message: 'Fecha invalida (YYYY-MM-DD o ISO 8601).' });
 
   try {
     const result = await verifyMobilePayment({
       sourcePhoneNumber: String(sourcePhoneNumber).replace(/\s/g, ''),
-      bankCode: String(bankCode).trim(),
-      amount: parsedAmount,
+      bankCode         : String(bankCode).trim(),
+      amount           : parsedAmount,
       paidOn,
+      cci_rif          : cci_rif ? String(cci_rif).trim() : '',
     });
     return res.status(200).json({ success: true, ...result });
   } catch (err) {
