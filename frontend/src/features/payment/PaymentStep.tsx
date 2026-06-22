@@ -75,7 +75,7 @@ const TODAY_ISO = new Date().toISOString().split('T')[0];
 export function PaymentStep() {
   const {
     paymentMethod, setPaymentMethod,
-    selectedPlan, quote, quoteState, vehicle,
+    selectedPlan, quote, quoteState, vehicle, tomador,
     setQuote, setQuoteState,
     setPaymentVerified,
   } = useWizardStore();
@@ -126,7 +126,6 @@ export function PaymentStep() {
   const [telefonoPago, setTelPago]   = useState('');
   const [montoPagoM,   setMontoM]    = useState('');
   const [fechaPagoM,   setFechaM]    = useState('');
-  const [horaPagoM,    setHoraM]     = useState('');
 
   const [verifyStatus, setVerifyStatus] = useState<VerifyStatus>('idle');
   const [verifyResult, setVerifyResult] = useState<VerifyMobilePaymentResponse | null>(null);
@@ -225,7 +224,7 @@ export function PaymentStep() {
         bankCode,
         amount            : parseFloat(montoPagoM),
         paidOn,
-        cci_rif           : flowData?.tomador?.rif ? `${flowData.tomador.tipo_cedula ?? 'V'}-${flowData.tomador.rif}` : '',
+        cci_rif           : tomador?.identificacion ? `${tomador.tipoDoc ?? 'V'}-${tomador.identificacion}` : '',
       });
 
       setVerifyResult(result);
