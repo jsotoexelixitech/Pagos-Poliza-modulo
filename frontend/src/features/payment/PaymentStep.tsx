@@ -126,6 +126,7 @@ export function PaymentStep() {
   const [telefonoPago, setTelPago]   = useState('');
   const [montoPagoM,   setMontoM]    = useState('');
   const [fechaPagoM,   setFechaM]    = useState('');
+  const [cedulaPago,   setCedulaPago] = useState('');
 
   const [verifyStatus, setVerifyStatus] = useState<VerifyStatus>('idle');
   const [verifyResult, setVerifyResult] = useState<VerifyMobilePaymentResponse | null>(null);
@@ -203,6 +204,7 @@ export function PaymentStep() {
   const movErrors = {
     banco    : !bankCode                                          ? 'Selecciona el banco'                : '',
     telefono : telefonoPago.length > 0 && telefonoPago.length < 11 ? 'Prefijo inválido o incompleto (11 dígitos)' : !telefonoPago ? 'El teléfono es obligatorio' : '',
+    cedula   : !cedulaPago                                        ? 'La cédula/RIF es obligatoria'       : !/^[VEJPGvejpg]-?\d+$/.test(cedulaPago) ? 'Formato inválido (Ej: V-12345678)' : '',
     monto    : !montoPagoM                                        ? 'El monto es obligatorio'            : isNaN(parseFloat(montoPagoM)) || parseFloat(montoPagoM) <= 0 ? 'Monto inválido' : '',
     fecha    : !fechaPagoM                                        ? 'La fecha es obligatoria'            : fechaPagoM > TODAY_ISO ? 'La fecha no puede ser futura' : '',
   };
@@ -224,7 +226,7 @@ export function PaymentStep() {
         bankCode,
         amount            : parseFloat(montoPagoM),
         paidOn,
-        cci_rif           : tomador?.identificacion ? `${tomador.tipoDoc ?? 'V'}-${tomador.identificacion}` : '',
+        cci_rif           : cedulaPago.toUpperCase(),
       });
 
       setVerifyResult(result);
@@ -524,13 +526,21 @@ export function PaymentStep() {
                 />
               </Field>
 
-              {/* fila 2: fecha (ancho completo — ya no se pide hora) */}
-              <Field label="Fecha del pago" error={movErrors.fecha} full>
+              {/* fila 2: fecha */}
+              <Field label="Fecha del pago" error={movErrors.fecha}>
                 <Input
                   type="date"
                   value={fechaPagoM}
                   onChange={(e) => { setFechaM(e.target.value); setVerifyStatus('idle'); setPaymentVerified(false); }}
                   max={TODAY_ISO}
+                />
+              </Field>
+
+              <Field label="Cédula/RIF del titular" hint="Ej: V-12345678" error={movErrors.cedula}>
+                <Input
+                  value={cedulaPago}
+                  onChange={(e) => { setCedulaPago(e.target.value.toUpperCase().replace(/[^VEJPG0-9-]/g, '')); setVerifyStatus('idle'); setPaymentVerified(false); }}
+                  placeholder="V-12345678"
                 />
               </Field>
 
