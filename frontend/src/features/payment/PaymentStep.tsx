@@ -75,7 +75,7 @@ const TODAY_ISO = new Date().toISOString().split('T')[0];
 export function PaymentStep() {
   const {
     paymentMethod, setPaymentMethod,
-    selectedPlan, quote, quoteState, vehicle, tomador,
+    selectedPlan, quote, quoteState, vehicle,
     setQuote, setQuoteState,
     setPaymentVerified,
   } = useWizardStore();
