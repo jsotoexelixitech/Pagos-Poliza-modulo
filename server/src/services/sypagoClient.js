@@ -232,11 +232,16 @@ async function requestOtp({ documentType, documentNumber, debtorBankCode, debtor
   };
 
   try {
+    console.log(`\n[SyPago] ➡ SOLICITANDO OTP a ${cfg.baseUrl}/api/v1/request/otp`);
+    console.log(`[SyPago] Payload:`, JSON.stringify(payload));
+    
     const resp = await axios.post(
       `${cfg.baseUrl}/api/v1/request/otp`,
       payload,
       { headers: await _authHeaders(cfg), timeout: cfg.timeout }
     );
+    
+    console.log(`[SyPago] ⬅ RESPUESTA OTP (Status: ${resp.status}):`, JSON.stringify(resp.data));
     return resp.data;
   } catch (err) {
     _handleError(err, 'requestOtp');
@@ -308,11 +313,17 @@ async function confirmOtp({ documentType, documentNumber, debtorBankCode, debtor
   };
 
   try {
+    console.log(`\n[SyPago] ➡ CONFIRMANDO OTP (TxId interno: ${internalId})`);
+    console.log(`[SyPago] OTP ingresado por usuario: "${otp}" (Longitud: ${otp.length})`);
+    console.log(`[SyPago] Payload:`, JSON.stringify(payload));
+
     const resp = await axios.post(
       `${cfg.baseUrl}/api/v1/transaction/otp`,
       payload,
       { headers: await _authHeaders(cfg), timeout: cfg.timeout }
     );
+    
+    console.log(`[SyPago] ⬅ RESPUESTA CONFIRMACIÓN (Status: ${resp.status}):`, JSON.stringify(resp.data));
     return resp.data; // { transaction_id, operation_secret }
   } catch (err) {
     _handleError(err, 'confirmOtp');
