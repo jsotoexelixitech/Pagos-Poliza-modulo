@@ -155,11 +155,10 @@ async function nexusAuth(req, res, next) {
         if (hb.access_token) {
           req.nexusToken = hb.access_token;
           res.setHeader('X-Nexus-Token-Refreshed', hb.access_token);
+          res.setHeader('Access-Control-Expose-Headers', 'X-Nexus-Token-Refreshed');
         }
       }
-    } catch (_hbErr) {
-      console.warn('[nexusAuth] heartbeat no disponible, continuando:', _hbErr.message);
-    }
+    } catch { /* fail-open: no cortar flujos por fallo temporal de nexus-api */ }
     // ────────────────────────────────────────────────────────────────────────
 
     return next();
