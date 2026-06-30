@@ -1,10 +1,12 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { prefixDevProxy, resolveAppBase } from './vite-paths'
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const tunnel = env.VITE_HMR_TUNNEL === '1' || env.VITE_HMR_TUNNEL === 'true'
+  const base = resolveAppBase(env)
 
   // Backend de pagos. Por defecto 4003 (puerto real en el servidor). Override
   // con VITE_PAGOS_API si en local corre en otro puerto (p.ej. 3001).
@@ -12,7 +14,7 @@ export default defineConfig(({ mode }) => {
 
   // Mismo mapa de proxy para el dev server (`vite`) y para `vite preview`
   // (producción sirve el build con preview, que NO hereda `server.proxy`).
-  const proxy = {
+  const proxy = prefixDevProxy(base, {
     // Las rutas de pólizas (emit + quote) viven en el backend de emisión (4004).
     '/api/policies': { target: 'http://localhost:4004', changeOrigin: true },
     // Catálogos INMA y valrep — también en emisión (4004) para mostrar datos en checkout.
@@ -23,9 +25,10 @@ export default defineConfig(({ mode }) => {
     '/files': { target: pagosApi, changeOrigin: true },
     '/docs': { target: pagosApi, changeOrigin: true },
     '/docs.json': { target: pagosApi, changeOrigin: true },
-  }
+  })
 
   return {
+    base,
     plugins: [react(), tailwindcss()],
     server: {
       host: true,
