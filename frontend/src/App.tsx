@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useWizardStore } from './store/wizardStore';
 import { TopStepper } from './components/TopStepper';
 import { TopProgressBar } from './components/TopProgressBar';
