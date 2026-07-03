@@ -17,9 +17,6 @@ export default function App() {
   const { step, goTo, setPolicy } = store;
   const [emitting, setEmitting] = useState(false);
 
-  // Inicializa el store en el paso 5 para que el sidebar lo resalte correctamente
-  useEffect(() => { if (step === 1) goTo(5); }, [step, goTo]);
-
   const isSuccess = step === 6;
 
   async function handleEmitir() {
