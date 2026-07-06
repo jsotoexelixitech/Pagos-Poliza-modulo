@@ -223,6 +223,7 @@ function makeBridge(): BridgeAPI {
     'documents',     // OCR mantiene su estado de progreso local
     'quoteState',    // estados de UI transitorios
     'quoteError',
+    'paymentVerified', // debe confirmarse en este módulo, no heredarse del bridge
   ]);
 
   const applyHydration = (data: Record<string, unknown>) => {

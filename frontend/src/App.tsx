@@ -14,12 +14,21 @@ import { Zap, ShieldCheck, HelpCircle, Sparkles } from 'lucide-react';
 
 export default function App() {
   const store = useWizardStore();
-  const { step, goTo, setPolicy } = store;
+  const { step, goTo, setPolicy, paymentVerified } = store;
   const [emitting, setEmitting] = useState(false);
 
   const isSuccess = step === 6;
+  const canEmit = paymentVerified && !emitting;
 
   async function handleEmitir() {
+    if (!paymentVerified) {
+      toast.warning(
+        'Pago pendiente',
+        'Verifica o confirma el pago con el banco antes de emitir la póliza.',
+      );
+      return;
+    }
+
     setEmitting(true);
     try {
       const isFuneral = store.product === 'funerario';
@@ -143,11 +152,18 @@ export default function App() {
                     <ShieldCheck size={13} className="text-emerald-500" />
                     <span className="font-medium">Cifrado de extremo a extremo · TLS 1.3</span>
                   </div>
+                <div className="flex flex-col items-end gap-1.5">
+                  {!paymentVerified && (
+                    <p className="text-[0.65rem] font-semibold text-amber-700">
+                      Confirma el pago con el banco para habilitar la emisión
+                    </p>
+                  )}
                   <Button
                     variant="primary"
                     onClick={handleEmitir}
-                    disabled={emitting}
+                    disabled={!canEmit}
                     className="min-w-[180px]"
+                    title={!paymentVerified ? 'Debes verificar o confirmar el pago con el banco' : undefined}
                   >
                     {emitting ? (
                       <>
@@ -162,6 +178,7 @@ export default function App() {
                     )}
                   </Button>
                 </div>
+                </div>
               )}
             </section>
 
@@ -171,11 +188,17 @@ export default function App() {
 
       {!isSuccess && (
         <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 px-4 py-3 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-[0_-8px_24px_rgba(15,23,42,0.08)]">
+          {!paymentVerified && (
+            <p className="text-[0.65rem] font-semibold text-amber-700 text-center mb-2">
+              Confirma el pago con el banco para emitir la póliza
+            </p>
+          )}
           <Button
             variant="primary"
             className="w-full"
             onClick={handleEmitir}
-            disabled={emitting}
+            disabled={!canEmit}
+            title={!paymentVerified ? 'Debes verificar o confirmar el pago con el banco' : undefined}
           >
             {emitting ? 'Emitiendo...' : 'Emitir póliza'}
           </Button>

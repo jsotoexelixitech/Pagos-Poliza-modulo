@@ -576,7 +576,7 @@ export function PaymentStep() {
             {/* Botón verificar */}
             <button
               type="button"
-              disabled={!pagoMovilListo || verifyStatus === 'loading'}
+              disabled={!pagoMovilListo || verifyStatus === 'loading' || verifyStatus === 'success'}
               onClick={handleVerificar}
               className={`
                 w-full flex items-center justify-center gap-2 py-3 px-5 rounded-xl font-bold text-sm
