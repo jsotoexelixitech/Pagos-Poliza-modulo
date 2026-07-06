@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { formatUsdShort, vesAnnual } from '../../lib/money';
 import { formatTelefono } from '@exelixi/shared';
+import { formatCedulaRif, validateCedulaRif } from '../../lib/cedula-rif';
 import { useProductConfig } from '../../hooks/useProductConfig';
 
 const EMPRESA_ID = Number(import.meta.env.VITE_EMPRESA_ID ?? 1);
@@ -204,7 +205,7 @@ export function PaymentStep() {
   const movErrors = {
     banco    : !bankCode                                          ? 'Selecciona el banco'                : '',
     telefono : telefonoPago.length > 0 && telefonoPago.length < 11 ? 'Prefijo inválido o incompleto (11 dígitos)' : !telefonoPago ? 'El teléfono es obligatorio' : '',
-    cedula   : !cedulaPago                                        ? 'La cédula/RIF es obligatoria'       : !/^[VEJPGvejpg]-?\d+$/.test(cedulaPago) ? 'Formato inválido (Ej: V-12345678)' : '',
+    cedula   : validateCedulaRif(cedulaPago),
     monto    : !montoPagoM                                        ? 'El monto es obligatorio'            : isNaN(parseFloat(montoPagoM)) || parseFloat(montoPagoM) <= 0 ? 'Monto inválido' : '',
     fecha    : !fechaPagoM                                        ? 'La fecha es obligatoria'            : fechaPagoM > TODAY_ISO ? 'La fecha no puede ser futura' : '',
   };
@@ -536,11 +537,16 @@ export function PaymentStep() {
                 />
               </Field>
 
-              <Field label="Cédula/RIF del titular" hint="Ej: V-12345678" error={movErrors.cedula}>
+              <Field label="Cédula/RIF del titular" hint="Ej: V-12345678 (máx. 8 dígitos)" error={movErrors.cedula}>
                 <Input
                   value={cedulaPago}
-                  onChange={(e) => { setCedulaPago(e.target.value.toUpperCase().replace(/[^VEJPG0-9-]/g, '')); setVerifyStatus('idle'); setPaymentVerified(false); }}
+                  onChange={(e) => {
+                    setCedulaPago(formatCedulaRif(e.target.value));
+                    setVerifyStatus('idle');
+                    setPaymentVerified(false);
+                  }}
                   placeholder="V-12345678"
+                  maxLength={11}
                 />
               </Field>
 
