@@ -20,7 +20,8 @@ export default function App() {
 
   const isSuccess = step === 6;
   const funeralFlow = isFunerario();
-  const canEmit = funeralFlow && paymentVerified && !emitting;
+  /** Funerario: emitir sin bloquear por verificación bancaria (RCV sigue exigiendo pago). */
+  const canEmit = funeralFlow && !emitting;
 
   async function handleContinuarRcv() {
     if (!paymentVerified) {
@@ -36,20 +37,13 @@ export default function App() {
 
   async function handleEmitir() {
     if (!funeralFlow) return;
-    if (!paymentVerified) {
-      toast.warning(
-        'Pago pendiente',
-        'Verifica o confirma el pago con el banco antes de emitir la póliza.',
-      );
-      return;
-    }
 
     setEmitting(true);
     try {
-      const isFuneral = store.product === 'funerario';
+      const isFuneral = isFunerario();
 
       const wizardState = {
-        product: store.product,
+        product: isFunerario() ? 'funerario' : store.product,
         tomador: store.tomador,
         funeral: store.funeral,
         sameInsured: store.sameInsured,
@@ -168,11 +162,9 @@ export default function App() {
                     <span className="font-medium">Cifrado de extremo a extremo · TLS 1.3</span>
                   </div>
                 <div className="flex flex-col items-end gap-1.5">
-                  {!paymentVerified && (
+                  {!paymentVerified && !funeralFlow && (
                     <p className="text-[0.65rem] font-semibold text-amber-700">
-                      {funeralFlow
-                        ? 'Confirma el pago con el banco para habilitar la emisión'
-                        : 'Confirma el pago con el banco para continuar'}
+                      Confirma el pago con el banco para continuar
                     </p>
                   )}
                   {funeralFlow ? (
@@ -181,7 +173,6 @@ export default function App() {
                       onClick={handleEmitir}
                       disabled={!canEmit}
                       className="min-w-[180px]"
-                      title={!paymentVerified ? 'Debes verificar o confirmar el pago con el banco' : undefined}
                     >
                       {emitting ? (
                         <>
@@ -217,11 +208,9 @@ export default function App() {
 
       {!isSuccess && (
         <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 px-4 py-3 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-[0_-8px_24px_rgba(15,23,42,0.08)]">
-          {!paymentVerified && (
+          {!paymentVerified && !funeralFlow && (
             <p className="text-[0.65rem] font-semibold text-amber-700 text-center mb-2">
-              {funeralFlow
-                ? 'Confirma el pago con el banco para emitir la póliza'
-                : 'Confirma el pago con el banco para continuar'}
+              Confirma el pago con el banco para continuar
             </p>
           )}
           {funeralFlow ? (
@@ -230,7 +219,6 @@ export default function App() {
               className="w-full"
               onClick={handleEmitir}
               disabled={!canEmit}
-              title={!paymentVerified ? 'Debes verificar o confirmar el pago con el banco' : undefined}
             >
               {emitting ? 'Emitiendo...' : 'Emitir póliza'}
             </Button>
