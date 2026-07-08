@@ -246,6 +246,10 @@ function makeBridge(): BridgeAPI {
       );
       if (r?.data?.data) {
         applyHydration(r.data.data);
+        const sessionProduct = r.data.data.product;
+        if (sessionProduct === 'rcv' || sessionProduct === 'funerario') {
+          try { sessionStorage.setItem('exelixi_product', sessionProduct); } catch { /* ignore */ }
+        }
         // Restaurar nexus_token en sessionStorage para que api.ts lo inyecte
         const urlToken = getNexusTokenFromUrl();
         const sessionToken = r.data.data.nexus_token;
