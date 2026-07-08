@@ -20,8 +20,58 @@ export default function App() {
 
   const isSuccess = step === 6;
   const funeralFlow = isFunerario();
-  /** Funerario: emitir sin bloquear por verificación bancaria (RCV sigue exigiendo pago). */
-  const canEmit = funeralFlow && !emitting;
+  /** Funerario: emitir sin bloquear por verificación bancaria. */
+  const canEmitFuneral = funeralFlow && !emitting;
+  /** RCV: exige pago verificado y luego emite la póliza. */
+  const canEmitRcv = !funeralFlow && paymentVerified && !emitting;
+
+  function buildWizardState() {
+    return {
+      product: isFunerario() ? 'funerario' : store.product,
+      tomador: store.tomador,
+      funeral: store.funeral,
+      sameInsured: store.sameInsured,
+      asegurado: store.asegurado,
+      differentPayer: store.differentPayer,
+      pagador: store.pagador,
+      hasBeneficiary: store.hasBeneficiary,
+      beneficiario: store.beneficiario,
+      hasDriver: store.hasDriver,
+      conductor: store.conductor,
+      vehicle: store.vehicle,
+      category: store.category,
+      selectedPlan: store.selectedPlan,
+      paymentMethod: store.paymentMethod,
+    };
+  }
+
+  function applyEmissionResult(result: Awaited<ReturnType<typeof emitPolicy>>) {
+    setPolicy({
+      number: result.policy.number,
+      cnpoliza: result.policy.cnpoliza,
+      cnrecibo: result.policy.cnrecibo,
+      urlpoliza: result.policy.urlpoliza,
+      url_conductor_habitual: result.policy.url_conductor_habitual,
+      internalPolicyId: result.policy.internalPolicyId,
+      ncuota: result.policy.ncuota,
+      emittedAt: result.policy.emittedAt,
+      quote: result.policy.quote,
+    });
+
+    if (result.policy.urlpoliza) {
+      window.open(result.policy.urlpoliza, '_blank', 'noopener,noreferrer');
+    }
+    if (result.policy.url_conductor_habitual) {
+      window.open(result.policy.url_conductor_habitual, '_blank', 'noopener,noreferrer');
+    }
+
+    toast.success(
+      '¡Póliza emitida!',
+      `Número ${result.policy.cnpoliza}${result.policy.urlpoliza ? ' · PDF abierto en nueva pestaña' : ''}`,
+      6000,
+    );
+    goTo(6);
+  }
 
   async function handleContinuarRcv() {
     if (!paymentVerified) {
@@ -31,8 +81,21 @@ export default function App() {
       );
       return;
     }
-    toast.success('Pago confirmado', 'Tu pago fue registrado correctamente.');
-    window.__bridgeAdvance?.();
+
+    setEmitting(true);
+    try {
+      const planCode = store.selectedPlan?.cplan ?? 'RCVBAS';
+      const result = await emitPolicy({
+        state: buildWizardState(),
+        plan: planCode as 'RCVBAS' | 'RUSPAT',
+        frecuencia: 'A',
+      });
+      applyEmissionResult(result);
+    } catch (err) {
+      handleEmissionError(err);
+    } finally {
+      setEmitting(false);
+    }
   }
 
   async function handleEmitir() {
@@ -40,68 +103,11 @@ export default function App() {
 
     setEmitting(true);
     try {
-      const isFuneral = isFunerario();
-
-      const wizardState = {
-        product: isFunerario() ? 'funerario' : store.product,
-        tomador: store.tomador,
-        funeral: store.funeral,
-        sameInsured: store.sameInsured,
-        asegurado: store.asegurado,
-        differentPayer: store.differentPayer,
-        pagador: store.pagador,
-        hasBeneficiary: store.hasBeneficiary,
-        beneficiario: store.beneficiario,
-        hasDriver: store.hasDriver,
-        conductor: store.conductor,
-        vehicle: store.vehicle,
-        category: store.category,
-        selectedPlan: store.selectedPlan,
-        paymentMethod: store.paymentMethod,
-      };
-
-      let result;
-      if (isFuneral) {
-        // Funerario: el backend cotiza (spCalculoPer) y emite con la prima vigente.
-        result = await emitFuneral({
-          state: wizardState,
-          frecuencia: (store.funeral?.frecuencia as 'A' | 'S' | 'M' | 'T' | 'C') ?? 'M',
-        });
-      } else {
-        // RCV: usa el cplan real elegido en el paso de planes; RCVBAS solo como fallback.
-        const planCode = store.selectedPlan?.cplan ?? 'RCVBAS';
-        result = await emitPolicy({
-          state: wizardState,
-          plan: planCode as 'RCVBAS' | 'RUSPAT',
-          frecuencia: 'A',
-        });
-      }
-
-      setPolicy({
-        number: result.policy.number,
-        cnpoliza: result.policy.cnpoliza,
-        cnrecibo: result.policy.cnrecibo,
-        urlpoliza: result.policy.urlpoliza,
-        url_conductor_habitual: result.policy.url_conductor_habitual,
-        internalPolicyId: result.policy.internalPolicyId,
-        ncuota: result.policy.ncuota,
-        emittedAt: result.policy.emittedAt,
-        quote: result.policy.quote,
+      const result = await emitFuneral({
+        state: buildWizardState(),
+        frecuencia: (store.funeral?.frecuencia as 'A' | 'S' | 'M' | 'T' | 'C') ?? 'M',
       });
-
-      if (result.policy.urlpoliza) {
-        window.open(result.policy.urlpoliza, '_blank', 'noopener,noreferrer');
-      }
-      if (result.policy.url_conductor_habitual) {
-        window.open(result.policy.url_conductor_habitual, '_blank', 'noopener,noreferrer');
-      }
-
-      toast.success(
-        '¡Póliza emitida!',
-        `Número ${result.policy.cnpoliza}${result.policy.urlpoliza ? ' · PDF abierto en nueva pestaña' : ''}`,
-        6000,
-      );
-      goTo(6);
+      applyEmissionResult(result);
     } catch (err) {
       handleEmissionError(err);
     } finally {
@@ -171,7 +177,7 @@ export default function App() {
                     <Button
                       variant="primary"
                       onClick={handleEmitir}
-                      disabled={!canEmit}
+                      disabled={!canEmitFuneral}
                       className="min-w-[180px]"
                     >
                       {emitting ? (
@@ -190,11 +196,21 @@ export default function App() {
                     <Button
                       variant="primary"
                       onClick={handleContinuarRcv}
-                      disabled={!paymentVerified}
+                      disabled={!canEmitRcv}
                       className="min-w-[180px]"
                       title={!paymentVerified ? 'Debes verificar o confirmar el pago con el banco' : undefined}
                     >
-                      Continuar
+                      {emitting ? (
+                        <>
+                          <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin-slow" />
+                          Emitiendo póliza...
+                        </>
+                      ) : (
+                        <>
+                          <Zap size={15} fill="currentColor" />
+                          Continuar
+                        </>
+                      )}
                     </Button>
                   )}
                 </div>
@@ -218,7 +234,7 @@ export default function App() {
               variant="primary"
               className="w-full"
               onClick={handleEmitir}
-              disabled={!canEmit}
+              disabled={!canEmitFuneral}
             >
               {emitting ? 'Emitiendo...' : 'Emitir póliza'}
             </Button>
@@ -227,10 +243,10 @@ export default function App() {
               variant="primary"
               className="w-full"
               onClick={handleContinuarRcv}
-              disabled={!paymentVerified}
+              disabled={!canEmitRcv}
               title={!paymentVerified ? 'Debes verificar o confirmar el pago con el banco' : undefined}
             >
-              Continuar
+              {emitting ? 'Emitiendo póliza...' : 'Continuar'}
             </Button>
           )}
         </div>
