@@ -9,7 +9,7 @@ import { Button } from './components/ui/Button';
 import { PaymentStep } from './features/payment/PaymentStep';
 import { SuccessStep } from './features/payment/SuccessStep';
 import { emitPolicy, emitFuneral, PolicyEmitError } from './lib/api';
-import { isFunerario } from './lib/product';
+import { isFunerario, isRcv } from './lib/product';
 import { toast } from './store/toastStore';
 import { Zap, ShieldCheck, HelpCircle, Sparkles } from 'lucide-react';
 
@@ -20,16 +20,17 @@ export default function App() {
 
   const isSuccess = step === 6;
   const funeralFlow = isFunerario();
+  const rcvFlow = isRcv();
   /** Funerario: emitir sin bloquear por verificación bancaria. */
   const canEmitFuneral = funeralFlow && !emitting;
   /** RCV: exige pago verificado y luego emite la póliza. */
-  const canEmitRcv = !funeralFlow && paymentVerified && !emitting;
+  const canEmitRcv = rcvFlow && paymentVerified && !emitting;
 
-  function buildWizardState() {
+  /** Estado para emisión RCV — sin depender de datos funerarios. */
+  function buildRcvEmitState() {
     return {
-      product: isFunerario() ? 'funerario' : store.product,
+      product: 'rcv' as const,
       tomador: store.tomador,
-      funeral: store.funeral,
       sameInsured: store.sameInsured,
       asegurado: store.asegurado,
       differentPayer: store.differentPayer,
@@ -40,6 +41,17 @@ export default function App() {
       conductor: store.conductor,
       vehicle: store.vehicle,
       category: store.category,
+      selectedPlan: store.selectedPlan,
+      paymentMethod: store.paymentMethod,
+    };
+  }
+
+  /** Estado para emisión funerario — incluye cuestionario de salud. */
+  function buildFuneralEmitState() {
+    return {
+      product: 'funerario' as const,
+      tomador: store.tomador,
+      funeral: store.funeral,
       selectedPlan: store.selectedPlan,
       paymentMethod: store.paymentMethod,
     };
@@ -86,7 +98,7 @@ export default function App() {
     try {
       const planCode = store.selectedPlan?.cplan ?? 'RCVBAS';
       const result = await emitPolicy({
-        state: buildWizardState(),
+        state: buildRcvEmitState(),
         plan: planCode as 'RCVBAS' | 'RUSPAT',
         frecuencia: 'A',
       });
@@ -119,7 +131,7 @@ export default function App() {
     setEmitting(true);
     try {
       const result = await emitFuneral({
-        state: buildWizardState(),
+        state: buildFuneralEmitState(),
         frecuencia: (store.funeral?.frecuencia as 'A' | 'S' | 'M' | 'T' | 'C') ?? 'M',
       });
       applyEmissionResult(result);
