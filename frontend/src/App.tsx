@@ -101,6 +101,21 @@ export default function App() {
   async function handleEmitir() {
     if (!funeralFlow) return;
 
+    if (!store.funeral?.healthQuestionnaireDone) {
+      toast.warning(
+        'Cuestionario pendiente',
+        'Completa el cuestionario de salud al confirmar el plan antes de emitir.',
+      );
+      return;
+    }
+    if (!store.funeral?.aceptaTerminos) {
+      toast.warning(
+        'Términos pendientes',
+        'Debes aceptar los términos en el cuestionario de salud.',
+      );
+      return;
+    }
+
     setEmitting(true);
     try {
       const result = await emitFuneral({

@@ -130,6 +130,8 @@ export interface FuneralData {
   descripcionEnfermedad: string;
   /** Acepta términos y condiciones (obligatorio para emitir). */
   aceptaTerminos: boolean;
+  healthAnswers?: Record<string, unknown>;
+  healthQuestionnaireDone?: boolean;
 }
 
 export interface VehicleData {
