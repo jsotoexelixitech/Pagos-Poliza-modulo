@@ -5,7 +5,7 @@
  * Solo consulta el proxy de La Mundial:
  *
  *   POST {LAMUNDIAL_PAYMENTS_URL}/api/v1/external/payments/bancoActivo/find-mobile-pay
- *   POST {LAMUNDIAL_PAYMENTS_URL}/api/v1/payments/bancoActivo/find-mobile-pay  (fallback)
+ *   (Swagger La Mundial — Conciliar pago movil Banco Activo/Meritop)
  *
  * Payload:
  *   { xtelefono, cbanco_ref, cbanco_dest, mmonto, cci_rif, telefono_dest, fmovimiento }
@@ -17,10 +17,7 @@ const DEFAULT_TIMEOUT    = 20_000;
 const DEFAULT_DEST_PHONE = '04143966962';
 const DEFAULT_DEST_BANCO = '0171';
 
-const LAMUNDIAL_PATHS = [
-  '/api/v1/external/payments/bancoActivo/find-mobile-pay',
-  '/api/v1/payments/bancoActivo/find-mobile-pay',
-];
+const FIND_MOBILE_PAY_PATH = '/api/v1/external/payments/bancoActivo/find-mobile-pay';
 
 const RESULT_CODES = {
   B000: 'Transacción encontrada (pago ya usado por el cliente)',
@@ -41,7 +38,7 @@ const RESULT_CODES = {
 /** URL principal (health/diagnóstico). */
 function getVerifyMobileTargetUrl() {
   const baseUrl = (process.env.LAMUNDIAL_PAYMENTS_URL || 'http://172.30.149.75:3000').replace(/\/$/, '');
-  return `${baseUrl}${LAMUNDIAL_PATHS[0]}`;
+  return `${baseUrl}${FIND_MOBILE_PAY_PATH}`;
 }
 
 function _isFastifyRouteNotFound(status, data) {
@@ -142,65 +139,58 @@ async function verifyMobilePayment({ sourcePhoneNumber, bankCode, amount, paidOn
     fmovimiento,
   };
 
-  const triedUrls = [];
-  let lastRes = null;
-  let lastUrl = null;
+  const url = `${baseUrl}${FIND_MOBILE_PAY_PATH}`;
+  console.log('[BancoActivo] → POST', url, JSON.stringify(payload));
 
-  for (const path of LAMUNDIAL_PATHS) {
-    lastUrl = `${baseUrl}${path}`;
-    triedUrls.push(lastUrl);
-    console.log('[BancoActivo] → POST', lastUrl, JSON.stringify(payload));
-
-    try {
-      lastRes = await axios.post(lastUrl, payload, {
-        headers: {
-          'Content-Type': 'application/json',
-          ...(apiKey ? { apikey: apiKey } : {}),
-        },
-        timeout,
-        validateStatus: () => true,
-      });
-    } catch (err) {
-      throw Object.assign(
-        new Error('No se pudo conectar con SysIP La Mundial. Verifica la red interna.'),
-        { code: 'MERITOP_CONNECTION_ERROR', originalError: err.message, targetUrl: lastUrl, payload, triedUrls }
-      );
-    }
-
-    const d = lastRes.data || {};
-    console.log('[BancoActivo] ← HTTP', lastRes.status, JSON.stringify(d));
-
-    if (_isFastifyRouteNotFound(lastRes.status, d)) continue;
-
-    const statusOk = d.status === true || d.success === true;
-    if (lastRes.status >= 400 || !statusOk) {
-      const errMsg  = d.message || d.error || `Error HTTP ${lastRes.status}`;
-      const errCode = d.code || String(lastRes.status);
-      throw Object.assign(
-        new Error(RESULT_CODES[errCode] || errMsg),
-        { code: `MERITOP_${errCode}`, baCode: errCode, baMessage: errMsg, targetUrl: lastUrl, payload }
-      );
-    }
-
-    const result = _pickFields(d.data || d.result || d, amount, fmovimiento);
-    result.targetUrl = lastUrl;
-    return result;
+  let res;
+  try {
+    res = await axios.post(url, payload, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...(apiKey ? { apikey: apiKey } : {}),
+      },
+      timeout,
+      validateStatus: () => true,
+    });
+  } catch (err) {
+    throw Object.assign(
+      new Error('No se pudo conectar con SysIP La Mundial. Verifica la red interna.'),
+      { code: 'MERITOP_CONNECTION_ERROR', originalError: err.message, targetUrl: url, payload }
+    );
   }
 
-  throw Object.assign(
-    new Error(
-      'SysIP La Mundial no tiene la ruta find-mobile-pay activa. ' +
-      'Contactar a La Mundial para restaurar el endpoint en ' + baseUrl
-    ),
-    {
-      code: 'MERITOP_MISCONFIGURED',
-      targetUrl: lastUrl,
-      triedUrls,
-      payload,
-      upstreamStatus: lastRes?.status,
-      baMessage: lastRes?.data?.message,
-    }
-  );
+  const d = res.data || {};
+  console.log('[BancoActivo] ← HTTP', res.status, JSON.stringify(d));
+
+  if (_isFastifyRouteNotFound(res.status, d)) {
+    throw Object.assign(
+      new Error(
+        `SysIP La Mundial en ${baseUrl} no expone ${FIND_MOBILE_PAY_PATH}. ` +
+        'Confirmar con La Mundial el host donde está publicado el Swagger.'
+      ),
+      {
+        code: 'MERITOP_MISCONFIGURED',
+        targetUrl: url,
+        payload,
+        upstreamStatus: res.status,
+        baMessage: d.message,
+      }
+    );
+  }
+
+  const statusOk = d.status === true || d.success === true;
+  if (res.status >= 400 || !statusOk) {
+    const errMsg  = d.message || d.error || `Error HTTP ${res.status}`;
+    const errCode = d.code || String(res.status);
+    throw Object.assign(
+      new Error(RESULT_CODES[errCode] || errMsg),
+      { code: `MERITOP_${errCode}`, baCode: errCode, baMessage: errMsg, targetUrl: url, payload }
+    );
+  }
+
+  const result = _pickFields(d.data || d.result || d, amount, fmovimiento);
+  result.targetUrl = url;
+  return result;
 }
 
 module.exports = { verifyMobilePayment, getVerifyMobileTargetUrl, RESULT_CODES };
