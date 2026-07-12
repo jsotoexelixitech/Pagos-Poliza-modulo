@@ -54,6 +54,7 @@ app.get('/api/health', (_req, res) => {
       mock: process.env.LAMUNDIAL_PAYMENTS_MOCK === 'true',
       url: (process.env.LAMUNDIAL_PAYMENTS_URL || 'http://172.30.149.75:3000').replace(/\/$/, ''),
       verifyMobileTarget: getVerifyMobileTargetUrl(),
+      verifyMode: (process.env.PAYMENTS_VERIFY_MODE || 'auto'),
     },
     sypago:  { mock: process.env.SYPAGO_MOCK === 'true', url: process.env.SYPAGO_URL || null },
     nexusAuth: process.env.NEXUS_AUTH_ENABLED === 'true',
