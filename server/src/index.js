@@ -48,10 +48,10 @@ app.get('/api/health', (_req, res) => {
   res.json({
     status: 'ok',
     module: 'pagos',
-    meritop: {
-      enabled: process.env.MERITOP_ENABLED !== 'false',
-      mock: process.env.MERITOP_MOCK === 'true',
-      url: process.env.MERITOP_URL2 || 'http://172.30.149.18:9040',
+    lamundialPayments: {
+      enabled: process.env.LAMUNDIAL_PAYMENTS_ENABLED !== 'false',
+      mock: process.env.LAMUNDIAL_PAYMENTS_MOCK === 'true',
+      url: (process.env.LAMUNDIAL_PAYMENTS_URL || 'http://172.30.149.75:3000').replace(/\/$/, ''),
     },
     sypago:  { mock: process.env.SYPAGO_MOCK === 'true', url: process.env.SYPAGO_URL || null },
     nexusAuth: process.env.NEXUS_AUTH_ENABLED === 'true',
