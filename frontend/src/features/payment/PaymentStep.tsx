@@ -79,6 +79,7 @@ export function PaymentStep() {
     selectedPlan, quote, quoteState, vehicle,
     setQuote, setQuoteState,
     setPaymentVerified,
+    setPaymentCapture,
   } = useWizardStore();
 
   const producto = new URLSearchParams(window.location.search).get('product') as 'rcv' | 'funerario' ?? 'rcv';
@@ -233,6 +234,15 @@ export function PaymentStep() {
       setVerifyResult(result);
       setVerifyStatus(result.isVerified ? 'success' : 'failed');
       setPaymentVerified(result.isVerified);
+      if (result.isVerified) {
+        setPaymentCapture({
+          reference: result.reference,
+          amount: result.verifiedAmount ?? parseFloat(montoPagoM),
+          paidOn,
+        });
+      } else {
+        setPaymentCapture(null);
+      }
     } catch (err) {
       const msg = err instanceof MobilePaymentVerifyError
         ? err.message
@@ -240,6 +250,7 @@ export function PaymentStep() {
       setVerifyError(msg);
       setVerifyStatus('error');
       setPaymentVerified(false);
+      setPaymentCapture(null);
     }
   }
 
@@ -322,6 +333,12 @@ export function PaymentStep() {
       setOtpResult(result);
       setOtpStep('done');
       setPaymentVerified(true);
+      setPaymentCapture({
+        transactionId: result.transaction_id || result.transactionId,
+        amount: parseFloat(otpAmount),
+        paidOn: TODAY_ISO,
+        reference: result.transaction_id || result.transactionId,
+      });
       // Latch queda activo en 'done' — no se puede volver a confirmar
     } catch (err) {
       setOtpError(err instanceof SypagoError ? err.message : 'Error al confirmar pago.');

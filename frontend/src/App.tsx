@@ -43,6 +43,7 @@ export default function App() {
       category: store.category,
       selectedPlan: store.selectedPlan,
       paymentMethod: store.paymentMethod,
+      paymentCapture: store.paymentCapture,
     };
   }
 

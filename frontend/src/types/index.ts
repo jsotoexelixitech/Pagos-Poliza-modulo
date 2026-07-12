@@ -218,6 +218,13 @@ export interface WizardState {
   selectedPlan: Plan | null;
   paymentMethod: PaymentMethod;
   paymentVerified: boolean;
+  /** Datos del pago verificado para activar recibo en Sis2000 al emitir. */
+  paymentCapture?: {
+    reference?: string;
+    transactionId?: string;
+    amount?: number;
+    paidOn?: string;
+  } | null;
   policy: IssuedPolicy | null;
   /** Cotizacion vigente desde La Mundial (mprima/mprimaext/ptasa). */
   quote: PolicyQuote | null;

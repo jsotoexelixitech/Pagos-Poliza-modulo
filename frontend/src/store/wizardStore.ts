@@ -95,6 +95,7 @@ interface WizardActions {
   clearQuote: () => void;
   reset: () => void;
   setPaymentVerified: (v: boolean) => void;
+  setPaymentCapture: (capture: WizardState['paymentCapture']) => void;
 }
 
 const initialState: WizardState = {
@@ -121,6 +122,7 @@ const initialState: WizardState = {
   category: '',
   selectedPlan: null,
   paymentVerified: false,
+  paymentCapture: null,
   paymentMethod: 'mobile',
   policy: null,
   quote: null,
@@ -195,6 +197,8 @@ export const useWizardStore = create<WizardState & WizardActions>()((set) => ({
   setPaymentMethod: (paymentMethod) => set({ paymentMethod }),
 
   setPaymentVerified: (paymentVerified) => set({ paymentVerified }),
+
+  setPaymentCapture: (paymentCapture) => set({ paymentCapture }),
 
   setPolicy: (policy) => set({ policy }),
 
