@@ -19,8 +19,9 @@
  *   }
  *
  * Variables de entorno requeridas:
- *   LAMUNDIAL_PAYMENTS_URL  Base URL de SysIP-backend. Ej: http://172.30.149.75:3000
- *   LAMUNDIAL_APIKEY        API Key para autenticación con SysIP-backend
+ *   LAMUNDIAL_PAYMENTS_URL  SysIP La Mundial (NO sysip-nest-api). Default QA:
+ *                           https://qaapisys2000.lamundialdeseguros.com
+ *   LAMUNDIAL_APIKEY        API Key para autenticación con SysIP La Mundial
  *
  * Variables de entorno opcionales:
  *   LAMUNDIAL_PAYMENTS_DEST_PHONE  Teléfono destino de La Mundial. Default: 04143966962
@@ -52,8 +53,37 @@ const RESULT_CODES = {
   210:  'Error interno del proveedor',
 };
 
+/** URL base de SysIP La Mundial (NO sysip-nest-api :3002). */
+function _resolvePaymentsBaseUrl() {
+  const explicit = (process.env.LAMUNDIAL_PAYMENTS_URL || '').replace(/\/$/, '');
+  const sysipNest = (process.env.SYSIP_API_URL || '').replace(/\/$/, '');
+
+  if (explicit) {
+    const looksLikeNestApi =
+      (sysipNest && explicit === sysipNest) ||
+      /:3002(?:\/|$)/.test(explicit) ||
+      explicit.includes('127.0.0.1:3002') ||
+      explicit.includes('localhost:3002');
+
+    if (looksLikeNestApi) {
+      throw Object.assign(
+        new Error(
+          'LAMUNDIAL_PAYMENTS_URL apunta a sysip-nest-api (:3002). ' +
+          'La verificación de pago móvil debe usar SysIP La Mundial ' +
+          '(ej. https://qaapisys2000.lamundialdeseguros.com).'
+        ),
+        { code: 'MERITOP_MISCONFIGURED' }
+      );
+    }
+    return explicit;
+  }
+
+  // Default: SysIP La Mundial QA (proxy Meritop/Banco Activo).
+  return 'https://qaapisys2000.lamundialdeseguros.com';
+}
+
 function _getConfig() {
-  const baseUrl = (process.env.LAMUNDIAL_PAYMENTS_URL || 'http://172.30.149.75:3000').replace(/\/$/, '');
+  const baseUrl = _resolvePaymentsBaseUrl();
   return {
     baseUrl,
     apiKey    : process.env.LAMUNDIAL_PAYMENTS_API_KEY || process.env.LAMUNDIAL_APIKEY || '',
@@ -162,6 +192,16 @@ async function verifyMobilePayment({ sourcePhoneNumber, bankCode, amount, paidOn
 
   // SysIP-backend devuelve { status: true/false, data: {...} } o { success: true/false, ... }
   const statusOk = d.status === true || d.success === true;
+
+  if (res.status === 404) {
+    throw Object.assign(
+      new Error(
+        'Ruta find-mobile-pay no encontrada. LAMUNDIAL_PAYMENTS_URL debe apuntar a SysIP La Mundial ' +
+        '(https://qaapisys2000.lamundialdeseguros.com), no a sysip-nest-api (:3002).'
+      ),
+      { code: 'MERITOP_ROUTE_NOT_FOUND', baMessage: d.message || d.error || `HTTP ${res.status}` }
+    );
+  }
 
   if (res.status >= 400 || !statusOk) {
     const errMsg  = d.message || d.error || `Error HTTP ${res.status}`;

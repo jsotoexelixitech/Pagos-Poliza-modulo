@@ -48,7 +48,11 @@ app.get('/api/health', (_req, res) => {
   res.json({
     status: 'ok',
     module: 'pagos',
-    meritop: { enabled: process.env.MERITOP_ENABLED !== 'false', mock: process.env.MERITOP_MOCK === 'true' },
+    lamundialPayments: {
+      enabled: process.env.LAMUNDIAL_PAYMENTS_ENABLED !== 'false',
+      mock: process.env.LAMUNDIAL_PAYMENTS_MOCK === 'true',
+      url: (process.env.LAMUNDIAL_PAYMENTS_URL || 'https://qaapisys2000.lamundialdeseguros.com').replace(/\/$/, ''),
+    },
     sypago:  { mock: process.env.SYPAGO_MOCK === 'true', url: process.env.SYPAGO_URL || null },
     nexusAuth: process.env.NEXUS_AUTH_ENABLED === 'true',
   });
