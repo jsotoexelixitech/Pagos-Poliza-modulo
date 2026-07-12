@@ -20,6 +20,7 @@ const swaggerUi = require('swagger-ui-express');
 const swaggerSpec = require('./swagger');
 
 const pagosRoutes = require('./routes/pagos');
+const { getVerifyMobileTargetUrl } = require('./services/meritopClient');
 const nexusAuth   = require('./middleware/nexusAuth');
 
 const app = express();
@@ -52,6 +53,7 @@ app.get('/api/health', (_req, res) => {
       enabled: process.env.LAMUNDIAL_PAYMENTS_ENABLED !== 'false',
       mock: process.env.LAMUNDIAL_PAYMENTS_MOCK === 'true',
       url: (process.env.LAMUNDIAL_PAYMENTS_URL || 'http://172.30.149.75:3000').replace(/\/$/, ''),
+      verifyMobileTarget: getVerifyMobileTargetUrl(),
     },
     sypago:  { mock: process.env.SYPAGO_MOCK === 'true', url: process.env.SYPAGO_URL || null },
     nexusAuth: process.env.NEXUS_AUTH_ENABLED === 'true',
@@ -105,8 +107,8 @@ app.use((err, _req, res, _next) => {
 });
 
 app.listen(PORT, () => {
-  const payUrl = (process.env.LAMUNDIAL_PAYMENTS_URL || 'http://172.30.149.75:3000').replace(/\/$/, '');
+  const payUrl = getVerifyMobileTargetUrl();
   console.log(`[modulo-pagos] escuchando en http://localhost:${PORT}`);
   console.log(`[modulo-pagos] Swagger UI → http://localhost:${PORT}/docs`);
-  console.log(`[modulo-pagos] verify-mobile → ${payUrl}/api/v1/external/payments/bancoActivo/find-mobile-pay`);
+  console.log(`[modulo-pagos] verify-mobile → ${payUrl}`);
 });

@@ -130,7 +130,15 @@ router.post('/verify-mobile', async (req, res) => {
   } catch (err) {
     const code = err.code || 'MERITOP_ERROR';
     if (['MERITOP_CONNECTION_ERROR', 'MERITOP_MISSING_APIKEY', 'MERITOP_DISABLED', 'MERITOP_MISCONFIGURED'].includes(code))
-      return res.status(503).json({ success: false, code, message: err.message });
+      return res.status(503).json({
+        success: false,
+        code,
+        message: err.message,
+        targetUrl: err.targetUrl || null,
+        payload: err.payload || null,
+        upstreamStatus: err.upstreamStatus || null,
+        baMessage: err.baMessage || null,
+      });
     if (['MERITOP_INVALID_APIKEY', 'MERITOP_IP_NOT_ALLOWED', 'MERITOP_AUTH_ERROR'].includes(code))
       return res.status(502).json({ success: false, code, message: err.message });
     return res.status(422).json({ success: false, code, baCode: err.baCode || null, baMessage: err.baMessage || null, message: err.message || 'Error verificando.' });

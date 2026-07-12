@@ -54,6 +54,12 @@ const RESULT_CODES = {
 
 const FIND_MOBILE_PAY_PATH = '/api/v1/external/payments/bancoActivo/find-mobile-pay';
 
+/** URL completa de verificación (para health/diagnóstico). */
+function getVerifyMobileTargetUrl() {
+  const baseUrl = (process.env.LAMUNDIAL_PAYMENTS_URL || 'http://172.30.149.75:3000').replace(/\/$/, '');
+  return `${baseUrl}${FIND_MOBILE_PAY_PATH}`;
+}
+
 /** Respuesta típica de Fastify/nest-api cuando la ruta no existe. */
 function _isFastifyRouteNotFound(status, data) {
   const msg = String(data?.message || '');
@@ -171,7 +177,7 @@ async function verifyMobilePayment({ sourcePhoneNumber, bankCode, amount, paidOn
   } catch (err) {
     throw Object.assign(
       new Error('No se pudo conectar con el servicio de pagos. Verifica la red interna.'),
-      { code: 'MERITOP_CONNECTION_ERROR', originalError: err.message }
+      { code: 'MERITOP_CONNECTION_ERROR', originalError: err.message, targetUrl: url, payload }
     );
   }
 
@@ -181,10 +187,10 @@ async function verifyMobilePayment({ sourcePhoneNumber, bankCode, amount, paidOn
   if (_isFastifyRouteNotFound(res.status, d)) {
     throw Object.assign(
       new Error(
-        'Servidor de pagos incorrecto (ruta no encontrada). ' +
-        'LAMUNDIAL_PAYMENTS_URL debe ser http://172.30.149.75:3000, no nest-api :3002.'
+        `El servidor en ${url} no tiene la ruta find-mobile-pay. ` +
+        'Revisa LAMUNDIAL_PAYMENTS_URL en server/.env (debe ser http://172.30.149.75:3000).'
       ),
-      { code: 'MERITOP_MISCONFIGURED', baMessage: d.message }
+      { code: 'MERITOP_MISCONFIGURED', baMessage: d.message, targetUrl: url, payload, upstreamStatus: res.status }
     );
   }
 
@@ -240,4 +246,4 @@ async function verifyMobilePayment({ sourcePhoneNumber, bankCode, amount, paidOn
   };
 }
 
-module.exports = { verifyMobilePayment, RESULT_CODES };
+module.exports = { verifyMobilePayment, getVerifyMobileTargetUrl, RESULT_CODES };
