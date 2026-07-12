@@ -23,7 +23,6 @@
  *   LAMUNDIAL_APIKEY        API Key para autenticación con SysIP-backend
  *
  * Variables de entorno opcionales:
- *   LAMUNDIAL_PAYMENTS_PATH      Ruta del endpoint. Default: external; fallback: /api/v1/payments/...
  *   LAMUNDIAL_PAYMENTS_DEST_PHONE  Teléfono destino de La Mundial. Default: 04143966962
  *   LAMUNDIAL_PAYMENTS_DEST_BANCO  Código banco destino. Default: 0171
  *   LAMUNDIAL_PAYMENTS_TIMEOUT     Timeout HTTP en ms. Default: 20000
@@ -53,20 +52,12 @@ const RESULT_CODES = {
   210:  'Error interno del proveedor',
 };
 
-const DEFAULT_EXTERNAL_PATH = '/api/v1/external/payments/bancoActivo/find-mobile-pay';
-const DEFAULT_PAYMENTS_PATH = '/api/v1/payments/bancoActivo/find-mobile-pay';
+const FIND_MOBILE_PAY_PATH = '/api/v1/external/payments/bancoActivo/find-mobile-pay';
 
 /** Respuesta típica de Fastify/nest-api cuando la ruta no existe. */
 function _isFastifyRouteNotFound(status, data) {
   const msg = String(data?.message || '');
   return status === 404 && (data?.statusCode === 404 || msg.startsWith('Route POST:'));
-}
-
-/** Rutas a probar: env explícita → external → payments. */
-function _resolveEndpointPaths() {
-  const custom = (process.env.LAMUNDIAL_PAYMENTS_PATH || '').trim();
-  if (custom) return [custom.startsWith('/') ? custom : `/${custom}`];
-  return [DEFAULT_EXTERNAL_PATH, DEFAULT_PAYMENTS_PATH];
 }
 
 function _getConfig() {
@@ -84,7 +75,6 @@ function _getConfig() {
 
   return {
     baseUrl,
-    paths     : _resolveEndpointPaths(),
     apiKey    : process.env.LAMUNDIAL_PAYMENTS_API_KEY || process.env.LAMUNDIAL_APIKEY || '',
     destPhone : process.env.LAMUNDIAL_PAYMENTS_DEST_PHONE || DEFAULT_DEST_PHONE,
     destBanco : process.env.LAMUNDIAL_PAYMENTS_DEST_BANCO || DEFAULT_DEST_BANCO,
@@ -133,7 +123,7 @@ function _mockResponse({ sourcePhoneNumber, bankCode, amount }) {
  * }>}
  */
 async function verifyMobilePayment({ sourcePhoneNumber, bankCode, amount, paidOn, cci_rif }) {
-  const { baseUrl, paths, apiKey, destPhone, destBanco, timeout, enabled, mock } = _getConfig();
+  const { baseUrl, apiKey, destPhone, destBanco, timeout, enabled, mock } = _getConfig();
 
   if (!enabled) {
     throw Object.assign(
@@ -155,7 +145,7 @@ async function verifyMobilePayment({ sourcePhoneNumber, bankCode, amount, paidOn
   // Extraer solo la fecha YYYY-MM-DD (por si llega un ISO completo)
   const fmovimiento = String(paidOn).split('T')[0];
 
-  const url     = `${baseUrl}${paths[0]}`;
+  const url     = `${baseUrl}${FIND_MOBILE_PAY_PATH}`;
   const payload = {
     xtelefono,
     cbanco_ref  : String(bankCode).trim(),
@@ -166,47 +156,37 @@ async function verifyMobilePayment({ sourcePhoneNumber, bankCode, amount, paidOn
     fmovimiento,
   };
 
+  console.log('[BancoActivo] → POST', url, JSON.stringify(payload));
+
   let res;
-  let lastUrl = url;
-
-  for (let i = 0; i < paths.length; i++) {
-    lastUrl = `${baseUrl}${paths[i]}`;
-    console.log('[BancoActivo] → POST', lastUrl, JSON.stringify(payload));
-
-    try {
-      res = await axios.post(lastUrl, payload, {
-        headers: {
-          'Content-Type': 'application/json',
-          ...(apiKey ? { apikey: apiKey } : {}),
-        },
-        timeout,
-        validateStatus: () => true,
-      });
-    } catch (err) {
-      throw Object.assign(
-        new Error('No se pudo conectar con el servicio de pagos. Verifica la red interna.'),
-        { code: 'MERITOP_CONNECTION_ERROR', originalError: err.message }
-      );
-    }
-
-    const d = res.data || {};
-    console.log('[BancoActivo] ← HTTP', res.status, JSON.stringify(d));
-
-    if (_isFastifyRouteNotFound(res.status, d)) {
-      if (i < paths.length - 1) continue;
-      throw Object.assign(
-        new Error(
-          'Servidor de pagos incorrecto (ruta no encontrada). ' +
-          'LAMUNDIAL_PAYMENTS_URL debe ser http://172.30.149.75:3000, no nest-api :3002.'
-        ),
-        { code: 'MERITOP_MISCONFIGURED', baMessage: d.message }
-      );
-    }
-
-    break;
+  try {
+    res = await axios.post(url, payload, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...(apiKey ? { apikey: apiKey } : {}),
+      },
+      timeout,
+      validateStatus: () => true,
+    });
+  } catch (err) {
+    throw Object.assign(
+      new Error('No se pudo conectar con el servicio de pagos. Verifica la red interna.'),
+      { code: 'MERITOP_CONNECTION_ERROR', originalError: err.message }
+    );
   }
 
   const d = res.data || {};
+  console.log('[BancoActivo] ← HTTP', res.status, JSON.stringify(d));
+
+  if (_isFastifyRouteNotFound(res.status, d)) {
+    throw Object.assign(
+      new Error(
+        'Servidor de pagos incorrecto (ruta no encontrada). ' +
+        'LAMUNDIAL_PAYMENTS_URL debe ser http://172.30.149.75:3000, no nest-api :3002.'
+      ),
+      { code: 'MERITOP_MISCONFIGURED', baMessage: d.message }
+    );
+  }
 
   // SysIP-backend devuelve { status: true/false, data: {...} } o { success: true/false, ... }
   const statusOk = d.status === true || d.success === true;
