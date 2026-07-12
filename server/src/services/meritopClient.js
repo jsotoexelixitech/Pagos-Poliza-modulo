@@ -1,12 +1,13 @@
 /**
- * Cliente Banco Activo — Verificación de Pago Móvil
+ * Cliente Banco Activo — Verificación de Pago Móvil vía SysIP La Mundial
  *
- * Estrategia (PAYMENTS_VERIFY_MODE=auto por defecto):
- *   1. SysIP La Mundial → find-mobile-pay (rutas external y payments)
- *   2. Fallback Meritop directo → login + verifymobilepayment
+ * NO usa Meritop directo (srv001 no tiene ruta VPN al banco).
+ * Solo consulta el proxy de La Mundial:
  *
- * Payload La Mundial:
  *   POST {LAMUNDIAL_PAYMENTS_URL}/api/v1/external/payments/bancoActivo/find-mobile-pay
+ *   POST {LAMUNDIAL_PAYMENTS_URL}/api/v1/payments/bancoActivo/find-mobile-pay  (fallback)
+ *
+ * Payload:
  *   { xtelefono, cbanco_ref, cbanco_dest, mmonto, cci_rif, telefono_dest, fmovimiento }
  */
 
@@ -37,9 +38,7 @@ const RESULT_CODES = {
   210:  'Error interno del proveedor',
 };
 
-let _meritopTokenCache = { token: null, expiresAt: null };
-
-/** URL principal La Mundial (health/diagnóstico). */
+/** URL principal (health/diagnóstico). */
 function getVerifyMobileTargetUrl() {
   const baseUrl = (process.env.LAMUNDIAL_PAYMENTS_URL || 'http://172.30.149.75:3000').replace(/\/$/, '');
   return `${baseUrl}${LAMUNDIAL_PATHS[0]}`;
@@ -50,12 +49,12 @@ function _isFastifyRouteNotFound(status, data) {
   return status === 404 && (data?.statusCode === 404 || msg.startsWith('Route POST:'));
 }
 
-function _getLaMundialConfig() {
+function _getConfig() {
   const baseUrl = (process.env.LAMUNDIAL_PAYMENTS_URL || 'http://172.30.149.75:3000').replace(/\/$/, '');
 
   if (/:3002(?:\/|$)/.test(baseUrl)) {
     throw Object.assign(
-      new Error('LAMUNDIAL_PAYMENTS_URL apunta a nest-api (:3002). Usar http://172.30.149.75:3000'),
+      new Error('LAMUNDIAL_PAYMENTS_URL apunta a nest-api (:3002). Usar SysIP La Mundial.'),
       { code: 'MERITOP_MISCONFIGURED' }
     );
   }
@@ -71,23 +70,7 @@ function _getLaMundialConfig() {
   };
 }
 
-function _getMeritopDirectConfig() {
-  const host = (process.env.MERITOP_URL2 || 'http://172.30.149.18:9040').replace(/\/$/, '');
-  return {
-    baseUrl : `${host}/APIs-ProxiesCore/api`,
-    apiKey  : process.env.MERITOP_APIKEY || '',
-    enabled : process.env.MERITOP_ENABLED !== 'false',
-    timeout : Number(process.env.MERITOP_TIMEOUT || DEFAULT_TIMEOUT),
-  };
-}
-
-function _verifyMode() {
-  const mode = (process.env.PAYMENTS_VERIFY_MODE || 'auto').toLowerCase();
-  if (['auto', 'lamundial', 'meritop'].includes(mode)) return mode;
-  return 'auto';
-}
-
-function _mockResponse({ sourcePhoneNumber, bankCode, amount }) {
+function _mockResponse({ amount }) {
   const ref = 'REF' + Date.now().toString().slice(-9);
   const verifiedOn = new Date().toISOString();
   return {
@@ -98,11 +81,10 @@ function _mockResponse({ sourcePhoneNumber, bankCode, amount }) {
     message       : 'Transacción encontrada y disponible [MODO PRUEBA]',
     code          : 'B010',
     raw           : { isVerified: true, bankReference: ref, verifiedAmount: amount, verifiedOn },
-    via           : 'mock',
   };
 }
 
-function _pickFields(inner) {
+function _pickFields(inner, amount, fmovimiento) {
   const pick = (...keys) => {
     for (const k of keys) {
       const match = Object.keys(inner).find(dk => dk.toLowerCase() === k.toLowerCase());
@@ -123,18 +105,34 @@ function _pickFields(inner) {
   return {
     isVerified,
     reference     : pick('bankReference', 'bankreference', 'NroReferencia', 'reference', 'referencia') ?? null,
-    verifiedAmount: pick('verifiedAmount', 'verifiedamount', 'Amount', 'monto', 'amount') ?? null,
-    verifiedOn    : pick('verifiedOn', 'verifiedon', 'FechaMovimiento', 'fmovimiento') ?? null,
+    verifiedAmount: pick('verifiedAmount', 'verifiedamount', 'Amount', 'monto', 'amount') ?? amount,
+    verifiedOn    : pick('verifiedOn', 'verifiedon', 'FechaMovimiento', 'fmovimiento') ?? fmovimiento,
     message       : pick('message') ?? 'Pago verificado',
     code          : baCode,
     raw           : inner,
   };
 }
 
-function _normalizeLaMundialPayload({ sourcePhoneNumber, bankCode, amount, paidOn, cci_rif, destPhone, destBanco }) {
+/**
+ * Verifica pago móvil exclusivamente vía SysIP La Mundial.
+ */
+async function verifyMobilePayment({ sourcePhoneNumber, bankCode, amount, paidOn, cci_rif }) {
+  const { baseUrl, apiKey, destPhone, destBanco, timeout, enabled, mock } = _getConfig();
+
+  if (!enabled) {
+    throw Object.assign(
+      new Error('Verificación deshabilitada (LAMUNDIAL_PAYMENTS_ENABLED=false)'),
+      { code: 'MERITOP_DISABLED' }
+    );
+  }
+
+  if (mock) {
+    return _mockResponse({ amount });
+  }
+
   const xtelefono = String(sourcePhoneNumber).replace(/\s/g, '').replace(/^0/, '58');
   const fmovimiento = String(paidOn).split('T')[0];
-  return {
+  const payload = {
     xtelefono,
     cbanco_ref   : String(bankCode).trim(),
     cbanco_dest  : destBanco,
@@ -143,16 +141,6 @@ function _normalizeLaMundialPayload({ sourcePhoneNumber, bankCode, amount, paidO
     telefono_dest: destPhone,
     fmovimiento,
   };
-}
-
-/**
- * POST find-mobile-pay en SysIP La Mundial; prueba rutas external y payments.
- */
-async function _verifyViaLaMundial({ sourcePhoneNumber, bankCode, amount, paidOn, cci_rif }) {
-  const { baseUrl, apiKey, destPhone, destBanco, timeout } = _getLaMundialConfig();
-  const payload = _normalizeLaMundialPayload({
-    sourcePhoneNumber, bankCode, amount, paidOn, cci_rif, destPhone, destBanco,
-  });
 
   const triedUrls = [];
   let lastRes = null;
@@ -194,180 +182,25 @@ async function _verifyViaLaMundial({ sourcePhoneNumber, bankCode, amount, paidOn
       );
     }
 
-    const result = _pickFields(d.data || d.result || d);
-    result.verifiedAmount = result.verifiedAmount ?? amount;
-    result.verifiedOn = result.verifiedOn ?? payload.fmovimiento;
-    result.via = 'lamundial';
+    const result = _pickFields(d.data || d.result || d, amount, fmovimiento);
     result.targetUrl = lastUrl;
     return result;
   }
 
   throw Object.assign(
     new Error(
-      'SysIP La Mundial no expone find-mobile-pay (404 en rutas external y payments). ' +
-      'Se intentará Meritop directo si MERITOP_APIKEY está configurado.'
+      'SysIP La Mundial no tiene la ruta find-mobile-pay activa. ' +
+      'Contactar a La Mundial para restaurar el endpoint en ' + baseUrl
     ),
     {
-      code: 'LAMUNDIAL_ROUTE_NOT_FOUND',
+      code: 'MERITOP_MISCONFIGURED',
       targetUrl: lastUrl,
-      payload,
       triedUrls,
+      payload,
       upstreamStatus: lastRes?.status,
       baMessage: lastRes?.data?.message,
     }
   );
-}
-
-async function _getMeritopToken(forceRefresh = false) {
-  const { baseUrl, apiKey, timeout } = _getMeritopDirectConfig();
-  if (!apiKey) {
-    throw Object.assign(new Error('MERITOP_APIKEY no configurado'), { code: 'MERITOP_MISSING_APIKEY' });
-  }
-
-  const valid = _meritopTokenCache.token && _meritopTokenCache.expiresAt
-    && new Date(_meritopTokenCache.expiresAt).getTime() - 60_000 > Date.now();
-  if (!forceRefresh && valid) return _meritopTokenCache.token;
-
-  let res;
-  try {
-    res = await axios.post(`${baseUrl}/login`, {}, {
-      headers: { 'X-API-KEY': apiKey, 'Content-Type': 'application/json' },
-      timeout,
-    });
-  } catch (err) {
-    if (!err.response) {
-      throw Object.assign(
-        new Error('No se pudo conectar con Meritop directo. Verifica VPN/red del banco.'),
-        { code: 'MERITOP_CONNECTION_ERROR', originalError: err.message }
-      );
-    }
-    throw Object.assign(
-      new Error(err.response?.data?.message || 'Error al autenticar con Meritop'),
-      { code: 'MERITOP_AUTH_ERROR' }
-    );
-  }
-
-  _meritopTokenCache = { token: res.data.token, expiresAt: res.data.expiresAt };
-  return _meritopTokenCache.token;
-}
-
-/**
- * Fallback: Meritop directo (login + verifymobilepayment).
- */
-async function _verifyViaMeritopDirect({ sourcePhoneNumber, bankCode, amount, paidOn }) {
-  const { baseUrl, timeout } = _getMeritopDirectConfig();
-  const phone = String(sourcePhoneNumber).replace(/\s/g, '');
-  const paidOnIso = String(paidOn).includes('T') ? paidOn : `${String(paidOn).split('T')[0]}T12:00:00`;
-
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    const token = await _getMeritopToken(attempt > 1);
-    const url = `${baseUrl}/payment/verifymobilepayment`;
-    const body = {
-      SourcePhoneNumber: phone,
-      BankCode         : String(bankCode).trim(),
-      Amount           : amount,
-      PaidOn           : paidOnIso,
-    };
-
-    console.log('[Meritop] → POST', url, JSON.stringify(body));
-
-    let res;
-    try {
-      res = await axios.post(url, body, {
-        headers: { Authorization: `bearer ${token}`, 'Content-Type': 'application/json' },
-        timeout,
-        validateStatus: () => true,
-      });
-    } catch (err) {
-      throw Object.assign(
-        new Error('No se pudo conectar con Meritop directo.'),
-        { code: 'MERITOP_CONNECTION_ERROR', originalError: err.message, targetUrl: url }
-      );
-    }
-
-    console.log('[Meritop] ← HTTP', res.status, JSON.stringify(res.data || {}));
-
-    if (res.status === 401 && attempt === 1) {
-      _meritopTokenCache = { token: null, expiresAt: null };
-      continue;
-    }
-
-    if (res.status === 401) {
-      throw Object.assign(new Error('Token Meritop inválido'), { code: 'MERITOP_AUTH_ERROR' });
-    }
-
-    if (res.status === 400 || res.status === 404) {
-      const nested = res.data?.error && typeof res.data.error === 'object' ? res.data.error : res.data || {};
-      const errCode = String(nested.code || res.data?.code || '');
-      const errMsg = nested.message || res.data?.message || 'Error Meritop';
-      throw Object.assign(new Error(RESULT_CODES[errCode] || errMsg), {
-        code: `MERITOP_${errCode || 'BAD_REQUEST'}`,
-        baCode: errCode || null,
-        baMessage: errMsg,
-        targetUrl: url,
-      });
-    }
-
-    if (res.status >= 400) {
-      throw Object.assign(
-        new Error(res.data?.message || `Error Meritop HTTP ${res.status}`),
-        { code: `MERITOP_${res.status}`, targetUrl: url }
-      );
-    }
-
-    const result = _pickFields(res.data || {});
-    result.verifiedAmount = result.verifiedAmount ?? amount;
-    result.via = 'meritop-direct';
-    result.targetUrl = url;
-    return result;
-  }
-
-  throw Object.assign(new Error('No se pudo autenticar con Meritop'), { code: 'MERITOP_AUTH_RETRY_FAILED' });
-}
-
-async function verifyMobilePayment(params) {
-  const { enabled, mock } = _getLaMundialConfig();
-  const mode = _verifyMode();
-
-  if (!enabled) {
-    throw Object.assign(
-      new Error('Verificación de pago móvil deshabilitada (LAMUNDIAL_PAYMENTS_ENABLED=false)'),
-      { code: 'MERITOP_DISABLED' }
-    );
-  }
-
-  if (mock) {
-    console.log('[BancoActivo MOCK] verifyMobilePayment →', params);
-    return _mockResponse(params);
-  }
-
-  if (mode === 'meritop') {
-    return _verifyViaMeritopDirect(params);
-  }
-
-  if (mode === 'lamundial') {
-    return _verifyViaLaMundial(params);
-  }
-
-  // auto: La Mundial primero, Meritop directo si ruta no existe
-  try {
-    return await _verifyViaLaMundial(params);
-  } catch (err) {
-    if (err.code !== 'LAMUNDIAL_ROUTE_NOT_FOUND') throw err;
-
-    const meritopCfg = _getMeritopDirectConfig();
-    if (!meritopCfg.enabled || !meritopCfg.apiKey) {
-      throw Object.assign(
-        new Error(
-          'SysIP La Mundial sin ruta find-mobile-pay y MERITOP_APIKEY no disponible para fallback.'
-        ),
-        { code: 'MERITOP_MISCONFIGURED', triedUrls: err.triedUrls, targetUrl: err.targetUrl, payload: err.payload }
-      );
-    }
-
-    console.log('[BancoActivo] La Mundial 404 → fallback Meritop directo');
-    return _verifyViaMeritopDirect(params);
-  }
 }
 
 module.exports = { verifyMobilePayment, getVerifyMobileTargetUrl, RESULT_CODES };
