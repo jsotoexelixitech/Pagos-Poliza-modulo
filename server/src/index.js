@@ -105,6 +105,8 @@ app.use((err, _req, res, _next) => {
 });
 
 app.listen(PORT, () => {
+  const payUrl = (process.env.LAMUNDIAL_PAYMENTS_URL || 'http://172.30.149.75:3000').replace(/\/$/, '');
   console.log(`[modulo-pagos] escuchando en http://localhost:${PORT}`);
   console.log(`[modulo-pagos] Swagger UI → http://localhost:${PORT}/docs`);
+  console.log(`[modulo-pagos] verify-mobile → ${payUrl}/api/v1/external/payments/bancoActivo/find-mobile-pay`);
 });
