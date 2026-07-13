@@ -261,6 +261,10 @@ export interface WizardState {
     transactionId?: string;
     amount?: number;
     paidOn?: string;
+    /** Código banco origen (cbanco_ref) usado en la verificación móvil. */
+    bankCode?: string;
+    cbanco?: number;
+    cbanco_destino?: number;
   } | null;
   policy: IssuedPolicy | null;
   /** Cotizacion vigente desde La Mundial (mprima/mprimaext/ptasa). */

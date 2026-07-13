@@ -75,7 +75,12 @@ type OtpStep = 'form' | 'requesting' | 'awaiting_otp' | 'confirming' | 'done' | 
 
 const TODAY_ISO = new Date().toISOString().split('T')[0];
 
-export function PaymentStep() {
+type PaymentStepProps = {
+  /** RCV: tras verificar pago, emite póliza y activa recibo en Sis2000. */
+  onPaymentVerified?: () => void | Promise<void>;
+};
+
+export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
   const {
     paymentMethod, setPaymentMethod,
     selectedPlan, quote, quoteState, vehicle,
@@ -152,6 +157,15 @@ export function PaymentStep() {
   const [verifyStatus, setVerifyStatus] = useState<VerifyStatus>('idle');
   const [verifyResult, setVerifyResult] = useState<VerifyMobilePaymentResponse | null>(null);
   const [verifyError,  setVerifyError]  = useState<string>('');
+  const autoEmitStarted = useRef(false);
+
+  const triggerAutoEmit = () => {
+    if (!onPaymentVerified || autoEmitStarted.current) return;
+    autoEmitStarted.current = true;
+    void Promise.resolve(onPaymentVerified()).catch(() => {
+      autoEmitStarted.current = false;
+    });
+  };
 
   // ── SyPago Débito OTP ─────────────────────────────────────────────────
   const [otpDocType,   setOtpDocType]   = useState('V');
@@ -271,7 +285,9 @@ export function PaymentStep() {
           reference: result.reference ?? undefined,
           amount: result.verifiedAmount ?? parseFloat(montoPagoM),
           paidOn,
+          bankCode: bankCode || undefined,
         });
+        triggerAutoEmit();
         void notifyClientCheckoutStatus({
           checkout,
           checkoutPayload,
@@ -411,7 +427,9 @@ export function PaymentStep() {
         amount: parseFloat(otpAmount),
         paidOn: TODAY_ISO,
         reference: result.transaction_id,
+        bankCode: otpBankCode || undefined,
       });
+      triggerAutoEmit();
       void notifyClientCheckoutStatus({
         checkout,
         checkoutPayload,

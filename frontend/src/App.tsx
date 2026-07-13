@@ -65,6 +65,7 @@ export default function App() {
       category: store.category,
       selectedPlan: store.selectedPlan,
       paymentMethod: store.paymentMethod,
+      paymentVerified: store.paymentVerified,
       paymentCapture: store.paymentCapture,
       metadataCanal: store.metadataCanal,
       checkout: store.checkout,
@@ -111,6 +112,22 @@ export default function App() {
       `Número ${result.policy.cnpoliza}${result.policy.urlpoliza ? ' · PDF abierto en nueva pestaña' : ''}`,
       6000,
     );
+
+    const meta = result.policy.metadata as { collectionError?: string; collectionSkipped?: string } | undefined;
+    if (meta?.collectionError) {
+      toast.warning(
+        'Póliza emitida — cobro pendiente',
+        `La póliza se creó pero el recibo no se activó: ${meta.collectionError}`,
+        10000,
+      );
+    } else if (meta?.collectionSkipped) {
+      toast.warning(
+        'Póliza emitida — cobro omitido',
+        'El recibo quedó pendiente; verifica que el pago esté registrado en el banco.',
+        8000,
+      );
+    }
+
     goTo(6);
   }
 
@@ -219,9 +236,11 @@ export default function App() {
     ? (emitting ? 'Procesando...' : 'Continuar')
     : funeralFlow
       ? (emitting ? 'Emitiendo póliza...' : 'Emitir póliza')
-      : paymentBypass && !emitting
-        ? 'Continuar (sin pago · QA)'
-        : (emitting ? 'Emitiendo póliza...' : 'Continuar');
+      : store.paymentVerified
+        ? (emitting ? 'Emitiendo y activando recibo...' : 'Reemitir póliza')
+        : paymentBypass && !emitting
+          ? 'Continuar (sin pago · QA)'
+          : (emitting ? 'Emitiendo póliza...' : 'Verificar pago para emitir');
 
   async function handleEmitir() {
     if (!funeralFlow) return;
@@ -303,7 +322,13 @@ export default function App() {
 
             <section className="surface-card overflow-hidden step-enter">
               <div className="p-6 sm:p-8 lg:p-10">
-                {!isSuccess && <PaymentStep />}
+                {!isSuccess && (
+                  <PaymentStep
+                    onPaymentVerified={
+                      rcvFlow && !genericCheckout ? handleContinuarRcv : undefined
+                    }
+                  />
+                )}
                 {isSuccess && <SuccessStep />}
               </div>
 
