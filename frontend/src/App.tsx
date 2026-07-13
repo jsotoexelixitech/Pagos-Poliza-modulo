@@ -10,7 +10,10 @@ import { PaymentStep } from './features/payment/PaymentStep';
 import { SuccessStep } from './features/payment/SuccessStep';
 import { emitPolicy, emitFuneral, PolicyEmitError } from './lib/api';
 import { isFunerario, isRcv } from './lib/product';
-import { hasGenericCheckout, requiresPaymentBeforeContinue } from './lib/checkout';
+import {
+  isGenericCheckoutMode,
+  requiresPaymentBeforeContinue,
+} from './lib/checkout';
 import { useNexusTokenMetadata } from './hooks/useNexusTokenMetadata';
 import { toast } from './store/toastStore';
 import { Zap, ShieldCheck, HelpCircle, Sparkles } from 'lucide-react';
@@ -24,7 +27,7 @@ export default function App() {
   const isSuccess = step === 6;
   const funeralFlow = isFunerario();
   const rcvFlow = isRcv();
-  const genericCheckout = hasGenericCheckout(store);
+  const genericCheckout = isGenericCheckoutMode(store);
   const paymentRequired = requiresPaymentBeforeContinue(store, funeralFlow);
 
   /** Funerario legacy: emitir sin bloquear por verificación bancaria. */
@@ -249,13 +252,17 @@ export default function App() {
       <Toaster />
       <AuroraBackground />
       <div className="lg:hidden">
-        <TopProgressBar />
+        {!genericCheckout && <TopProgressBar />}
       </div>
 
       <div>
-        <main className="flex-1 min-h-screen pt-[72px] lg:pt-10 px-4 sm:px-6 lg:px-10 pb-32 lg:pb-12">
+        <main
+          className={`flex-1 min-h-screen px-4 sm:px-6 lg:px-10 pb-32 lg:pb-12 ${
+            genericCheckout ? 'pt-10' : 'pt-[72px] lg:pt-10'
+          }`}
+        >
           <div className="max-w-5xl mx-auto">
-            <TopStepper />
+            {!genericCheckout && <TopStepper />}
 
             {!isSuccess && (
               <header className="mb-8 animate-fade-in">
@@ -263,7 +270,7 @@ export default function App() {
                   <div className="min-w-0">
                     <p className="text-[0.68rem] font-black tracking-[0.22em] gradient-text-indigo uppercase mb-2 inline-flex items-center gap-1.5">
                       <Sparkles size={11} className="text-indigo-500" />
-                      Paso 05 · Checkout
+                      {genericCheckout ? 'Pago' : 'Paso 05 · Checkout'}
                     </p>
                     <h1 className="font-display text-3xl sm:text-[2.5rem] font-black text-slate-900 tracking-tight leading-tight">
                       Confirma y paga

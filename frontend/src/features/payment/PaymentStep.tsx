@@ -439,7 +439,9 @@ export function PaymentStep() {
                 {formatUsdShort(annualUsd)}
               </span>
             )}
-            <span className="text-xs text-slate-500 font-semibold pb-1">/ año</span>
+            {!genericCheckout && (
+              <span className="text-xs text-slate-500 font-semibold pb-1">/ año</span>
+            )}
           </div>
           {(hasRealQuote || genericCheckout) && annualVes > 0 && (
             <p className="text-sm font-display font-black text-indigo-700 mt-1 tabular-nums">

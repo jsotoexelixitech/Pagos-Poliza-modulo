@@ -3,9 +3,12 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 import './lib/bridge'
+import { hydrateCheckoutFromAccessToken } from './lib/checkout'
 import { NexusGuard } from './nexus/NexusGuard'
 
 import { PagosConfigPanel } from './config/PagosConfigPanel'
+
+hydrateCheckoutFromAccessToken();
 
 const isConfigRoute = window.location.pathname === '/config';
 

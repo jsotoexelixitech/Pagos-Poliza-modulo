@@ -1,10 +1,13 @@
 import { useWizardStore } from '../store/wizardStore';
+import { isGenericCheckoutMode } from '../lib/checkout';
 import { publicAsset } from '../lib/app-base';
 
 const TOTAL_STEPS = 5;
 
 export function TopProgressBar() {
-  const { step, product: productType } = useWizardStore();
+  const { step, product: productType, checkout } = useWizardStore();
+
+  if (isGenericCheckoutMode({ checkout })) return null;
   const product = { hasVehicle: productType === 'rcv' };
   const segments = Array.from({ length: TOTAL_STEPS }, (_, i) => i + 1);
   const safeStep = Math.min(step, TOTAL_STEPS);

@@ -10,6 +10,7 @@ import {
 } from '../lib/wizard-navigation';
 import { useWizardStore } from '../store/wizardStore';
 import { getProductConfig } from '../lib/product';
+import { isGenericCheckoutMode } from '../lib/checkout';
 import { toast } from '../store/toastStore';
 
 /**
@@ -17,12 +18,15 @@ import { toast } from '../store/toastStore';
  * Flechas ◀ ▶ navegan entre pasos del flujo guardando estado vía bridge.
  */
 export function TopStepper() {
+  const checkout = useWizardStore((s) => s.checkout);
   const step = useWizardStore((s) => s.step);
   const ocrDone = useWizardStore((s) => s.ocrDone);
   const documents = useWizardStore((s) => s.documents);
   const selectedPlan = useWizardStore((s) => s.selectedPlan);
   const product = getProductConfig();
   const [navigating, setNavigating] = useState(false);
+
+  if (isGenericCheckoutMode({ checkout })) return null;
 
   const navSnapshot = {
     step,

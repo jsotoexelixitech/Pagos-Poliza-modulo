@@ -4,6 +4,80 @@ import type {
   PolicyQuote,
   WizardState,
 } from '../types';
+import { useWizardStore } from '../store/wizardStore';
+
+function decodeTokenPayload(token: string): Record<string, unknown> | null {
+  try {
+    const payloadBase64 = token.split('.')[1];
+    if (!payloadBase64) return null;
+    const payloadStr = atob(
+      payloadBase64.replace(/-/g, '+').replace(/_/g, '/'),
+    );
+    return JSON.parse(payloadStr) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function getAccessTokenFromBrowser(): string | null {
+  if (typeof window === 'undefined') return null;
+  return (
+    new URLSearchParams(window.location.search).get('nexus_token') ||
+    sessionStorage.getItem('nexus_access_token_pagos') ||
+    sessionStorage.getItem('nexus_access_token')
+  );
+}
+
+/** Metadata SSO del token en URL/storage (sin bridge ?sid=). */
+export function getSsoMetadataFromBrowser(): Record<string, unknown> | null {
+  if (typeof window === 'undefined') return null;
+  if (new URLSearchParams(window.location.search).get('sid')) return null;
+
+  const token = getAccessTokenFromBrowser();
+  if (!token) return null;
+
+  const payload = decodeTokenPayload(token);
+  const meta = payload?.metadata;
+  return meta && typeof meta === 'object'
+    ? (meta as Record<string, unknown>)
+    : null;
+}
+
+/** Sesión Pagos standalone con checkout en metadata (antes de hidratar el store). */
+export function isStandaloneGenericCheckoutSession(): boolean {
+  const meta = getSsoMetadataFromBrowser();
+  if (!meta) return false;
+  return isValidCheckoutInput(meta.checkout);
+}
+
+/** Hidrata checkout desde nexus_token antes del primer render de React. */
+export function hydrateCheckoutFromAccessToken(): boolean {
+  const meta = getSsoMetadataFromBrowser();
+  if (!meta) return false;
+
+  const { checkout, rules, payer, payload: opaque, ...canal } = meta;
+  const store = useWizardStore.getState();
+
+  if (Object.keys(canal).length > 0) {
+    store.setMetadataCanal(canal);
+  }
+
+  if (!isValidCheckoutInput(checkout)) return false;
+
+  store.setCheckout({
+    data: checkout,
+    rules: parseCheckoutRules(rules),
+    payer: payer && typeof payer === 'object' ? (payer as never) : null,
+    payload:
+      opaque && typeof opaque === 'object'
+        ? (opaque as Record<string, unknown>)
+        : null,
+  });
+  store.setQuote(quoteFromCheckout(checkout), 'checkout-metadata');
+  store.setQuoteState('ready');
+  store.goTo(5);
+  return true;
+}
 
 /** Activo cuando la sesión trae un checkout con monto válido. */
 export function hasGenericCheckout(
@@ -11,6 +85,13 @@ export function hasGenericCheckout(
 ): boolean {
   const t = state.checkout?.totalVes;
   return typeof t === 'number' && Number.isFinite(t) && t > 0;
+}
+
+/** Store hidratado o token SSO con checkout en la URL. */
+export function isGenericCheckoutMode(
+  state: Pick<WizardState, 'checkout'>,
+): boolean {
+  return hasGenericCheckout(state) || isStandaloneGenericCheckoutSession();
 }
 
 /** Convierte checkout → quote para reutilizar lógica de montos en Bs. */
