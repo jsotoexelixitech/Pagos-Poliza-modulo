@@ -287,6 +287,8 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
           amount: result.verifiedAmount ?? parseFloat(montoPagoM),
           paidOn,
           bankCode: bankCode || undefined,
+          sourcePhone: telefonoPago || undefined,
+          cci_rif: cedulaPago ? cedulaPago.toUpperCase() : undefined,
         };
         setPaymentCapture(capture);
         triggerAutoEmit(capture);

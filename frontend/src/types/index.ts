@@ -109,6 +109,14 @@ export interface PaymentCapture {
   paidOn?: string;
   /** Código banco origen (cbanco_ref) usado en la verificación móvil. */
   bankCode?: string;
+  /** Teléfono origen del pago móvil (xtelefono). */
+  sourcePhone?: string;
+  /** Cédula/RIF usada en la verificación móvil. */
+  cci_rif?: string;
+  /** Teléfono destino La Mundial. */
+  telefonoDest?: string;
+  /** Ref. banco destino (ej. 0171). */
+  cbanco_dest_ref?: string;
   cbanco?: number;
   cbanco_destino?: number;
 }
