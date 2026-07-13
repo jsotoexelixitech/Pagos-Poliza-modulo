@@ -73,6 +73,7 @@ export async function verifyNexusAccess(nexusApiUrl: string): Promise<NexusVerif
       // expira en 1 h; así se renueva en cada verify sin recargar la página).
       if (data.access_token) {
         sessionStorage.setItem(STORAGE_KEY, data.access_token);
+        window.dispatchEvent(new CustomEvent('nexus-token-refreshed'));
       }
       return {
         active: true,

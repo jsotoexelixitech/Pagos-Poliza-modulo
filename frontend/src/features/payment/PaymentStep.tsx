@@ -12,6 +12,7 @@ import { formatUsdShort, vesAnnual } from '../../lib/money';
 import { formatTelefono } from '@exelixi/shared';
 import { formatCedulaRif, validateCedulaRif } from '../../lib/cedula-rif';
 import { useProductConfig } from '../../hooks/useProductConfig';
+import { hasGenericCheckout } from '../../lib/checkout';
 
 const EMPRESA_ID = Number(import.meta.env.VITE_EMPRESA_ID ?? 1);
 
@@ -77,15 +78,21 @@ export function PaymentStep() {
   const {
     paymentMethod, setPaymentMethod,
     selectedPlan, quote, quoteState, vehicle,
+    checkout, checkoutRules, checkoutPayer,
     setQuote, setQuoteState,
     setPaymentVerified,
     setPaymentCapture,
   } = useWizardStore();
 
+  const genericCheckout = hasGenericCheckout({ checkout });
+
   const producto = new URLSearchParams(window.location.search).get('product') as 'rcv' | 'funerario' ?? 'rcv';
   const { config } = useProductConfig(EMPRESA_ID, producto, 'pagos');
 
   const availableMethods = PAYMENT_OPTIONS.filter(opt => {
+    if (genericCheckout && checkoutRules?.methods?.length) {
+      return checkoutRules.methods.includes(opt.method);
+    }
     if (!config?.metodos) return true;
     return config.metodos[opt.method]?.activo ?? true;
   });
@@ -98,9 +105,9 @@ export function PaymentStep() {
     }
   }, [quote, quoteState, setQuoteState]);
 
-  // Auto-cotizar si no hay quote del bridge (pagos autosuficiente).
-  // No requiere cmarca/cmodelo: el backend usa resolución por texto como fallback.
+  // Auto-cotizar solo en flujo legacy (RCV/funerario sin checkout genérico).
   useEffect(() => {
+    if (genericCheckout) return;
     if (quoteState === 'ready' || quoteState === 'loading') return;
     if (quote !== null) return; // ya hay quote (caso anterior lo activará)
     const plan = selectedPlan?.cplan;
@@ -117,6 +124,17 @@ export function PaymentStep() {
       })
       .catch(() => setQuoteState('error'));
   // Solo al montar — el plan y vehículo no cambian en pagos
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Prellenar pagador desde checkout.payer
+  useEffect(() => {
+    if (!checkoutPayer) return;
+    if (checkoutPayer.phone) setOtpPhone(formatTelefono(checkoutPayer.phone));
+    if (checkoutPayer.documentType) setOtpDocType(checkoutPayer.documentType);
+    if (checkoutPayer.documentNumber) setOtpDocNum(checkoutPayer.documentNumber);
+    if (checkoutPayer.name) setOtpName(checkoutPayer.name);
+  // Solo al montar con datos de sesión
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -199,8 +217,21 @@ export function PaymentStep() {
   const hasRealQuote   = quoteState === 'ready' && Boolean(quote);
   const isQuoteError   = quoteState === 'error';
 
-  const annualUsd = hasRealQuote ? quote!.mprimaext      : (selectedPlan?.priceNum ?? 0) * 12;
-  const annualVes = hasRealQuote ? vesAnnual(quote)       : 0;
+  const annualUsd = genericCheckout
+    ? (checkout!.totalUsd ?? checkout!.totalVes)
+    : hasRealQuote
+      ? quote!.mprimaext
+      : (selectedPlan?.priceNum ?? 0) * 12;
+  const annualVes = genericCheckout
+    ? checkout!.totalVes
+    : hasRealQuote
+      ? vesAnnual(quote)
+      : 0;
+
+  const displayTitle = genericCheckout
+    ? checkout!.title
+    : (selectedPlan?.name ?? 'Plan no seleccionado');
+  const displaySubtitle = genericCheckout ? checkout!.subtitle : null;
 
   // ── Validaciones pago móvil ───────────────────────────────────────────
   const movErrors = {
@@ -334,10 +365,10 @@ export function PaymentStep() {
       setOtpStep('done');
       setPaymentVerified(true);
       setPaymentCapture({
-        transactionId: result.transaction_id || result.transactionId,
+        transactionId: result.transaction_id,
         amount: parseFloat(otpAmount),
         paidOn: TODAY_ISO,
-        reference: result.transaction_id || result.transactionId,
+        reference: result.transaction_id,
       });
       // Latch queda activo en 'done' — no se puede volver a confirmar
     } catch (err) {
@@ -364,23 +395,31 @@ export function PaymentStep() {
           </div>
           <div className="min-w-0">
             <p className="text-[0.62rem] font-black tracking-widest text-indigo-600 uppercase mb-0.5">
-              Total a pagar (prima anual)
+              {genericCheckout ? 'Total a pagar' : 'Total a pagar (prima anual)'}
             </p>
             <p className="font-display font-bold text-slate-900 text-sm truncate">
-              {selectedPlan?.name ?? 'Plan no seleccionado'}
+              {displayTitle}
             </p>
+            {displaySubtitle && (
+              <p className="text-xs text-slate-500 mt-0.5 truncate">{displaySubtitle}</p>
+            )}
             <div className="mt-1 flex flex-wrap items-center gap-1.5">
-              {hasRealQuote && !quote?.vehicleFallback && (
+              {genericCheckout && (
+                <span className="inline-flex items-center gap-1 text-[0.55rem] font-black text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded-md border border-indigo-100 uppercase tracking-wider">
+                  <BadgeCheck size={9} strokeWidth={2.4} /> Checkout
+                </span>
+              )}
+              {!genericCheckout && hasRealQuote && !quote?.vehicleFallback && (
                 <span className="inline-flex items-center gap-1 text-[0.55rem] font-black text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-md border border-emerald-100 uppercase tracking-wider">
                   <BadgeCheck size={9} strokeWidth={2.4} /> Tarifa La Mundial
                 </span>
               )}
-              {hasRealQuote && quote?.vehicleFallback && (
+              {!genericCheckout && hasRealQuote && quote?.vehicleFallback && (
                 <span className="inline-flex items-center gap-1 text-[0.55rem] font-black text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-md border border-amber-200 uppercase tracking-wider">
                   <AlertTriangle size={9} strokeWidth={2.4} /> Tarifa estimada
                 </span>
               )}
-              {isQuoteError && (
+              {!genericCheckout && isQuoteError && (
                 <span className="inline-flex items-center gap-1 text-[0.55rem] font-black text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded-md border border-rose-200 uppercase tracking-wider">
                   <AlertTriangle size={9} strokeWidth={2.4} /> Cotización pendiente
                 </span>
@@ -402,18 +441,32 @@ export function PaymentStep() {
             )}
             <span className="text-xs text-slate-500 font-semibold pb-1">/ año</span>
           </div>
-          {hasRealQuote && annualVes > 0 && (
+          {(hasRealQuote || genericCheckout) && annualVes > 0 && (
             <p className="text-sm font-display font-black text-indigo-700 mt-1 tabular-nums">
               Bs {annualVes.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
           )}
-          {hasRealQuote && quote?.ptasa && quote.ptasa > 0 && (
+          {!genericCheckout && hasRealQuote && quote?.ptasa && quote.ptasa > 0 && (
             <p className="text-[0.6rem] text-slate-500 mt-0.5 tabular-nums">
               Tasa BCV: {quote.ptasa.toFixed(4)}
             </p>
           )}
         </div>
       </div>
+
+      {genericCheckout && checkout!.lines && checkout!.lines.length > 0 && (
+        <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-2">
+          <p className="text-[0.65rem] font-bold uppercase tracking-wider text-slate-400">Detalle</p>
+          {checkout!.lines!.map((line, idx) => (
+            <div key={idx} className="flex justify-between text-sm gap-4">
+              <span className="text-slate-600">{line.label}</span>
+              <span className="font-semibold text-slate-900 tabular-nums shrink-0">
+                Bs {line.amountVes.toLocaleString('es-VE', { minimumFractionDigits: 2 })}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Selector de método */}
       <div>

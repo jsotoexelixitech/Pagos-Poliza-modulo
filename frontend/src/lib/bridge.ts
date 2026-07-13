@@ -22,6 +22,7 @@ import { resolveNexusApiUrl } from '../nexus/nexus-core';
 import { canNavigateToStep, getDefaultRequiredDocs } from './wizard-navigation';
 import { getProductConfig } from './product';
 import { applyWizardStepFromUrl, defaultStepForModule, stepToModuleOrder } from './wizard-step';
+import { isValidCheckoutInput, quoteFromCheckout } from './checkout';
 
 // ── Configuración por puerto (dev local) o hostname (HTTPS sslip.io) ───────
 const PORT_TO_ORDER: Record<string, number> = {
@@ -236,6 +237,13 @@ function makeBridge(): BridgeAPI {
     }
     const set = (useWizardStore as unknown as { setState: (p: Partial<Record<string, unknown>>) => void }).setState;
     set(filtered);
+
+    const checkout = data.checkout;
+    if (isValidCheckoutInput(checkout)) {
+      const { setQuote, setQuoteState } = useWizardStore.getState();
+      setQuote(quoteFromCheckout(checkout), 'checkout-session');
+      setQuoteState('ready');
+    }
   };
 
   const hydrate = async () => {

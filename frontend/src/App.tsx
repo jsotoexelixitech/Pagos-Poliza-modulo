@@ -10,21 +10,33 @@ import { PaymentStep } from './features/payment/PaymentStep';
 import { SuccessStep } from './features/payment/SuccessStep';
 import { emitPolicy, emitFuneral, PolicyEmitError } from './lib/api';
 import { isFunerario, isRcv } from './lib/product';
+import { hasGenericCheckout, requiresPaymentBeforeContinue } from './lib/checkout';
+import { useNexusTokenMetadata } from './hooks/useNexusTokenMetadata';
 import { toast } from './store/toastStore';
 import { Zap, ShieldCheck, HelpCircle, Sparkles } from 'lucide-react';
 
 export default function App() {
+  useNexusTokenMetadata();
   const store = useWizardStore();
-  const { step, goTo, setPolicy, paymentVerified } = store;
+  const { step, goTo, setPolicy } = store;
   const [emitting, setEmitting] = useState(false);
 
   const isSuccess = step === 6;
   const funeralFlow = isFunerario();
   const rcvFlow = isRcv();
-  /** Funerario: emitir sin bloquear por verificación bancaria. */
-  const canEmitFuneral = funeralFlow && !emitting;
-  /** RCV: exige pago verificado y luego emite la póliza. */
-  const canEmitRcv = rcvFlow && paymentVerified && !emitting;
+  const genericCheckout = hasGenericCheckout(store);
+  const paymentRequired = requiresPaymentBeforeContinue(store, funeralFlow);
+
+  /** Funerario legacy: emitir sin bloquear por verificación bancaria. */
+  const canEmitFuneral = funeralFlow && !genericCheckout && !emitting;
+  /** RCV legacy: exige pago verificado. */
+  const canEmitRcv =
+    rcvFlow && !genericCheckout && paymentRequired && store.paymentVerified && !emitting;
+  /** Checkout genérico: respeta rules.requirePayment. */
+  const canCompleteGeneric =
+    genericCheckout &&
+    !emitting &&
+    (!paymentRequired || store.paymentVerified);
 
   /** Estado para emisión RCV — sin depender de datos funerarios. */
   function buildRcvEmitState() {
@@ -44,6 +56,9 @@ export default function App() {
       selectedPlan: store.selectedPlan,
       paymentMethod: store.paymentMethod,
       paymentCapture: store.paymentCapture,
+      metadataCanal: store.metadataCanal,
+      checkout: store.checkout,
+      checkoutPayload: store.checkoutPayload,
     };
   }
 
@@ -55,6 +70,9 @@ export default function App() {
       funeral: store.funeral,
       selectedPlan: store.selectedPlan,
       paymentMethod: store.paymentMethod,
+      metadataCanal: store.metadataCanal,
+      checkout: store.checkout,
+      checkoutPayload: store.checkoutPayload,
     };
   }
 
@@ -87,7 +105,7 @@ export default function App() {
   }
 
   async function handleContinuarRcv() {
-    if (!paymentVerified) {
+    if (paymentRequired && !store.paymentVerified) {
       toast.warning(
         'Pago pendiente',
         'Verifica o confirma el pago con el banco antes de continuar.',
@@ -110,6 +128,88 @@ export default function App() {
       setEmitting(false);
     }
   }
+
+  async function handleGenericComplete() {
+    if (paymentRequired && !store.paymentVerified) {
+      toast.warning('Pago pendiente', 'Confirma el pago antes de continuar.');
+      return;
+    }
+
+    const mode = store.checkoutRules?.onSuccess?.mode ?? 'none';
+    const redirectUrl = store.checkoutRules?.onSuccess?.redirectUrl;
+    const webhookUrl = store.checkoutRules?.onSuccess?.webhookUrl;
+
+    if (mode === 'emit') {
+      if (funeralFlow) {
+        await handleEmitir();
+        return;
+      }
+      if (rcvFlow || store.selectedPlan?.cplan) {
+        await handleContinuarRcv();
+        return;
+      }
+      toast.warning(
+        'Emisión no configurada',
+        'El checkout no incluye datos para emitir póliza.',
+      );
+      return;
+    }
+
+    if (mode === 'webhook' && webhookUrl) {
+      setEmitting(true);
+      try {
+        await fetch(webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            success: true,
+            checkout: store.checkout,
+            paymentCapture: store.paymentCapture,
+            payload: store.checkoutPayload,
+          }),
+        });
+        toast.success('Pago registrado', 'Notificación enviada correctamente.', 5000);
+        goTo(6);
+      } catch {
+        toast.error('Error', 'No se pudo notificar al sistema origen.');
+      } finally {
+        setEmitting(false);
+      }
+      return;
+    }
+
+    if (mode === 'redirect' && redirectUrl) {
+      window.location.href = redirectUrl;
+      return;
+    }
+
+    toast.success('Pago completado', 'Operación registrada correctamente.', 5000);
+    goTo(6);
+  }
+
+  function handlePrimaryAction() {
+    if (genericCheckout) {
+      void handleGenericComplete();
+      return;
+    }
+    if (funeralFlow) {
+      void handleEmitir();
+      return;
+    }
+    void handleContinuarRcv();
+  }
+
+  const primaryDisabled = genericCheckout
+    ? !canCompleteGeneric
+    : funeralFlow
+      ? !canEmitFuneral
+      : !canEmitRcv;
+
+  const primaryLabel = genericCheckout
+    ? (emitting ? 'Procesando...' : 'Continuar')
+    : funeralFlow
+      ? (emitting ? 'Emitiendo póliza...' : 'Emitir póliza')
+      : (emitting ? 'Emitiendo póliza...' : 'Continuar');
 
   async function handleEmitir() {
     if (!funeralFlow) return;
@@ -196,51 +296,34 @@ export default function App() {
                     <span className="font-medium">Cifrado de extremo a extremo · TLS 1.3</span>
                   </div>
                 <div className="flex flex-col items-end gap-1.5">
-                  {!paymentVerified && !funeralFlow && (
+                  {paymentRequired && !store.paymentVerified && (
                     <p className="text-[0.65rem] font-semibold text-amber-700">
                       Confirma el pago con el banco para continuar
                     </p>
                   )}
-                  {funeralFlow ? (
-                    <Button
-                      variant="primary"
-                      onClick={handleEmitir}
-                      disabled={!canEmitFuneral}
-                      className="min-w-[180px]"
-                    >
-                      {emitting ? (
-                        <>
-                          <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin-slow" />
-                          Emitiendo póliza...
-                        </>
-                      ) : (
-                        <>
-                          <Zap size={15} fill="currentColor" />
-                          Emitir póliza
-                        </>
-                      )}
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="primary"
-                      onClick={handleContinuarRcv}
-                      disabled={!canEmitRcv}
-                      className="min-w-[180px]"
-                      title={!paymentVerified ? 'Debes verificar o confirmar el pago con el banco' : undefined}
-                    >
-                      {emitting ? (
-                        <>
-                          <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin-slow" />
-                          Emitiendo póliza...
-                        </>
-                      ) : (
-                        <>
-                          <Zap size={15} fill="currentColor" />
-                          Continuar
-                        </>
-                      )}
-                    </Button>
-                  )}
+                  <Button
+                    variant="primary"
+                    onClick={handlePrimaryAction}
+                    disabled={primaryDisabled}
+                    className="min-w-[180px]"
+                    title={
+                      paymentRequired && !store.paymentVerified
+                        ? 'Debes verificar o confirmar el pago con el banco'
+                        : undefined
+                    }
+                  >
+                    {emitting ? (
+                      <>
+                        <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin-slow" />
+                        {primaryLabel}
+                      </>
+                    ) : (
+                      <>
+                        <Zap size={15} fill="currentColor" />
+                        {primaryLabel}
+                      </>
+                    )}
+                  </Button>
                 </div>
                 </div>
               )}
@@ -252,31 +335,24 @@ export default function App() {
 
       {!isSuccess && (
         <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 px-4 py-3 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-[0_-8px_24px_rgba(15,23,42,0.08)]">
-          {!paymentVerified && !funeralFlow && (
+          {paymentRequired && !store.paymentVerified && (
             <p className="text-[0.65rem] font-semibold text-amber-700 text-center mb-2">
               Confirma el pago con el banco para continuar
             </p>
           )}
-          {funeralFlow ? (
-            <Button
-              variant="primary"
-              className="w-full"
-              onClick={handleEmitir}
-              disabled={!canEmitFuneral}
-            >
-              {emitting ? 'Emitiendo...' : 'Emitir póliza'}
-            </Button>
-          ) : (
-            <Button
-              variant="primary"
-              className="w-full"
-              onClick={handleContinuarRcv}
-              disabled={!canEmitRcv}
-              title={!paymentVerified ? 'Debes verificar o confirmar el pago con el banco' : undefined}
-            >
-              {emitting ? 'Emitiendo póliza...' : 'Continuar'}
-            </Button>
-          )}
+          <Button
+            variant="primary"
+            className="w-full"
+            onClick={handlePrimaryAction}
+            disabled={primaryDisabled}
+            title={
+              paymentRequired && !store.paymentVerified
+                ? 'Debes verificar o confirmar el pago con el banco'
+                : undefined
+            }
+          >
+            {primaryLabel}
+          </Button>
         </div>
       )}
     </div>

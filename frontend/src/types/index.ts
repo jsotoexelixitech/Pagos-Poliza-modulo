@@ -101,6 +101,43 @@ export interface Plan {
 
 export type PaymentMethod = 'card' | 'transfer' | 'mobile' | 'otp';
 
+/** Línea de detalle en checkout genérico (cualquier concepto a cobrar). */
+export interface CheckoutLine {
+  label: string;
+  amountVes: number;
+  amountUsd?: number;
+}
+
+/** Datos de checkout inyectados por sesión bridge o metadata SSO. */
+export interface CheckoutData {
+  referenceId?: string;
+  title: string;
+  subtitle?: string;
+  lines?: CheckoutLine[];
+  totalVes: number;
+  totalUsd?: number;
+  exchangeRate?: number;
+}
+
+export type CheckoutOnSuccessMode = 'none' | 'redirect' | 'webhook' | 'emit';
+
+export interface CheckoutRules {
+  requirePayment?: boolean;
+  methods?: PaymentMethod[];
+  onSuccess?: {
+    mode?: CheckoutOnSuccessMode;
+    redirectUrl?: string;
+    webhookUrl?: string;
+  };
+}
+
+export interface CheckoutPayer {
+  documentType?: string;
+  documentNumber?: string;
+  name?: string;
+  phone?: string;
+}
+
 /**
  * Persona (asegurado o beneficiario) del producto Funerario.
  * Mapea a los campos de la API de Personas (ramo 9).
@@ -235,4 +272,11 @@ export interface WizardState {
   /** Snapshot del vehiculo con el que se hizo la ultima cotizacion. Sirve para
    *  invalidar la quote si cambian datos relevantes (placa, marca, modelo, año, uso). */
   quoteVehicleSignature: string | null;
+  /** Checkout genérico (cualquier concepto). Prioridad sobre plan/quote legacy. */
+  checkout: CheckoutData | null;
+  checkoutRules: CheckoutRules | null;
+  checkoutPayload: Record<string, unknown> | null;
+  checkoutPayer: CheckoutPayer | null;
+  /** Metadata canal SSO (cproductor, cramo, etc.) — igual que emisión. */
+  metadataCanal: Record<string, unknown> | null;
 }

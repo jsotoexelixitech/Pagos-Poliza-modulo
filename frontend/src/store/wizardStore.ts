@@ -12,6 +12,9 @@ import type {
   PolicyQuote,
   QuoteState,
   FuneralData,
+  CheckoutData,
+  CheckoutRules,
+  CheckoutPayer,
 } from '../types';
 
 const defaultDoc = (): DocumentState => ({ status: 'idle', progress: 0 });
@@ -96,6 +99,13 @@ interface WizardActions {
   reset: () => void;
   setPaymentVerified: (v: boolean) => void;
   setPaymentCapture: (capture: WizardState['paymentCapture']) => void;
+  setCheckout: (input: {
+    data: CheckoutData;
+    rules?: CheckoutRules | null;
+    payer?: CheckoutPayer | null;
+    payload?: Record<string, unknown> | null;
+  }) => void;
+  setMetadataCanal: (data: Record<string, unknown> | null) => void;
 }
 
 const initialState: WizardState = {
@@ -129,6 +139,11 @@ const initialState: WizardState = {
   quoteState: 'idle',
   quoteError: null,
   quoteVehicleSignature: null,
+  checkout: null,
+  checkoutRules: null,
+  checkoutPayload: null,
+  checkoutPayer: null,
+  metadataCanal: null,
 };
 
 export const useWizardStore = create<WizardState & WizardActions>()((set) => ({
@@ -199,6 +214,16 @@ export const useWizardStore = create<WizardState & WizardActions>()((set) => ({
   setPaymentVerified: (paymentVerified) => set({ paymentVerified }),
 
   setPaymentCapture: (paymentCapture) => set({ paymentCapture }),
+
+  setCheckout: ({ data, rules = null, payer = null, payload = null }) =>
+    set({
+      checkout: data,
+      checkoutRules: rules,
+      checkoutPayer: payer,
+      checkoutPayload: payload,
+    }),
+
+  setMetadataCanal: (metadataCanal) => set({ metadataCanal }),
 
   setPolicy: (policy) => set({ policy }),
 

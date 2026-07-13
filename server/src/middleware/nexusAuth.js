@@ -86,6 +86,7 @@ async function nexusAuth(req, res, next) {
         if (decoded && typeof decoded === 'object') {
           req.empresa = { id: decoded.empresaId };
           req.submoduloId = decoded.submoduloId;
+          req.nexusMetadata = decoded.metadata || {};
         }
       } catch { /* ignore */ }
     }
@@ -134,6 +135,7 @@ async function nexusAuth(req, res, next) {
     req.empresa = { id: payload.empresaId };
     req.submoduloId = payload.submoduloId;
     req.nexusToken = token;
+    req.nexusMetadata = payload.metadata || {};
 
     // ── Heartbeat: renueva el token en BD, verifica empresa activa y
     //    obtiene un nuevo access_token (1h) con la misma metadata original.
