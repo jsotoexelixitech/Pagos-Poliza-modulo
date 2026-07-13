@@ -13,6 +13,7 @@ import { formatTelefono } from '@exelixi/shared';
 import { formatCedulaRif, validateCedulaRif } from '../../lib/cedula-rif';
 import { useProductConfig } from '../../hooks/useProductConfig';
 import { hasGenericCheckout } from '../../lib/checkout';
+import { notifyClientCheckoutStatus } from '../../lib/checkout-notify';
 
 const EMPRESA_ID = Number(import.meta.env.VITE_EMPRESA_ID ?? 1);
 
@@ -78,7 +79,7 @@ export function PaymentStep() {
   const {
     paymentMethod, setPaymentMethod,
     selectedPlan, quote, quoteState, vehicle,
-    checkout, checkoutRules, checkoutPayer,
+    checkout, checkoutRules, checkoutPayer, checkoutPayload,
     setQuote, setQuoteState,
     setPaymentVerified,
     setPaymentCapture,
@@ -267,21 +268,62 @@ export function PaymentStep() {
       setPaymentVerified(result.isVerified);
       if (result.isVerified) {
         setPaymentCapture({
-          reference: result.reference,
+          reference: result.reference ?? undefined,
           amount: result.verifiedAmount ?? parseFloat(montoPagoM),
           paidOn,
         });
+        void notifyClientCheckoutStatus({
+          checkout,
+          checkoutPayload,
+          paymentVerified: true,
+          code: result.code,
+          message: result.message,
+          payment: {
+            method: 'mobile',
+            reference: result.reference,
+            amount: result.verifiedAmount ?? parseFloat(montoPagoM),
+            paidOn,
+            verifiedOn: result.verifiedOn,
+            code: result.code,
+            message: result.message,
+          },
+        });
       } else {
         setPaymentCapture(null);
+        void notifyClientCheckoutStatus({
+          checkout,
+          checkoutPayload,
+          paymentVerified: false,
+          code: result.code || 'PAYMENT_NOT_FOUND',
+          message: result.message || 'No se encontró el pago con los datos proporcionados.',
+          payment: {
+            method: 'mobile',
+            amount: parseFloat(montoPagoM),
+            paidOn,
+            code: result.code,
+            message: result.message,
+          },
+        });
       }
     } catch (err) {
       const msg = err instanceof MobilePaymentVerifyError
         ? err.message
         : 'Error inesperado al verificar el pago.';
+      const code = err instanceof MobilePaymentVerifyError
+        ? (err.baCode || err.code)
+        : 'VERIFY_ERROR';
       setVerifyError(msg);
       setVerifyStatus('error');
       setPaymentVerified(false);
       setPaymentCapture(null);
+      void notifyClientCheckoutStatus({
+        checkout,
+        checkoutPayload,
+        paymentVerified: false,
+        code,
+        message: msg,
+        payment: { method: 'mobile', amount: parseFloat(montoPagoM) || undefined, paidOn },
+      });
     }
   }
 
@@ -370,11 +412,34 @@ export function PaymentStep() {
         paidOn: TODAY_ISO,
         reference: result.transaction_id,
       });
+      void notifyClientCheckoutStatus({
+        checkout,
+        checkoutPayload,
+        paymentVerified: true,
+        code: 'OK',
+        message: 'Pago OTP confirmado',
+        payment: {
+          method: 'otp',
+          transactionId: result.transaction_id,
+          amount: parseFloat(otpAmount),
+          paidOn: TODAY_ISO,
+          reference: result.transaction_id,
+        },
+      });
       // Latch queda activo en 'done' — no se puede volver a confirmar
     } catch (err) {
-      setOtpError(err instanceof SypagoError ? err.message : 'Error al confirmar pago.');
+      const msg = err instanceof SypagoError ? err.message : 'Error al confirmar pago.';
+      setOtpError(msg);
       setOtpStep('error');
       setPaymentVerified(false);
+      void notifyClientCheckoutStatus({
+        checkout,
+        checkoutPayload,
+        paymentVerified: false,
+        code: 'OTP_CONFIRM_ERROR',
+        message: msg,
+        payment: { method: 'otp', amount: parseFloat(otpAmount) || undefined },
+      });
       // Liberar latch solo en error para permitir reintentar
       confirmInFlight.current = false;
     }

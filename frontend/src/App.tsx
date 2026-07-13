@@ -11,6 +11,7 @@ import { SuccessStep } from './features/payment/SuccessStep';
 import { emitPolicy, emitFuneral, PolicyEmitError } from './lib/api';
 import { isFunerario, isRcv } from './lib/product';
 import {
+  isEmbeddedMetadataCheckout,
   isGenericCheckoutMode,
   requiresPaymentBeforeContinue,
 } from './lib/checkout';
@@ -28,6 +29,7 @@ export default function App() {
   const funeralFlow = isFunerario();
   const rcvFlow = isRcv();
   const genericCheckout = isGenericCheckoutMode(store);
+  const embeddedCheckout = isEmbeddedMetadataCheckout(store);
   const paymentRequired = requiresPaymentBeforeContinue(store, funeralFlow);
 
   /** Funerario legacy: emitir sin bloquear por verificación bancaria. */
@@ -257,9 +259,9 @@ export default function App() {
 
       <div>
         <main
-          className={`flex-1 min-h-screen px-4 sm:px-6 lg:px-10 pb-32 lg:pb-12 ${
-            genericCheckout ? 'pt-10' : 'pt-[72px] lg:pt-10'
-          }`}
+          className={`flex-1 min-h-screen px-4 sm:px-6 lg:px-10 ${
+            genericCheckout ? 'pb-12' : 'pb-32 lg:pb-12'
+          } ${genericCheckout ? 'pt-10' : 'pt-[72px] lg:pt-10'}`}
         >
           <div className="max-w-5xl mx-auto">
             {!genericCheckout && <TopStepper />}
@@ -276,7 +278,9 @@ export default function App() {
                       Confirma y paga
                     </h1>
                     <p className="text-slate-500 text-sm mt-2 max-w-xl leading-relaxed">
-                      Una conexión cifrada protege la operación de extremo a extremo.
+                      {embeddedCheckout
+                        ? 'Al verificar el pago, tu sistema recibirá el resultado automáticamente.'
+                        : 'Una conexión cifrada protege la operación de extremo a extremo.'}
                     </p>
                   </div>
                   <a
@@ -296,7 +300,7 @@ export default function App() {
                 {isSuccess && <SuccessStep />}
               </div>
 
-              {!isSuccess && (
+              {!isSuccess && !embeddedCheckout && (
                 <div className="hidden md:flex items-center justify-between gap-4 px-8 lg:px-10 py-5 border-t border-slate-100/80 bg-gradient-to-b from-slate-50/50 to-white/40 backdrop-blur-sm">
                   <div className="flex items-center gap-2 text-xs text-slate-500">
                     <ShieldCheck size={13} className="text-emerald-500" />
@@ -334,13 +338,22 @@ export default function App() {
                 </div>
                 </div>
               )}
+
+              {!isSuccess && embeddedCheckout && (
+                <div className="hidden md:flex items-center gap-2 px-8 lg:px-10 py-5 border-t border-slate-100/80 bg-gradient-to-b from-slate-50/50 to-white/40">
+                  <ShieldCheck size={13} className="text-emerald-500" />
+                  <span className="text-xs text-slate-500 font-medium">
+                    Cifrado de extremo a extremo · TLS 1.3
+                  </span>
+                </div>
+              )}
             </section>
 
           </div>
         </main>
       </div>
 
-      {!isSuccess && (
+      {!isSuccess && !embeddedCheckout && (
         <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 px-4 py-3 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-[0_-8px_24px_rgba(15,23,42,0.08)]">
           {paymentRequired && !store.paymentVerified && (
             <p className="text-[0.65rem] font-semibold text-amber-700 text-center mb-2">

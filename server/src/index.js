@@ -20,6 +20,7 @@ const swaggerUi = require('swagger-ui-express');
 const swaggerSpec = require('./swagger');
 
 const pagosRoutes = require('./routes/pagos');
+const checkoutRoutes = require('./routes/checkout');
 const { getVerifyMobileTargetUrl } = require('./services/meritopClient');
 const nexusAuth   = require('./middleware/nexusAuth');
 
@@ -98,7 +99,8 @@ app.get('/api/valrep/:path(*)',   _proxyToEmision);
 // Se monta antes del router protegido para que no exija nexus_token.
 app.post('/api/payments/otp/webhook', pagosRoutes.handleSypagoWebhook);
 
-// Multi-tenant: todos los endpoints de pago requieren nexus_token
+// Multi-tenant: pagos y notificación checkout requieren nexus_token
+app.use('/api/checkout', nexusAuth, checkoutRoutes);
 app.use('/api/payments', nexusAuth, pagosRoutes);
 
 app.use((err, _req, res, _next) => {

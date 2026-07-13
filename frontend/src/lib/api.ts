@@ -1,5 +1,5 @@
 import axios, { AxiosError } from 'axios';
-import type { DocType, OcrResult, DocumentFile } from '../types';
+import type { CheckoutData, DocType, OcrResult, DocumentFile } from '../types';
 import { moduleApiBase } from './app-base';
 
 const api = axios.create({ baseURL: moduleApiBase() });
@@ -342,6 +342,31 @@ export async function verifyMobilePayment(
       httpStatus: status,
     });
   }
+}
+
+export interface CheckoutNotifyRequest {
+  status: 'ok' | 'error';
+  paymentVerified: boolean;
+  code?: string | null;
+  message?: string | null;
+  payment?: Record<string, unknown> | null;
+  checkout?: CheckoutData | null;
+  payload?: Record<string, unknown> | null;
+}
+
+export interface CheckoutNotifyResponse {
+  success: boolean;
+  notified?: boolean;
+  clientStatus?: number;
+  code?: string;
+  message?: string;
+}
+
+export async function notifyCheckoutStatus(
+  body: CheckoutNotifyRequest,
+): Promise<CheckoutNotifyResponse> {
+  const res = await api.post<CheckoutNotifyResponse>('/checkout/notify', body);
+  return res.data;
 }
 
 // ── SyPago — Débito OTP ───────────────────────────────────────────────────

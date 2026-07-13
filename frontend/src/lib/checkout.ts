@@ -94,6 +94,28 @@ export function isGenericCheckoutMode(
   return hasGenericCheckout(state) || isStandaloneGenericCheckoutSession();
 }
 
+/** Checkout embebido vía metadata SSO (iframe — sin botón Continuar). */
+export function isEmbeddedMetadataCheckout(
+  state: Pick<WizardState, 'checkout'>,
+): boolean {
+  return hasGenericCheckout(state);
+}
+
+/** URL/API del cliente para notificar estado del pago (payload.notifyUrl). */
+export function getCheckoutNotifyUrl(
+  payload: Record<string, unknown> | null | undefined,
+): string | null {
+  if (!payload || typeof payload !== 'object') return null;
+  const keys = ['notifyUrl', 'callbackUrl', 'statusUrl', 'webhookUrl'] as const;
+  for (const key of keys) {
+    const value = payload[key];
+    if (typeof value === 'string' && /^https?:\/\//i.test(value.trim())) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
 /** Convierte checkout → quote para reutilizar lógica de montos en Bs. */
 export function quoteFromCheckout(checkout: CheckoutData): PolicyQuote {
   return {
