@@ -101,6 +101,24 @@ export interface Plan {
 
 export type PaymentMethod = 'card' | 'transfer' | 'mobile' | 'otp';
 
+/** Datos del pago verificado para activar recibo en Sis2000 al emitir. */
+export interface PaymentCapture {
+  reference?: string;
+  transactionId?: string;
+  amount?: number;
+  paidOn?: string;
+  /** Código banco origen (cbanco_ref) usado en la verificación móvil. */
+  bankCode?: string;
+  cbanco?: number;
+  cbanco_destino?: number;
+}
+
+/** Snapshot de pago pasado al auto-emit (evita race con re-render de React). */
+export interface PaymentEmitContext {
+  paymentVerified: boolean;
+  paymentCapture: PaymentCapture | null;
+}
+
 /** Línea de detalle en checkout genérico (cualquier concepto a cobrar). */
 export interface CheckoutLine {
   label: string;
@@ -256,16 +274,7 @@ export interface WizardState {
   paymentMethod: PaymentMethod;
   paymentVerified: boolean;
   /** Datos del pago verificado para activar recibo en Sis2000 al emitir. */
-  paymentCapture?: {
-    reference?: string;
-    transactionId?: string;
-    amount?: number;
-    paidOn?: string;
-    /** Código banco origen (cbanco_ref) usado en la verificación móvil. */
-    bankCode?: string;
-    cbanco?: number;
-    cbanco_destino?: number;
-  } | null;
+  paymentCapture?: PaymentCapture | null;
   policy: IssuedPolicy | null;
   /** Cotizacion vigente desde La Mundial (mprima/mprimaext/ptasa). */
   quote: PolicyQuote | null;

@@ -19,6 +19,7 @@ import {
 import { useNexusTokenMetadata } from './hooks/useNexusTokenMetadata';
 import { toast } from './store/toastStore';
 import { Zap, ShieldCheck, HelpCircle, Sparkles } from 'lucide-react';
+import type { PaymentEmitContext } from './types';
 
 export default function App() {
   useNexusTokenMetadata();
@@ -48,28 +49,31 @@ export default function App() {
     !emitting &&
     (!paymentRequired || store.paymentVerified);
 
-  /** Estado para emisión RCV — sin depender de datos funerarios. */
-  function buildRcvEmitState() {
+  /** Estado para emisión RCV — lee el store fresco (evita race tras verificar pago). */
+  function buildRcvEmitState(paymentCtx?: PaymentEmitContext) {
+    const snap = useWizardStore.getState();
+    const paymentVerified = paymentCtx?.paymentVerified ?? snap.paymentVerified;
+    const paymentCapture = paymentCtx?.paymentCapture ?? snap.paymentCapture;
     return {
       product: 'rcv' as const,
-      tomador: store.tomador,
-      sameInsured: store.sameInsured,
-      asegurado: store.asegurado,
-      differentPayer: store.differentPayer,
-      pagador: store.pagador,
-      hasBeneficiary: store.hasBeneficiary,
-      beneficiario: store.beneficiario,
-      hasDriver: store.hasDriver,
-      conductor: store.conductor,
-      vehicle: store.vehicle,
-      category: store.category,
-      selectedPlan: store.selectedPlan,
-      paymentMethod: store.paymentMethod,
-      paymentVerified: store.paymentVerified,
-      paymentCapture: store.paymentCapture,
-      metadataCanal: store.metadataCanal,
-      checkout: store.checkout,
-      checkoutPayload: store.checkoutPayload,
+      tomador: snap.tomador,
+      sameInsured: snap.sameInsured,
+      asegurado: snap.asegurado,
+      differentPayer: snap.differentPayer,
+      pagador: snap.pagador,
+      hasBeneficiary: snap.hasBeneficiary,
+      beneficiario: snap.beneficiario,
+      hasDriver: snap.hasDriver,
+      conductor: snap.conductor,
+      vehicle: snap.vehicle,
+      category: snap.category,
+      selectedPlan: snap.selectedPlan,
+      paymentMethod: snap.paymentMethod,
+      paymentVerified,
+      paymentCapture,
+      metadataCanal: snap.metadataCanal,
+      checkout: snap.checkout,
+      checkoutPayload: snap.checkoutPayload,
     };
   }
 
@@ -131,8 +135,10 @@ export default function App() {
     goTo(6);
   }
 
-  async function handleContinuarRcv() {
-    if (paymentRequired && !store.paymentVerified) {
+  async function handleContinuarRcv(paymentCtx?: PaymentEmitContext) {
+    const snap = useWizardStore.getState();
+    const verified = paymentCtx?.paymentVerified ?? snap.paymentVerified;
+    if (paymentRequired && !verified) {
       toast.warning(
         'Pago pendiente',
         'Verifica o confirma el pago con el banco antes de continuar.',
@@ -142,9 +148,9 @@ export default function App() {
 
     setEmitting(true);
     try {
-      const planCode = store.selectedPlan?.cplan ?? 'RCVBAS';
+      const planCode = snap.selectedPlan?.cplan ?? 'RCVBAS';
       const result = await emitPolicy({
-        state: buildRcvEmitState(),
+        state: buildRcvEmitState(paymentCtx),
         plan: planCode as 'RCVBAS' | 'RUSPAT',
         frecuencia: 'A',
       });

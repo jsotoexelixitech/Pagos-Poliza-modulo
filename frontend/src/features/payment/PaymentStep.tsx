@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useWizardStore } from '../../store/wizardStore';
 import { Field, Input } from '../../components/ui/FormField';
 import { BankSearchSelect } from '../../components/ui/BankSearchSelect';
-import type { PaymentMethod } from '../../types';
+import type { PaymentMethod, PaymentCapture, PaymentEmitContext } from '../../types';
 import {
   Smartphone, Lock, ShieldCheck, KeyRound,
   Check, Receipt, Sparkles, Loader2, BadgeCheck, AlertTriangle,
@@ -77,7 +77,7 @@ const TODAY_ISO = new Date().toISOString().split('T')[0];
 
 type PaymentStepProps = {
   /** RCV: tras verificar pago, emite póliza y activa recibo en Sis2000. */
-  onPaymentVerified?: () => void | Promise<void>;
+  onPaymentVerified?: (ctx: PaymentEmitContext) => void | Promise<void>;
 };
 
 export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
@@ -159,10 +159,11 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
   const [verifyError,  setVerifyError]  = useState<string>('');
   const autoEmitStarted = useRef(false);
 
-  const triggerAutoEmit = () => {
+  const triggerAutoEmit = (capture: PaymentCapture) => {
     if (!onPaymentVerified || autoEmitStarted.current) return;
     autoEmitStarted.current = true;
-    void Promise.resolve(onPaymentVerified()).catch(() => {
+    const ctx: PaymentEmitContext = { paymentVerified: true, paymentCapture: capture };
+    void Promise.resolve(onPaymentVerified(ctx)).catch(() => {
       autoEmitStarted.current = false;
     });
   };
@@ -281,13 +282,14 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       setVerifyStatus(result.isVerified ? 'success' : 'failed');
       setPaymentVerified(result.isVerified);
       if (result.isVerified) {
-        setPaymentCapture({
+        const capture: PaymentCapture = {
           reference: result.reference ?? undefined,
           amount: result.verifiedAmount ?? parseFloat(montoPagoM),
           paidOn,
           bankCode: bankCode || undefined,
-        });
-        triggerAutoEmit();
+        };
+        setPaymentCapture(capture);
+        triggerAutoEmit(capture);
         void notifyClientCheckoutStatus({
           checkout,
           checkoutPayload,
@@ -422,14 +424,15 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       setOtpResult(result);
       setOtpStep('done');
       setPaymentVerified(true);
-      setPaymentCapture({
+      const capture: PaymentCapture = {
         transactionId: result.transaction_id,
         amount: parseFloat(otpAmount),
         paidOn: TODAY_ISO,
         reference: result.transaction_id,
         bankCode: otpBankCode || undefined,
-      });
-      triggerAutoEmit();
+      };
+      setPaymentCapture(capture);
+      triggerAutoEmit(capture);
       void notifyClientCheckoutStatus({
         checkout,
         checkoutPayload,
