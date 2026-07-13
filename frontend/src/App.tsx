@@ -13,6 +13,7 @@ import { isFunerario, isRcv } from './lib/product';
 import {
   isEmbeddedMetadataCheckout,
   isGenericCheckoutMode,
+  isPaymentBypassEnabled,
   requiresPaymentBeforeContinue,
 } from './lib/checkout';
 import { useNexusTokenMetadata } from './hooks/useNexusTokenMetadata';
@@ -30,6 +31,7 @@ export default function App() {
   const rcvFlow = isRcv();
   const genericCheckout = isGenericCheckoutMode(store);
   const embeddedCheckout = isEmbeddedMetadataCheckout(store);
+  const paymentBypass = isPaymentBypassEnabled();
   const paymentRequired = requiresPaymentBeforeContinue(store, funeralFlow);
 
   /** Funerario legacy: emitir sin bloquear por verificación bancaria. */
@@ -214,7 +216,9 @@ export default function App() {
     ? (emitting ? 'Procesando...' : 'Continuar')
     : funeralFlow
       ? (emitting ? 'Emitiendo póliza...' : 'Emitir póliza')
-      : (emitting ? 'Emitiendo póliza...' : 'Continuar');
+      : paymentBypass && !emitting
+        ? 'Continuar (sin pago · QA)'
+        : (emitting ? 'Emitiendo póliza...' : 'Continuar');
 
   async function handleEmitir() {
     if (!funeralFlow) return;

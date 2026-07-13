@@ -146,8 +146,17 @@ export function requiresPaymentBeforeContinue(
   state: Pick<WizardState, 'checkout' | 'checkoutRules'>,
   funeralFlow: boolean,
 ): boolean {
+  if (isPaymentBypassEnabled()) return false;
   if (hasGenericCheckout(state)) {
     return state.checkoutRules?.requirePayment !== false;
   }
   return !funeralFlow;
+}
+
+/**
+ * QA temporal: permite emitir RCV sin verificar pago móvil.
+ * Activar con VITE_SKIP_PAYMENT_VERIFY=true en el build de pagos-web.
+ */
+export function isPaymentBypassEnabled(): boolean {
+  return import.meta.env.VITE_SKIP_PAYMENT_VERIFY === 'true';
 }
