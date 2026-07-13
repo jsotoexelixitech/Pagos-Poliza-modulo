@@ -36,9 +36,12 @@ export default function App() {
 
   /** Funerario legacy: emitir sin bloquear por verificación bancaria. */
   const canEmitFuneral = funeralFlow && !genericCheckout && !emitting;
-  /** RCV legacy: exige pago verificado. */
+  /** RCV legacy: exige pago verificado salvo bypass QA. */
   const canEmitRcv =
-    rcvFlow && !genericCheckout && paymentRequired && store.paymentVerified && !emitting;
+    rcvFlow &&
+    !genericCheckout &&
+    !emitting &&
+    (!paymentRequired || store.paymentVerified);
   /** Checkout genérico: respeta rules.requirePayment. */
   const canCompleteGeneric =
     genericCheckout &&
