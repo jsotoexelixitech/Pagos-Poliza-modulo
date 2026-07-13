@@ -94,6 +94,7 @@ app.get('/api/personas/:path(*)',  nexusAuth, _proxyToEmision);
 // Catálogos INMA (para mostrar datos del vehículo en el checkout)
 app.get('/api/catalogo/:path(*)', _proxyToEmision);
 app.get('/api/valrep/:path(*)',   _proxyToEmision);
+app.post('/api/valrep/validate-vehicle', nexusAuth, _proxyToEmision);
 
 // Webhook de SyPago — PÚBLICO (lo invoca SyPago, valida con firma propia).
 // Se monta antes del router protegido para que no exija nexus_token.

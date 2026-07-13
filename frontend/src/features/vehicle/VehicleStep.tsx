@@ -142,6 +142,7 @@ export function VehicleStep() {
     hasDriver, setHasDriver,
     conductor, setConductor,
     documents,
+    selectedPlan,
   } = useWizardStore();
 
   const [errors, setErrors] = useState<VehicleErrors>({});
@@ -313,7 +314,7 @@ export function VehicleStep() {
   }, [categoriasUso]);
 
   // ── Validación ────────────────────────────────────────────────────────────
-  const validate = () => {
+  const validate = async () => {
     const e: VehicleErrors = {};
     const req  = (v?: string) => !(v ?? '').trim();
     const len  = (v?: string) => (v ?? '').trim().length;
@@ -379,7 +380,31 @@ export function VehicleStep() {
     }
 
     setErrors(e);
-    return Object.keys(e).length === 0;
+
+    if (Object.keys(e).length > 0) {
+      return false;
+    }
+
+    try {
+      const { validateVehicle } = await import('../../lib/api');
+      toast.info('Validando vehículo', 'Verificando placa y serial...', 2000);
+      const res = await validateVehicle(vehicle.placa || '', vehicle.serial || '', {
+        serialMotor: vehicle.serialMotor,
+        plan: selectedPlan?.cplan,
+      });
+      if (!res.success) {
+        const msg = res.message || 'El vehículo no puede ser asegurado.';
+        toast.error('Atención', msg, 6000);
+        setErrors({ ...e, placa: msg, serial: msg });
+        return false;
+      }
+    } catch {
+      toast.error('Error', 'No se pudo validar el vehículo. Inténtalo de nuevo.');
+      setErrors({ ...e, placa: 'No se pudo validar', serial: 'No se pudo validar' });
+      return false;
+    }
+
+    return true;
   };
   (window as unknown as Record<string, unknown>).__validateStep3 = validate;
 

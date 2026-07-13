@@ -544,3 +544,33 @@ export function getCiudades(cestado?: number | null): Promise<CatalogItem[]> {
 export function getValrepList(domain: string): Promise<CatalogItem[]> {
   return _fetchValrep(`/valrep/list/${domain.toUpperCase()}`);
 }
+
+export interface ValidateVehicleOptions {
+  plan?: string;
+  serialMotor?: string;
+}
+
+/**
+ * Valida en Sis2000 (vía nest-api) si el vehículo ya posee una póliza vigente.
+ */
+export async function validateVehicle(
+  placa: string,
+  serial: string,
+  options?: ValidateVehicleOptions,
+): Promise<{ success: boolean; message: string; code?: string }> {
+  try {
+    const res = await api.post('/valrep/validate-vehicle', {
+      placa,
+      serial,
+      serialMotor: options?.serialMotor,
+      plan: options?.plan,
+    });
+    return res.data;
+  } catch (err) {
+    const axErr = err as AxiosError<{ success: boolean; message: string; code?: string }>;
+    if (axErr.response?.data) {
+      return axErr.response.data;
+    }
+    throw err;
+  }
+}
