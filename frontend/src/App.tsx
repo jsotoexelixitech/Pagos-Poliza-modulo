@@ -389,6 +389,13 @@ function handleEmissionError(err: unknown) {
           8000,
         );
         return;
+      case 'NEST_API_COUNTER_COLLISION':
+        toast.error(
+          'Contador de pólizas desfasado',
+          'Sis2000 generó un número de póliza que ya existe. Avisa a soporte para sincronizar el contador POL_VEH.',
+          9000,
+        );
+        return;
       case 'INVALID_PAYLOAD':
         toast.error('Datos incompletos', err.details?.[0] ?? err.message, 7000);
         return;
