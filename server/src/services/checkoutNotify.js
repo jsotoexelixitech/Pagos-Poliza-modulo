@@ -16,54 +16,172 @@ function pickNotifyUrl(payload) {
   return null;
 }
 
-function isAllowedNotifyUrl(rawUrl) {
-  let parsed;
-  try {
-    parsed = new URL(rawUrl);
-  } catch {
-    return false;
+function isPrivateHost(hostname) {
+  const host = hostname.toLowerCase();
+  if (host === 'localhost' || host.endsWith('.localhost')) return true;
+  if (/^127\./.test(host)) return true;
+  if (/^10\./.test(host)) return true;
+  if (/^192\.168\./.test(host)) return true;
+  const m = host.match(/^172\.(\d+)\./);
+  if (m) {
+    const second = parseInt(m[1], 10);
+    return second >= 16 && second <= 31;
   }
+  return false;
+}
 
-  if (process.env.NODE_ENV === 'production' && parsed.protocol !== 'https:') {
-    return false;
-  }
-
-  const allowlist = (process.env.CHECKOUT_NOTIFY_ALLOWLIST || '')
+function parseAllowlist() {
+  return (process.env.CHECKOUT_NOTIFY_ALLOWLIST || '')
     .split(',')
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
+}
 
-  if (allowlist.length === 0) return true;
-
-  const host = parsed.hostname.toLowerCase();
+function hostMatchesAllowlist(host, allowlist) {
   return allowlist.some(
     (allowed) => host === allowed || host.endsWith(`.${allowed}`),
   );
 }
 
 /**
- * @param {object} params
- * @param {Record<string, unknown>} params.tokenPayload metadata.payload del JWT
- * @param {Record<string, unknown>} params.body cuerpo enviado por el frontend
+ * @returns {{ allowed: true } | { allowed: false, reason: string, host: string, protocol: string }}
  */
-async function deliverCheckoutNotify({ tokenPayload, body }) {
-  const mergedPayload = {
-    ...(tokenPayload && typeof tokenPayload === 'object' ? tokenPayload : {}),
+function evaluateNotifyUrl(rawUrl) {
+  let parsed;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    return { allowed: false, reason: 'INVALID_URL', host: '', protocol: '' };
+  }
+
+  const host = parsed.hostname.toLowerCase();
+  const protocol = parsed.protocol;
+
+  const allowHttp = process.env.CHECKOUT_NOTIFY_ALLOW_HTTP === 'true';
+  const allowPrivateHttp =
+    process.env.CHECKOUT_NOTIFY_ALLOW_PRIVATE_HTTP === 'true' &&
+    isPrivateHost(host);
+
+  if (
+    process.env.NODE_ENV === 'production' &&
+    protocol !== 'https:' &&
+    !allowHttp &&
+    !allowPrivateHttp
+  ) {
+    return {
+      allowed: false,
+      reason: 'HTTPS_REQUIRED',
+      host,
+      protocol,
+    };
+  }
+
+  const allowlist = parseAllowlist();
+  if (allowlist.length === 0) {
+    return { allowed: true, host, protocol };
+  }
+
+  if (!hostMatchesAllowlist(host, allowlist)) {
+    return {
+      allowed: false,
+      reason: 'HOST_NOT_IN_ALLOWLIST',
+      host,
+      protocol,
+    };
+  }
+
+  return { allowed: true, host, protocol };
+}
+
+function isAllowedNotifyUrl(rawUrl) {
+  return evaluateNotifyUrl(rawUrl).allowed;
+}
+
+function buildNotifyPayload(tokenMetadata, body) {
+  const rules =
+    tokenMetadata?.rules && typeof tokenMetadata.rules === 'object'
+      ? tokenMetadata.rules
+      : {};
+  const onSuccess =
+    rules.onSuccess && typeof rules.onSuccess === 'object'
+      ? rules.onSuccess
+      : {};
+
+  const tokenPayload =
+    tokenMetadata?.payload && typeof tokenMetadata.payload === 'object'
+      ? tokenMetadata.payload
+      : {};
+
+  const fromRules = {};
+  if (typeof onSuccess.webhookUrl === 'string') {
+    fromRules.webhookUrl = onSuccess.webhookUrl;
+  }
+  if (typeof onSuccess.redirectUrl === 'string') {
+    fromRules.callbackUrl = onSuccess.redirectUrl;
+  }
+
+  return {
+    ...tokenPayload,
+    ...fromRules,
     ...(body.payload && typeof body.payload === 'object' ? body.payload : {}),
   };
+}
+
+function notifyUrlDenyMessage(evaluation) {
+  if (evaluation.reason === 'HTTPS_REQUIRED') {
+    return (
+      'La URL de notificación debe usar HTTPS en producción. ' +
+      'Use https:// en notifyUrl o configure CHECKOUT_NOTIFY_ALLOW_PRIVATE_HTTP=true ' +
+      '(red interna) / CHECKOUT_NOTIFY_ALLOW_HTTP=true (solo QA).'
+    );
+  }
+  if (evaluation.reason === 'HOST_NOT_IN_ALLOWLIST') {
+    const allowlist = parseAllowlist();
+    return (
+      `El dominio "${evaluation.host}" no está en CHECKOUT_NOTIFY_ALLOWLIST ` +
+      `(${allowlist.join(', ')}).`
+    );
+  }
+  return 'La URL de notificación no está permitida.';
+}
+
+/**
+ * @param {object} params
+ * @param {Record<string, unknown>} [params.tokenMetadata] metadata completa del JWT
+ * @param {Record<string, unknown>} [params.tokenPayload] metadata.payload del JWT (legacy)
+ * @param {Record<string, unknown>} params.body cuerpo enviado por el frontend
+ */
+async function deliverCheckoutNotify({ tokenMetadata, tokenPayload, body }) {
+  const metadata =
+    tokenMetadata && typeof tokenMetadata === 'object'
+      ? tokenMetadata
+      : tokenPayload && typeof tokenPayload === 'object'
+        ? { payload: tokenPayload }
+        : {};
+
+  const mergedPayload = buildNotifyPayload(metadata, body);
 
   const notifyUrl = pickNotifyUrl(mergedPayload);
   if (!notifyUrl) {
-    const err = new Error('payload.notifyUrl no está definido en la metadata SSO.');
+    const err = new Error(
+      'payload.notifyUrl no está definido en la metadata SSO (payload o rules.onSuccess.webhookUrl).',
+    );
     err.code = 'NOTIFY_URL_MISSING';
     err.status = 400;
     throw err;
   }
 
-  if (!isAllowedNotifyUrl(notifyUrl)) {
-    const err = new Error('La URL de notificación no está permitida.');
+  const evaluation = evaluateNotifyUrl(notifyUrl);
+  if (!evaluation.allowed) {
+    const err = new Error(notifyUrlDenyMessage(evaluation));
     err.code = 'NOTIFY_URL_NOT_ALLOWED';
     err.status = 403;
+    err.details = {
+      reason: evaluation.reason,
+      host: evaluation.host,
+      protocol: evaluation.protocol,
+      notifyUrl,
+    };
     throw err;
   }
 
@@ -102,4 +220,6 @@ module.exports = {
   deliverCheckoutNotify,
   pickNotifyUrl,
   isAllowedNotifyUrl,
+  evaluateNotifyUrl,
+  buildNotifyPayload,
 };

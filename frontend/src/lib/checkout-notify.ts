@@ -1,4 +1,4 @@
-import type { CheckoutData } from '../types';
+import type { CheckoutData, CheckoutRules } from '../types';
 import { notifyCheckoutStatus } from './api';
 import { getCheckoutNotifyUrl, hasGenericCheckout } from './checkout';
 import { toast } from '../store/toastStore';
@@ -6,6 +6,7 @@ import { toast } from '../store/toastStore';
 /** Notifica al notifyUrl del cliente (metadata.payload) vía pagos-api. */
 export async function notifyClientCheckoutStatus(params: {
   checkout: CheckoutData | null;
+  checkoutRules: CheckoutRules | null;
   checkoutPayload: Record<string, unknown> | null;
   paymentVerified: boolean;
   code?: string | null;
@@ -13,7 +14,7 @@ export async function notifyClientCheckoutStatus(params: {
   payment?: Record<string, unknown> | null;
 }): Promise<void> {
   if (!hasGenericCheckout({ checkout: params.checkout })) return;
-  if (!getCheckoutNotifyUrl(params.checkoutPayload)) return;
+  if (!getCheckoutNotifyUrl(params.checkoutPayload, params.checkoutRules)) return;
 
   try {
     const res = await notifyCheckoutStatus({

@@ -101,16 +101,24 @@ export function isEmbeddedMetadataCheckout(
   return hasGenericCheckout(state);
 }
 
-/** URL/API del cliente para notificar estado del pago (payload.notifyUrl). */
+/** URL/API del cliente para notificar estado del pago (payload o rules.onSuccess). */
 export function getCheckoutNotifyUrl(
   payload: Record<string, unknown> | null | undefined,
+  rules?: CheckoutRules | null,
 ): string | null {
-  if (!payload || typeof payload !== 'object') return null;
+  const sources: Record<string, unknown>[] = [];
+  if (payload && typeof payload === 'object') sources.push(payload);
+  if (rules?.onSuccess && typeof rules.onSuccess === 'object') {
+    sources.push(rules.onSuccess);
+  }
+
   const keys = ['notifyUrl', 'callbackUrl', 'statusUrl', 'webhookUrl'] as const;
-  for (const key of keys) {
-    const value = payload[key];
-    if (typeof value === 'string' && /^https?:\/\//i.test(value.trim())) {
-      return value.trim();
+  for (const source of sources) {
+    for (const key of keys) {
+      const value = source[key];
+      if (typeof value === 'string' && /^https?:\/\//i.test(value.trim())) {
+        return value.trim();
+      }
     }
   }
   return null;

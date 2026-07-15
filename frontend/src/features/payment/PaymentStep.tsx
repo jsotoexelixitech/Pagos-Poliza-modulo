@@ -294,6 +294,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
         triggerAutoEmit(capture);
         void notifyClientCheckoutStatus({
           checkout,
+          checkoutRules,
           checkoutPayload,
           paymentVerified: true,
           code: result.code,
@@ -312,6 +313,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
         setPaymentCapture(null);
         void notifyClientCheckoutStatus({
           checkout,
+          checkoutRules,
           checkoutPayload,
           paymentVerified: false,
           code: result.code || 'PAYMENT_NOT_FOUND',
@@ -338,6 +340,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       setPaymentCapture(null);
       void notifyClientCheckoutStatus({
         checkout,
+        checkoutRules,
         checkoutPayload,
         paymentVerified: false,
         code,
@@ -437,6 +440,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       triggerAutoEmit(capture);
       void notifyClientCheckoutStatus({
         checkout,
+        checkoutRules,
         checkoutPayload,
         paymentVerified: true,
         code: 'OK',
@@ -457,6 +461,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       setPaymentVerified(false);
       void notifyClientCheckoutStatus({
         checkout,
+        checkoutRules,
         checkoutPayload,
         paymentVerified: false,
         code: 'OTP_CONFIRM_ERROR',

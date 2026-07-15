@@ -9,9 +9,8 @@ const router = express.Router();
  */
 router.post('/notify', async (req, res) => {
   try {
-    const tokenPayload = req.nexusMetadata?.payload;
     const result = await deliverCheckoutNotify({
-      tokenPayload,
+      tokenMetadata: req.nexusMetadata,
       body: req.body || {},
     });
 
@@ -34,6 +33,7 @@ router.post('/notify', async (req, res) => {
       success: false,
       code: err.code || 'NOTIFY_ERROR',
       message: err.message || 'Error al notificar al cliente.',
+      ...(err.details ? { details: err.details } : {}),
     });
   }
 });
