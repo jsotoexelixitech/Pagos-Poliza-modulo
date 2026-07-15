@@ -22,7 +22,11 @@ import { resolveNexusApiUrl } from '../nexus/nexus-core';
 import { canNavigateToStep, getDefaultRequiredDocs } from './wizard-navigation';
 import { getProductConfig } from './product';
 import { applyWizardStepFromUrl, defaultStepForModule, stepToModuleOrder } from './wizard-step';
-import { isValidCheckoutInput, quoteFromCheckout } from './checkout';
+import {
+  isStandaloneGenericCheckoutSession,
+  isValidCheckoutInput,
+  quoteFromCheckout,
+} from './checkout';
 
 // ── Configuración por puerto (dev local) o hostname (HTTPS sslip.io) ───────
 const PORT_TO_ORDER: Record<string, number> = {
@@ -141,7 +145,14 @@ async function tryAutoStart(nexusToken: string): Promise<string | null> {
 
     if (!r.ok) return null;
 
-    const data = await r.json() as { success: boolean; data?: { sid: string; firstUrl: string } };
+    const data = await r.json() as {
+      success: boolean;
+      data?: { sid?: string; firstUrl?: string; standalone?: boolean; checkoutMode?: boolean };
+    };
+    if (data.success && data.data?.standalone) {
+      console.info('[bridge] checkout SSO — standalone, no chaining needed');
+      return null;
+    }
     if (!data.success || !data.data?.sid) return null;
 
     const sid = data.data.sid;
@@ -370,10 +381,15 @@ async function init() {
   if (!bridge.active && typeof window !== 'undefined') {
     const nexusToken = getNexusTokenFromUrl();
     if (nexusToken) {
+      // Checkout SSO embebido: Pagos es punto de entrada válido sin OCR→Form→Emisión
+      if (isStandaloneGenericCheckoutSession()) {
+        console.info('[bridge] checkout SSO metadata — skip start-from-token');
+      } else {
       const autoSid = await tryAutoStart(nexusToken);
       if (autoSid) {
         // Re-crear el bridge ahora que el sid está en la URL
         bridge = makeBridge();
+      }
       }
     }
   }
