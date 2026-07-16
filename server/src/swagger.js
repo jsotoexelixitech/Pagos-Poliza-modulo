@@ -9,30 +9,36 @@ const options = {
       description: `
 ## Módulo Pagos — Verificación de pagos y débito OTP
 
-Gestiona los dos métodos de pago disponibles en el flujo de suscripción RCV:
+### Integración SSO segura (apps externas)
 
-### 1. Pago Móvil (Meritop / Banco Activo)
-Verifica que el cliente realizó un pago móvil interbancario. El servidor consulta
-el gateway **Meritop** con los datos del pago y retorna si la transacción fue encontrada.
+**Sí es posible** integrar Pagos sin pasar por OCR/Formulario/Emisión:
 
-\`\`\`
-POST /api/payments/verify-mobile
-\`\`\`
+1. **Nexus API** — \`POST /api/auth/sso-delegate\` con \`target: "pagos"\`, \`x-api-key\` y metadata:
+   - \`checkout.totalVes\` (monto obligatorio)
+   - \`payload.notifyUrl\` (webhook HTTPS post-pago)
+   - \`rules.methods\`: \`mobile\` | \`otp\` | \`transfer\` | \`card\`
+2. Redirigir al usuario a \`redirect_url\` (incluye \`nexus_token\`).
+3. Tras pago, Pagos llama a \`POST /api/checkout/notify\` → reenvía a \`notifyUrl\`.
 
-### 2. Débito OTP (SyPago)
-Flujo de 3 pasos para debitar directamente desde la cuenta bancaria del cliente:
-1. \`POST /api/payments/otp/request\` — envía el OTP al teléfono del cliente.
-2. \`POST /api/payments/otp/confirm\` — confirma el débito con el OTP recibido.
-3. \`GET  /api/payments/otp/status/:transactionId\` — consulta el estado de la transacción.
+**Alternativa:** \`POST /api/flow/checkout-link\` en Nexus (server-to-server).
 
-### Integración con otros módulos
-Este módulo recibe el resumen de la póliza del **Módulo Emisión** para calcular el monto
-exacto a cobrar. Después de confirmar el pago, el frontend llama al **Módulo Emisión**
-para emitir la póliza definitiva.
+Guía completa: **Nexus** \`docs/INTEGRACION-SSO-Y-PAGOS.md\` · Swagger Nexus: \`/nexus-api/api-docs\`
 
-### Autenticación (OAuth 2.0)
-Este módulo está protegido. Debe incluir un **Access Token** en la cabecera HTTP \`Authorization: Bearer <token>\`.
-El token se obtiene intercambiando su **API Key** en el endpoint \`/api/access/token\` del servidor central (Nexus API).
+---
+
+### Métodos de pago en UI
+
+#### 1. Pago Móvil (Meritop / Banco Activo)
+\`POST /api/payments/verify-mobile\`
+
+#### 2. Débito OTP (SyPago)
+1. \`POST /api/payments/otp/request\`
+2. \`POST /api/payments/otp/confirm\`
+3. \`GET  /api/payments/otp/status/:transactionId\`
+
+### Autenticación
+Todas las rutas \`/api/payments/*\` y \`/api/checkout/*\` requieren **\`Authorization: Bearer <nexus_token>\`**
+(obtenido vía SSO delegate o sesión del flujo RCV).
 
 ### Estado de integraciones
 | Servicio | Estado |
@@ -46,9 +52,11 @@ El token se obtiene intercambiando su **API Key** en el endpoint \`/api/access/t
       },
     },
     servers: [
+      { url: 'https://cierrelmds.exelixitech.com/pagos-api', description: 'Producción cierrelmds' },
       { url: 'http://localhost:3001', description: 'Desarrollo local' },
     ],
     tags: [
+      { name: 'Integración SSO', description: 'Webhook post-pago vía metadata.notifyUrl' },
       { name: 'Pago Móvil', description: 'Verificación de pago móvil interbancario via Meritop' },
       { name: 'Débito OTP', description: 'Débito bancario con OTP via SyPago' },
       { name: 'Sistema',    description: 'Estado del servicio' },
@@ -64,7 +72,7 @@ El token se obtiene intercambiando su **API Key** en el endpoint \`/api/access/t
           type: 'http',
           scheme: 'bearer',
           bearerFormat: 'JWT',
-          description: 'Ingrese su Access Token temporal (obtenido desde Nexus API vía /api/access/token)',
+          description: 'nexus_token del SSO delegate o sesión flujo RCV (Authorization: Bearer)',
         },
       },
       schemas: {
