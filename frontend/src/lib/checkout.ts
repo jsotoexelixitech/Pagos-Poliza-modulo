@@ -98,7 +98,19 @@ export function isGenericCheckoutMode(
 export function isEmbeddedMetadataCheckout(
   state: Pick<WizardState, 'checkout'>,
 ): boolean {
-  return hasGenericCheckout(state);
+  if (!isGenericCheckoutMode(state)) return false;
+  if (typeof window === 'undefined') return true;
+  // Bridge (?sid=) puede usar onSuccess.emit; metadata SSO no controla el flujo del cliente.
+  return !new URLSearchParams(window.location.search).get('sid');
+}
+
+/** Concepto SyPago / descripción del cobro según el modo activo. */
+export function getCheckoutPaymentConcept(
+  checkout: CheckoutData | null | undefined,
+): string {
+  const title = checkout?.title?.trim();
+  if (title) return title;
+  return 'Pago en línea';
 }
 
 /** URL/API del cliente para notificar estado del pago (payload o rules.onSuccess). */

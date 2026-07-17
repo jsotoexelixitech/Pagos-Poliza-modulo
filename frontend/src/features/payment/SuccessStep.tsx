@@ -1,6 +1,7 @@
 import { useWizardStore } from '../../store/wizardStore';
 import { Button } from '../../components/ui/Button';
 import { toast } from '../../store/toastStore';
+import { isGenericCheckoutMode } from '../../lib/checkout';
 import {
   CheckCircle2, Download, RefreshCw, ShieldCheck,
   Calendar, Share2, Copy, ExternalLink,
@@ -8,7 +9,11 @@ import {
 import { formatUsdShort } from '../../lib/money';
 
 export function SuccessStep() {
-  const { policy, tomador, selectedPlan, reset } = useWizardStore();
+  const {
+    policy, tomador, selectedPlan, checkout, paymentCapture, reset,
+  } = useWizardStore();
+
+  const genericCheckout = isGenericCheckoutMode({ checkout });
 
   const holder = [tomador.nombre, tomador.apellido].filter(Boolean).join(' ') || 'Cliente';
   const policyNum = policy?.cnpoliza || policy?.number || 'LM-2026-000000';
@@ -52,6 +57,70 @@ export function SuccessStep() {
       );
     }
   };
+
+  if (genericCheckout) {
+    const paidAmount = paymentCapture?.amount ?? checkout?.totalVes ?? 0;
+    const paidUsd = checkout?.totalUsd ?? paidAmount;
+
+    return (
+      <div className="animate-fade-in py-2">
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-emerald-50 border border-emerald-200 mb-4">
+            <CheckCircle2 size={28} className="text-emerald-600" strokeWidth={2.2} />
+          </div>
+          <p className="text-[0.7rem] font-bold text-emerald-700 uppercase tracking-wider mb-2 inline-flex items-center gap-1.5">
+            <ShieldCheck size={11} />
+            Pago completado
+          </p>
+          <h2 className="font-display text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight mb-2">
+            Operación registrada
+          </h2>
+          <p className="text-slate-500 max-w-md mx-auto leading-relaxed text-sm">
+            El pago fue confirmado. Tu sistema recibirá la notificación automáticamente.
+          </p>
+        </div>
+
+        <div className="max-w-2xl mx-auto mb-8">
+          <div className="rounded-2xl bg-white border border-slate-200 p-6 sm:p-7">
+            <div className="space-y-4">
+              <div>
+                <p className="text-[0.6rem] font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                  Concepto
+                </p>
+                <p className="font-semibold text-slate-900 text-lg">{checkout?.title ?? 'Pago en línea'}</p>
+                {checkout?.subtitle && (
+                  <p className="text-sm text-slate-500 mt-1">{checkout.subtitle}</p>
+                )}
+              </div>
+              <div className="pt-4 border-t border-slate-100 flex items-end justify-between gap-4 flex-wrap">
+                <div>
+                  <p className="text-[0.6rem] font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                    Monto pagado
+                  </p>
+                  <p className="font-display font-bold text-2xl text-slate-900 tabular-nums">
+                    Bs {paidAmount.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                </div>
+                {paidUsd > 0 && (
+                  <p className="font-display font-bold text-xl text-slate-700 tabular-nums">
+                    {formatUsdShort(paidUsd)}
+                  </p>
+                )}
+              </div>
+              {paymentCapture?.reference && (
+                <div className="pt-4 border-t border-slate-100">
+                  <p className="text-[0.6rem] font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                    Referencia
+                  </p>
+                  <p className="font-mono font-bold text-slate-800">{paymentCapture.reference}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="animate-fade-in py-2">

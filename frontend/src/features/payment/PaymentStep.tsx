@@ -12,7 +12,10 @@ import { formatUsdShort, vesAnnual } from '../../lib/money';
 import { formatTelefono } from '@exelixi/shared';
 import { formatCedulaRif, validateCedulaRif } from '../../lib/cedula-rif';
 import { useProductConfig } from '../../hooks/useProductConfig';
-import { hasGenericCheckout } from '../../lib/checkout';
+import {
+  getCheckoutPaymentConcept,
+  isGenericCheckoutMode,
+} from '../../lib/checkout';
 import { notifyClientCheckoutStatus } from '../../lib/checkout-notify';
 
 const EMPRESA_ID = Number(import.meta.env.VITE_EMPRESA_ID ?? 1);
@@ -90,7 +93,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
     setPaymentCapture,
   } = useWizardStore();
 
-  const genericCheckout = hasGenericCheckout({ checkout });
+  const genericCheckout = isGenericCheckoutMode({ checkout });
 
   const producto = new URLSearchParams(window.location.search).get('product') as 'rcv' | 'funerario' ?? 'rcv';
   const { config } = useProductConfig(EMPRESA_ID, producto, 'pagos');
@@ -229,9 +232,10 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
     }
   }, [paymentMethod, setPaymentMethod, availableMethods]);
 
-  const isLoadingQuote = quoteState === 'loading';
-  const hasRealQuote   = quoteState === 'ready' && Boolean(quote);
-  const isQuoteError   = quoteState === 'error';
+  const isLoadingQuote = !genericCheckout && quoteState === 'loading';
+  const hasRealQuote   = !genericCheckout && quoteState === 'ready' && Boolean(quote);
+  const isQuoteError   = !genericCheckout && quoteState === 'error';
+  const hasLockedAmount = genericCheckout || hasRealQuote;
 
   const annualUsd = genericCheckout
     ? (checkout!.totalUsd ?? checkout!.totalVes)
@@ -424,7 +428,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
         debtorName    : otpName,
         amount        : parseFloat(otpAmount),
         otp           : otpCode.trim(),
-        concept       : 'Prima de seguro RCV - La Mundial',
+        concept       : getCheckoutPaymentConcept(checkout),
       });
       setOtpResult(result);
       setOtpStep('done');
@@ -476,7 +480,9 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
   return (
     <div className="animate-fade-in space-y-6">
       <p className="text-slate-500 text-sm leading-relaxed -mt-2">
-        Confirma el método de pago y emite la póliza. La operación está cifrada de extremo a extremo.
+        {genericCheckout
+          ? 'Selecciona el método de pago y confirma la operación. La conexión está cifrada de extremo a extremo.'
+          : 'Confirma el método de pago y emite la póliza. La operación está cifrada de extremo a extremo.'}
       </p>
 
       {/* Total bar */}
@@ -719,7 +725,9 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
               <Field
                 label="Monto a pagar (Bs)"
                 hint={
-                  hasRealQuote
+                  genericCheckout
+                    ? 'Monto exacto del checkout · no editable'
+                    : hasRealQuote
                     ? 'Monto exacto según cotización oficial · no editable'
                     : isLoadingQuote
                     ? 'Calculando monto en bolívares desde la cotización...'
@@ -731,15 +739,15 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
                 <Input
                   value={montoPagoM}
                   onChange={(e) => {
-                    if (hasRealQuote) return; // bloqueado si hay cotización oficial
+                    if (hasLockedAmount) return;
                     setMontoM(e.target.value.replace(/[^0-9.]/g, ''));
                     setVerifyStatus('idle');
                     setPaymentVerified(false);
                   }}
                   placeholder="198114.50"
                   inputMode="decimal"
-                  readOnly={hasRealQuote}
-                  className={hasRealQuote ? 'bg-slate-50 text-slate-700 font-bold cursor-not-allowed' : ''}
+                  readOnly={hasLockedAmount}
+                  className={hasLockedAmount ? 'bg-slate-50 text-slate-700 font-bold cursor-not-allowed' : ''}
                 />
               </Field>
             </div>
@@ -911,7 +919,9 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
                   <Field
                     label="Monto a debitar (Bs)"
                     hint={
-                      hasRealQuote
+                      genericCheckout
+                        ? 'Monto exacto del checkout · no editable'
+                        : hasRealQuote
                         ? 'Monto exacto según cotización oficial · no editable'
                         : isLoadingQuote
                         ? 'Calculando monto en bolívares desde la cotización...'
@@ -923,13 +933,13 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
                     <Input
                       value={otpAmount}
                       onChange={(e) => {
-                        if (hasRealQuote) return; // bloqueado si hay cotización oficial
+                        if (hasLockedAmount) return;
                         setOtpAmount(e.target.value.replace(/[^0-9.]/g, ''));
                       }}
                       placeholder="198114.50"
                       inputMode="decimal"
-                      readOnly={hasRealQuote}
-                      className={hasRealQuote ? 'bg-slate-50 text-slate-700 font-bold cursor-not-allowed' : ''}
+                      readOnly={hasLockedAmount}
+                      className={hasLockedAmount ? 'bg-slate-50 text-slate-700 font-bold cursor-not-allowed' : ''}
                     />
                   </Field>
                 </div>
@@ -1064,7 +1074,9 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
                       </dd>
                     </dl>
                     <p className="text-[0.65rem] text-emerald-600/70 mt-2">
-                      El resultado definitivo se recibirá vía webhook. Puedes continuar a emitir la póliza.
+                      {genericCheckout
+                        ? 'Tu sistema recibirá el resultado del pago automáticamente.'
+                        : 'El resultado definitivo se recibirá vía webhook. Puedes continuar a emitir la póliza.'}
                     </p>
                   </div>
                 </div>

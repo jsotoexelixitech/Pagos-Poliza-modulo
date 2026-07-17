@@ -77,17 +77,22 @@ export default function App() {
     };
   }
 
-  /** Estado para emisión funerario — incluye cuestionario de salud. */
+  /** Estado para emisión funerario — incluye cuestionario de salud y personas. */
   function buildFuneralEmitState() {
+    const snap = useWizardStore.getState();
     return {
       product: 'funerario' as const,
-      tomador: store.tomador,
-      funeral: store.funeral,
-      selectedPlan: store.selectedPlan,
-      paymentMethod: store.paymentMethod,
-      metadataCanal: store.metadataCanal,
-      checkout: store.checkout,
-      checkoutPayload: store.checkoutPayload,
+      tomador: snap.tomador,
+      funeral: snap.funeral,
+      sameInsured: snap.sameInsured,
+      asegurado: snap.asegurado,
+      hasBeneficiary: snap.hasBeneficiary,
+      beneficiario: snap.beneficiario,
+      selectedPlan: snap.selectedPlan,
+      paymentMethod: snap.paymentMethod,
+      metadataCanal: snap.metadataCanal,
+      checkout: snap.checkout,
+      checkoutPayload: snap.checkoutPayload,
     };
   }
 
@@ -307,14 +312,17 @@ export default function App() {
                       {genericCheckout ? 'Pago' : 'Paso 05 · Checkout'}
                     </p>
                     <h1 className="font-display text-3xl sm:text-[2.5rem] font-black text-slate-900 tracking-tight leading-tight">
-                      Confirma y paga
+                      {genericCheckout ? 'Realiza tu pago' : 'Confirma y paga'}
                     </h1>
                     <p className="text-slate-500 text-sm mt-2 max-w-xl leading-relaxed">
                       {embeddedCheckout
                         ? 'Al verificar el pago, tu sistema recibirá el resultado automáticamente.'
-                        : 'Una conexión cifrada protege la operación de extremo a extremo.'}
+                        : genericCheckout
+                          ? 'Revisa el detalle y confirma el método de pago.'
+                          : 'Una conexión cifrada protege la operación de extremo a extremo.'}
                     </p>
                   </div>
+                  {!genericCheckout && (
                   <a
                     href="mailto:soporte@lamundialdeseguros.com?subject=Suscripci%C3%B3n%20RCV%20-%20Soporte"
                     className="hidden sm:inline-flex items-center gap-2 px-3.5 py-2 rounded-full glass-light text-slate-600 hover:text-indigo-600 text-xs font-bold transition-all hover:-translate-y-0.5"
@@ -322,6 +330,7 @@ export default function App() {
                     <HelpCircle size={13} />
                     ¿Necesitas ayuda?
                   </a>
+                  )}
                 </div>
               </header>
             )}
