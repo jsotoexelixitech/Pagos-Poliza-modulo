@@ -26,7 +26,7 @@ export default defineConfig(({ mode }) => {
     '/files': { target: pagosApi, changeOrigin: true },
     '/docs': { target: pagosApi, changeOrigin: true },
     '/docs.json': { target: pagosApi, changeOrigin: true },
-  })
+  }, env.VITE_DEPLOY_PREFIX)
 
   return {
     base,

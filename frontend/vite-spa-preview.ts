@@ -1,4 +1,5 @@
 import type { Plugin } from 'vite';
+import { isBackendProxyPath } from './vite-paths';
 
 /** Fallback SPA para `vite preview` bajo subpath (/pagos/). */
 export function spaPreviewFallback(base: string): Plugin {
@@ -17,6 +18,11 @@ export function spaPreviewFallback(base: string): Plugin {
         const raw = req.url ?? '/';
         const [pathname, search = ''] = raw.split('?');
         const qs = search ? `?${search}` : '';
+
+        if (isBackendProxyPath(pathname)) {
+          next();
+          return;
+        }
 
         const isUnderBase =
           pathname === basePath
