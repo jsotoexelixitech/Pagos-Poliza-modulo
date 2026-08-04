@@ -26,7 +26,7 @@ const nexusAuth   = require('./middleware/nexusAuth');
 
 const app = express();
 
-const PORT = parseInt(process.env.PORT, 10) || 3001;
+const PORT = parseInt(process.env.PORT, 10) || 4003;
 const CORS_ORIGINS = (process.env.CORS_ORIGINS || '*').split(',').map(s => s.trim());
 
 app.use(cors({

@@ -20,7 +20,7 @@ module.exports = {
       max_memory_restart: '256M',
       env_production: {
         NODE_ENV: 'production',
-        PORT: 3001,
+        PORT: 4003,
       },
       out_file:   path.join(ROOT, 'logs', 'pagos-api.out.log'),
       error_file: path.join(ROOT, 'logs', 'pagos-api.err.log'),
