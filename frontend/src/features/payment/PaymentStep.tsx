@@ -12,6 +12,7 @@ import { formatUsdShort, vesAnnual } from '../../lib/money';
 import { formatTelefono } from '@exelixi/shared';
 import { formatCedulaRif, validateCedulaRif } from '../../lib/cedula-rif';
 import { useProductConfig } from '../../hooks/useProductConfig';
+import { isExelixiCatalogProduct } from '../../lib/product';
 import {
   getCheckoutPaymentConcept,
   isGenericCheckoutMode,
@@ -114,9 +115,9 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
     }
   }, [quote, quoteState, setQuoteState]);
 
-  // Auto-cotizar solo en flujo legacy (RCV/funerario sin checkout genérico).
+  // Auto-cotizar solo en flujo legacy La Mundial (RCV/funerario sin checkout genérico).
   useEffect(() => {
-    if (genericCheckout) return;
+    if (genericCheckout || isExelixiCatalogProduct()) return;
     if (quoteState === 'ready' || quoteState === 'loading') return;
     if (quote !== null) return; // ya hay quote (caso anterior lo activará)
     const plan = selectedPlan?.cplan;

@@ -8,8 +8,9 @@ import { WelcomeSplash } from './components/WelcomeSplash';
 import { Button } from './components/ui/Button';
 import { PaymentStep } from './features/payment/PaymentStep';
 import { SuccessStep } from './features/payment/SuccessStep';
-import { emitPolicy, emitFuneral, PolicyEmitError } from './lib/api';
-import { isFunerario, isRcv } from './lib/product';
+import { emitPolicy, emitFuneral, emitExelixiPolicy, PolicyEmitError } from './lib/api';
+import { isFunerario, isRcv, isExelixiCatalogProduct } from './lib/product';
+import { readStoredBuilderProduct } from './lib/exelixi-catalog';
 import {
   isEmbeddedMetadataCheckout,
   isGenericCheckoutMode,
@@ -30,6 +31,7 @@ export default function App() {
   const isSuccess = step === 6;
   const funeralFlow = isFunerario();
   const rcvFlow = isRcv();
+  const exelixiFlow = isExelixiCatalogProduct();
   const genericCheckout = isGenericCheckoutMode(store);
   const embeddedCheckout = isEmbeddedMetadataCheckout(store);
   const paymentBypass = isPaymentBypassEnabled();
@@ -40,6 +42,13 @@ export default function App() {
   /** RCV legacy: exige pago verificado salvo bypass QA. */
   const canEmitRcv =
     rcvFlow &&
+    !exelixiFlow &&
+    !genericCheckout &&
+    !emitting &&
+    (!paymentRequired || store.paymentVerified);
+  /** Exélixi catálogo: emite vía product-emission tras pago (o bypass QA). */
+  const canEmitExelixi =
+    exelixiFlow &&
     !genericCheckout &&
     !emitting &&
     (!paymentRequired || store.paymentVerified);
@@ -140,6 +149,52 @@ export default function App() {
     goTo(6);
   }
 
+  /** Estado para emisión Exélixi genérica (product-builder + nest-api). */
+  function buildExelixiEmitState(paymentCtx?: PaymentEmitContext) {
+    const snap = useWizardStore.getState();
+    const paymentVerified = paymentCtx?.paymentVerified ?? snap.paymentVerified;
+    const paymentCapture = paymentCtx?.paymentCapture ?? snap.paymentCapture;
+    return {
+      product: 'exelixi-catalog' as const,
+      builderProduct: readStoredBuilderProduct(),
+      tomador: snap.tomador,
+      sameInsured: snap.sameInsured,
+      asegurado: snap.asegurado,
+      hasBeneficiary: snap.hasBeneficiary,
+      beneficiario: snap.beneficiario,
+      vehicle: snap.vehicle,
+      funeral: snap.funeral,
+      category: snap.category,
+      selectedPlan: snap.selectedPlan,
+      quote: snap.quote,
+      paymentMethod: snap.paymentMethod,
+      paymentVerified,
+      paymentCapture,
+    };
+  }
+
+  async function handleContinuarExelixi(paymentCtx?: PaymentEmitContext) {
+    const snap = useWizardStore.getState();
+    const verified = paymentCtx?.paymentVerified ?? snap.paymentVerified;
+    if (paymentRequired && !verified) {
+      toast.warning(
+        'Pago pendiente',
+        'Verifica o confirma el pago con el banco antes de emitir.',
+      );
+      return;
+    }
+
+    setEmitting(true);
+    try {
+      const result = await emitExelixiPolicy({ state: buildExelixiEmitState(paymentCtx) });
+      applyEmissionResult(result);
+    } catch (err) {
+      handleEmissionError(err);
+    } finally {
+      setEmitting(false);
+    }
+  }
+
   async function handleContinuarRcv(paymentCtx?: PaymentEmitContext) {
     const snap = useWizardStore.getState();
     const verified = paymentCtx?.paymentVerified ?? snap.paymentVerified;
@@ -230,6 +285,10 @@ export default function App() {
       void handleGenericComplete();
       return;
     }
+    if (exelixiFlow) {
+      void handleContinuarExelixi();
+      return;
+    }
     if (funeralFlow) {
       void handleEmitir();
       return;
@@ -239,13 +298,21 @@ export default function App() {
 
   const primaryDisabled = genericCheckout
     ? !canCompleteGeneric
-    : funeralFlow
-      ? !canEmitFuneral
-      : !canEmitRcv;
+    : exelixiFlow
+      ? !canEmitExelixi
+      : funeralFlow
+        ? !canEmitFuneral
+        : !canEmitRcv;
 
   const primaryLabel = genericCheckout
     ? (emitting ? 'Procesando...' : 'Continuar')
-    : funeralFlow
+    : exelixiFlow
+      ? store.paymentVerified
+        ? (emitting ? 'Emitiendo póliza Exélixi...' : 'Emitir póliza')
+        : paymentBypass && !emitting
+          ? 'Emitir (sin pago · QA)'
+          : (emitting ? 'Emitiendo...' : 'Verificar pago para emitir')
+      : funeralFlow
       ? (emitting ? 'Emitiendo póliza...' : 'Emitir póliza')
       : store.paymentVerified
         ? (emitting ? 'Emitiendo y activando recibo...' : 'Reemitir póliza')
@@ -340,7 +407,11 @@ export default function App() {
                 {!isSuccess && (
                   <PaymentStep
                     onPaymentVerified={
-                      rcvFlow && !genericCheckout ? handleContinuarRcv : undefined
+                      exelixiFlow && !genericCheckout
+                        ? handleContinuarExelixi
+                        : rcvFlow && !genericCheckout
+                          ? handleContinuarRcv
+                          : undefined
                     }
                   />
                 )}

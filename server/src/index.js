@@ -88,6 +88,8 @@ async function _proxyToEmision(req, res) {
 
 app.post('/api/policies/emit',  nexusAuth, _proxyToEmision);
 app.post('/api/policies/quote', nexusAuth, _proxyToEmision);
+app.post('/api/exelixi/quote',  nexusAuth, _proxyToEmision);
+app.post('/api/exelixi/emit',   nexusAuth, _proxyToEmision);
 // Producto Funerario (personas, ramo 9): cotización y emisión viven en emisión.
 app.post('/api/personas/:path(*)', nexusAuth, _proxyToEmision);
 app.get('/api/personas/:path(*)',  nexusAuth, _proxyToEmision);

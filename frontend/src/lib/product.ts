@@ -6,15 +6,16 @@
  * sessionStorage. Por defecto es `rcv` (comportamiento previo).
  */
 import type { ProductId } from '../types';
+import { getExelixiCatalogProductView, isExelixiCatalogFlow } from './exelixi-catalog';
 
 export interface ProductConfig {
   id: ProductId;
   label: string;
   fullLabel: string;
-  /** Ramo La Mundial asociado (RCV=18, Funerario=9). */
   cramo: number;
-  /** True si el flujo incluye datos de vehículo (RCV). */
   hasVehicle: boolean;
+  exelixiCatalog?: boolean;
+  builderProductId?: string;
 }
 
 export const PRODUCTS: Record<ProductId, ProductConfig> = {
@@ -79,7 +80,25 @@ export function getProductId(): ProductId {
 }
 
 export function getProductConfig(): ProductConfig {
+  if (isExelixiCatalogFlow()) {
+    const catalog = getExelixiCatalogProductView();
+    if (catalog) {
+      return {
+        id: 'rcv',
+        label: catalog.label,
+        fullLabel: catalog.fullLabel,
+        cramo: 0,
+        hasVehicle: catalog.hasVehicle,
+        exelixiCatalog: true,
+        builderProductId: catalog.builderProductId,
+      };
+    }
+  }
   return PRODUCTS[getProductId()];
+}
+
+export function isExelixiCatalogProduct(): boolean {
+  return Boolean(getProductConfig().exelixiCatalog);
 }
 
 export function isFunerario(): boolean {

@@ -267,6 +267,28 @@ export async function quotePolicy(payload: QuotePolicyPayload): Promise<QuotePol
   return response.data;
 }
 
+export async function emitExelixiPolicy(payload: { state: unknown }): Promise<EmitPolicyResponse> {
+  try {
+    const response = await api.post<EmitPolicyResponse>('/exelixi/emit', payload);
+    return response.data;
+  } catch (err) {
+    const axErr = err as AxiosError<{
+      success?: boolean;
+      code?: string;
+      message?: string;
+    }>;
+    const data = axErr.response?.data;
+    if (data && (data.code || data.message)) {
+      throw new PolicyEmitError({
+        code: data.code ?? 'EXELIXI_EMIT_ERROR',
+        message: data.message ?? 'Error emitiendo la póliza Exélixi.',
+        httpStatus: axErr.response?.status,
+      });
+    }
+    throw err;
+  }
+}
+
 // ──────────────────────────────────────────────────────────────────────────
 //  Meritop — Verificación de Pago Móvil
 // ──────────────────────────────────────────────────────────────────────────
