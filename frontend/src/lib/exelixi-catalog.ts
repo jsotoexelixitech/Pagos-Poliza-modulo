@@ -1,3 +1,5 @@
+import { readExelixiWizardHandoff } from './exelixi-wizard-handoff';
+
 export type BuilderProductBranch =
   | 'AUTOMOVIL'
   | 'SALUD'
@@ -56,6 +58,8 @@ export function isExelixiCatalogFlow(): boolean {
     const params = new URLSearchParams(window.location.search);
     const product = params.get('product');
     if (product === 'rcv' || product === 'funerario') return false;
+    const stored = sessionStorage.getItem('exelixi_product');
+    if (stored === 'rcv' || stored === 'funerario') return false;
     if (params.get('flow') === 'exelixi-catalog') return true;
     if (isExelixiCatalogEntryPath()) return true;
   } catch {
@@ -71,6 +75,8 @@ export function ensureExelixiFlowQueryParam(active: boolean): void {
     if (url.searchParams.get('product') === 'rcv' || url.searchParams.get('product') === 'funerario') {
       return;
     }
+    const stored = sessionStorage.getItem('exelixi_product');
+    if (stored === 'rcv' || stored === 'funerario') return;
     url.searchParams.set('flow', 'exelixi-catalog');
     window.history.replaceState({}, '', url.toString());
   } catch {
@@ -121,4 +127,20 @@ export function getExelixiCatalogProductView(): ExelixiCatalogProductView | null
     skipPersonasStep: !hasVehicle && !funeralStep,
     builderProductId: builder.id,
   };
+}
+
+/** Restaura wizardStore desde handoff standalone (formulario → emisión → pagos). */
+export function applyExelixiWizardHandoff(
+  setState: (partial: Record<string, unknown>) => void,
+  goTo: (step: number) => void,
+): boolean {
+  if (!isExelixiCatalogFlow()) return false;
+
+  const handoff = readExelixiWizardHandoff();
+  if (!handoff) return false;
+
+  const { savedAt: _savedAt, ...data } = handoff;
+  setState(data as Record<string, unknown>);
+  goTo(5);
+  return true;
 }
