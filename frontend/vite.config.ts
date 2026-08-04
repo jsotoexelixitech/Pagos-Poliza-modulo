@@ -32,7 +32,7 @@ export default defineConfig(({ mode }) => {
     plugins: [react(), tailwindcss()],
     server: {
       host: true,
-      port: 5180,
+      port: 5184,
       allowedHosts: true,
       hmr: tunnel ? { clientPort: 443, protocol: 'wss' } : true,
       proxy,

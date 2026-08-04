@@ -62,7 +62,7 @@ app.get('/api/health', (_req, res) => {
 });
 
 // ── Proxy a modulo-emision para cotizar y emitir pólizas ──────────────────
-// En producción el frontend de pagos (5180) no pasa por Vite, así que el
+// En producción el frontend de pagos (5184) no pasa por Vite, así que el
 // servidor de pagos actúa como proxy transparente hacia el backend de emisión.
 const EMISION_URL = (process.env.EMISION_API_URL ?? 'http://localhost:4004').replace(/\/$/, '');
 

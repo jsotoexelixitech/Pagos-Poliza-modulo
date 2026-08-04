@@ -31,7 +31,7 @@ module.exports = {
       name: 'pagos-web',
       cwd: path.join(ROOT, 'frontend'),
       script: 'node_modules/vite/bin/vite.js',
-      args: 'preview --host --port 5180 --strictPort',
+      args: 'preview --host --port 5184 --strictPort',
       instances: 1,
       exec_mode: 'fork',
       watch: false,
