@@ -391,7 +391,9 @@ export default function App() {
                   </div>
                   {!genericCheckout && (
                   <a
-                    href="mailto:soporte@lamundialdeseguros.com?subject=Suscripci%C3%B3n%20RCV%20-%20Soporte"
+                    href={exelixiFlow
+                      ? 'mailto:soporte@exelixitech.com?subject=Suscripci%C3%B3n%20Ex%C3%A9lixi%20-%20Soporte'
+                      : 'mailto:soporte@lamundialdeseguros.com?subject=Suscripci%C3%B3n%20RCV%20-%20Soporte'}
                     className="hidden sm:inline-flex items-center gap-2 px-3.5 py-2 rounded-full glass-light text-slate-600 hover:text-indigo-600 text-xs font-bold transition-all hover:-translate-y-0.5"
                   >
                     <HelpCircle size={13} />

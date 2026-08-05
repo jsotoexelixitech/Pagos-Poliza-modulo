@@ -1,5 +1,6 @@
 ﻿import { useEffect, useState } from 'react';
 import { publicAsset } from '../lib/app-base';
+import { isExelixiCatalogFlow } from '../lib/exelixi-catalog';
 
 const VISIBLE_MS = 2400;
 const FADE_MS = 700;
@@ -15,9 +16,10 @@ const BRAND = {
   redLight: '#FF6675', // Rojo Imperial (claro)
 };
 
-/** No mostrar splash en flujo encadenado (bridge) ni en checkout SSO standalone. */
+/** No mostrar splash La Mundial en bridge, checkout SSO ni flujo Exélixi. */
 function shouldSkipSplash(): boolean {
   try {
+    if (isExelixiCatalogFlow()) return true;
     const p = new URLSearchParams(window.location.search);
     if (p.get('sid') && p.get('nexus_token')) return true;
     if (p.get('nexus_token')) return true;

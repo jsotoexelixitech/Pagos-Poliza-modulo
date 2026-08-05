@@ -1,26 +1,40 @@
 import { useWizardStore } from '../store/wizardStore';
 import { isGenericCheckoutMode } from '../lib/checkout';
+import { getProductConfig } from '../lib/product';
 import { publicAsset } from '../lib/app-base';
-
-const TOTAL_STEPS = 5;
 
 export function TopProgressBar() {
   const { step, product: productType, checkout } = useWizardStore();
 
   if (isGenericCheckoutMode({ checkout })) return null;
-  const product = { hasVehicle: productType === 'rcv' };
-  const segments = Array.from({ length: TOTAL_STEPS }, (_, i) => i + 1);
-  const safeStep = Math.min(step, TOTAL_STEPS);
-  
-  const MOBILE_LABELS: Record<number, string> = {
-    1: 'Documentos',
-    2: product.hasVehicle ? 'Emisión' : 'Tomador',
-    3: product.hasVehicle ? 'Vehículo' : 'Asegurado',
-    4: 'Plan',
-    5: 'Pago',
-    6: 'Listo',
+  const productConfig = getProductConfig();
+  const exelixiFlow = Boolean(productConfig.exelixiCatalog);
+  const product = {
+    hasVehicle: exelixiFlow ? productConfig.hasVehicle : productType === 'rcv',
   };
-  
+  const TOTAL_STEPS = exelixiFlow ? 4 : 5;
+  const segments = Array.from({ length: TOTAL_STEPS }, (_, i) => i + 1);
+  const safeStep = exelixiFlow
+    ? Math.min(Math.max(step - 1, 1), TOTAL_STEPS)
+    : Math.min(step, TOTAL_STEPS);
+
+  const MOBILE_LABELS: Record<number, string> = exelixiFlow
+    ? {
+        2: 'Cliente',
+        3: product.hasVehicle ? 'Vehículo' : 'Plan',
+        4: 'Plan',
+        5: 'Pago',
+        6: 'Listo',
+      }
+    : {
+        1: 'Documentos',
+        2: product.hasVehicle ? 'Emisión' : 'Tomador',
+        3: product.hasVehicle ? 'Vehículo' : 'Asegurado',
+        4: 'Plan',
+        5: 'Pago',
+        6: 'Listo',
+      };
+
   const label = MOBILE_LABELS[step] ?? '';
 
   return (
@@ -39,11 +53,11 @@ export function TopProgressBar() {
               <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400 ring-2 ring-white" />
             </div>
             <div className="min-w-0">
-              <p className="font-wordmark text-indigo-700 text-[0.95rem] leading-none truncate">
-                La Mundial
+              <p className={`text-[0.95rem] leading-none truncate ${exelixiFlow ? 'font-display font-bold text-indigo-700' : 'font-wordmark text-indigo-700'}`}>
+                {exelixiFlow ? 'Exélixi' : 'La Mundial'}
               </p>
-              <p className="text-[0.55rem] text-fuchsia-500 font-bold leading-tight tracking-[0.18em] uppercase mt-0.5">
-                de Seguros
+              <p className={`text-[0.55rem] font-bold leading-tight tracking-[0.18em] uppercase mt-0.5 ${exelixiFlow ? 'text-indigo-500' : 'text-fuchsia-500'}`}>
+                {exelixiFlow ? 'Catálogo genérico' : 'de Seguros'}
               </p>
             </div>
           </div>
@@ -65,9 +79,10 @@ export function TopProgressBar() {
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-10 pb-2.5 pt-2.5 lg:py-3">
           <div className="flex gap-1.5 h-1">
             {segments.map((n) => {
-              const isComplete = n < Math.min(step, TOTAL_STEPS + 1);
-              const isActive = n === step && step <= TOTAL_STEPS;
-              const isUpcoming = n > step;
+              const mappedStep = exelixiFlow ? n + 1 : n;
+              const isComplete = mappedStep < Math.min(step, (exelixiFlow ? 5 : TOTAL_STEPS) + 1);
+              const isActive = mappedStep === step && step <= (exelixiFlow ? 5 : TOTAL_STEPS);
+              const isUpcoming = mappedStep > step;
 
               return (
                 <div
@@ -81,7 +96,7 @@ export function TopProgressBar() {
                     />
                   )}
                   {isActive && <div className="absolute inset-0 shimmer-line rounded-full" />}
-                  {isUpcoming && step > TOTAL_STEPS && (
+                  {isUpcoming && step > (exelixiFlow ? 5 : TOTAL_STEPS) && (
                     <div className="absolute inset-0 bg-gradient-to-r from-indigo-500 via-violet-500 to-fuchsia-500 rounded-full" />
                   )}
                 </div>

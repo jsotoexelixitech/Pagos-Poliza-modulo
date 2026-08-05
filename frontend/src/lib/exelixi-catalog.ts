@@ -35,7 +35,8 @@ export function isExelixiCatalogFlowHint(hints?: {
       if (parsed.searchParams.get('product') === 'rcv' || parsed.searchParams.get('product') === 'funerario') {
         return false;
       }
-      if (parsed.searchParams.get('flow') === 'exelixi-catalog') return true;
+      const flow = parsed.searchParams.get('flow');
+      if (flow === 'exelixi-catalog' || flow === 'exelixi') return true;
       if (isExelixiCatalogEntryPath(parsed.pathname)) return true;
     } catch {
       /* ignore */
@@ -57,7 +58,8 @@ export function isExelixiCatalogFlow(): boolean {
   try {
     const params = new URLSearchParams(window.location.search);
     // ?flow=exelixi-catalog manda — igual que ?product=rcv para La Mundial.
-    if (params.get('flow') === 'exelixi-catalog') return true;
+    const flow = params.get('flow');
+    if (flow === 'exelixi-catalog' || flow === 'exelixi') return true;
     const product = params.get('product');
     if (product === 'rcv' || product === 'funerario') return false;
     if (isExelixiCatalogEntryPath()) return true;
@@ -111,7 +113,19 @@ export interface ExelixiCatalogProductView {
 
 export function getExelixiCatalogProductView(): ExelixiCatalogProductView | null {
   const builder = readStoredBuilderProduct();
-  if (!builder) return null;
+  if (!builder) {
+    // Deep-link ?flow=exelixi sin producto persistido: vista genérica Exélixi
+    // (evita caer al branding La Mundial).
+    if (!isExelixiCatalogFlow()) return null;
+    return {
+      label: 'Exélixi',
+      fullLabel: 'Catálogo Exélixi',
+      hasVehicle: false,
+      useFuneralStep: false,
+      skipPersonasStep: true,
+      builderProductId: '',
+    };
+  }
 
   const hasVehicle = branchHasVehicle(builder.branch);
   const funeralStep = !hasVehicle && isFunerarioLikeProduct(builder);

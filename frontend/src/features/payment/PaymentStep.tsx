@@ -511,7 +511,8 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
               )}
               {!genericCheckout && hasRealQuote && !quote?.vehicleFallback && (
                 <span className="inline-flex items-center gap-1 text-[0.55rem] font-black text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-md border border-emerald-100 uppercase tracking-wider">
-                  <BadgeCheck size={9} strokeWidth={2.4} /> Tarifa La Mundial
+                  <BadgeCheck size={9} strokeWidth={2.4} />
+                  {isExelixiCatalogProduct() ? 'Tarifa Exélixi' : 'Tarifa La Mundial'}
                 </span>
               )}
               {!genericCheckout && hasRealQuote && quote?.vehicleFallback && (

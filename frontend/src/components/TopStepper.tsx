@@ -36,22 +36,41 @@ export function TopStepper() {
     requiredDocTypes: getDefaultRequiredDocs(product.id),
   };
 
-  const STEPS = [
-    { n: 1, label: 'Documentos', Icon: FileText },
-    { n: 2, label: product.hasVehicle ? 'Emisión' : 'Tomador', Icon: UserCog },
-    product.hasVehicle
-      ? { n: 3, label: 'Vehículo', Icon: Car }
-      : { n: 3, label: 'Asegurado', Icon: Users },
-    { n: 4, label: 'Plan', Icon: ShieldCheck },
-    { n: 5, label: 'Pago', Icon: CreditCard },
-  ];
+  const STEPS = product.exelixiCatalog
+    ? [
+        { n: 2, label: 'Cliente', Icon: UserCog },
+        ...(product.hasVehicle
+          ? [{ n: 3, label: 'Vehículo', Icon: Car }]
+          : []),
+        { n: 4, label: 'Plan', Icon: ShieldCheck },
+        { n: 5, label: 'Pago', Icon: CreditCard },
+      ]
+    : [
+        { n: 1, label: 'Documentos', Icon: FileText },
+        { n: 2, label: product.hasVehicle ? 'Emisión' : 'Tomador', Icon: UserCog },
+        product.hasVehicle
+          ? { n: 3, label: 'Vehículo', Icon: Car }
+          : { n: 3, label: 'Asegurado', Icon: Users },
+        { n: 4, label: 'Plan', Icon: ShieldCheck },
+        { n: 5, label: 'Pago', Icon: CreditCard },
+      ];
 
   function canGoTo(target: number): boolean {
+    if (product.exelixiCatalog) {
+      const allowed = STEPS.map((s) => s.n);
+      if (!allowed.includes(target)) return false;
+    }
     return canNavigateToStep(step, target, navSnapshot);
   }
 
   async function goToStep(target: number) {
-    if (navigating || target === step || target < 1 || target > 5) return;
+    if (navigating || target === step) return;
+    if (product.exelixiCatalog) {
+      const allowed = STEPS.map((s) => s.n);
+      if (!allowed.includes(target)) return;
+    } else if (target < 1 || target > 5) {
+      return;
+    }
 
     if (!canGoTo(target)) {
       const reason = getNavigationBlockReason(step, target, navSnapshot);
