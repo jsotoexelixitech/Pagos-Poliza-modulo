@@ -6,9 +6,13 @@ import './lib/bridge'
 import { hydrateCheckoutFromAccessToken } from './lib/checkout'
 import { NexusGuard } from './nexus/NexusGuard'
 import { applyExelixiWizardHandoff } from './lib/exelixi-catalog'
+import { applyExelixiBranding } from './lib/exelixi-branding'
 import { useWizardStore } from './store/wizardStore'
 
 import { PagosConfigPanel } from './config/PagosConfigPanel'
+
+// Identidad Exélixi (colores + favicon) solo si el flujo activo es el catálogo.
+applyExelixiBranding('Pagos');
 
 hydrateCheckoutFromAccessToken();
 
