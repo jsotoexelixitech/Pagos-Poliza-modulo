@@ -154,15 +154,20 @@ export default function App() {
     const snap = useWizardStore.getState();
     const paymentVerified = paymentCtx?.paymentVerified ?? snap.paymentVerified;
     const paymentCapture = paymentCtx?.paymentCapture ?? snap.paymentCapture;
+    const builder = readStoredBuilderProduct();
+    const branch = builder?.branch ?? '';
+    const hasVehicle = branch === 'AUTOMOVIL' || branch === 'RCV_OBLIGATORIO';
+    // Solo envía los formularios del ramo: sin vehículo en personas/patrimonial,
+    // sin asegurado/beneficiario extra si los toggles están apagados (como La Mundial).
     return {
       product: 'exelixi-catalog' as const,
-      builderProduct: readStoredBuilderProduct(),
+      builderProduct: builder,
       tomador: snap.tomador,
       sameInsured: snap.sameInsured,
-      asegurado: snap.asegurado,
+      asegurado: snap.sameInsured === false ? snap.asegurado : snap.tomador,
       hasBeneficiary: snap.hasBeneficiary,
-      beneficiario: snap.beneficiario,
-      vehicle: snap.vehicle,
+      beneficiario: snap.hasBeneficiary ? snap.beneficiario : undefined,
+      vehicle: hasVehicle ? snap.vehicle : undefined,
       funeral: snap.funeral,
       category: snap.category,
       selectedPlan: snap.selectedPlan,
