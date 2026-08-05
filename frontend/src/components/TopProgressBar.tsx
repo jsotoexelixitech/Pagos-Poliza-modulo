@@ -12,16 +12,21 @@ export function TopProgressBar() {
   const product = {
     hasVehicle: exelixiFlow ? productConfig.hasVehicle : productType === 'rcv',
   };
-  const TOTAL_STEPS = exelixiFlow ? 4 : 5;
-  const segments = Array.from({ length: TOTAL_STEPS }, (_, i) => i + 1);
-  const safeStep = exelixiFlow
-    ? Math.min(Math.max(step - 1, 1), TOTAL_STEPS)
-    : Math.min(step, TOTAL_STEPS);
+  // Exélixi omite el paso 3 cuando el producto no tiene vehículo.
+  const stepNumbers = exelixiFlow
+    ? [1, 2, ...(product.hasVehicle ? [3] : []), 4, 5]
+    : [1, 2, 3, 4, 5];
+  const TOTAL_STEPS = stepNumbers.length;
+  const safeStep = Math.max(
+    1,
+    stepNumbers.filter((n) => n <= Math.min(step, 5)).length,
+  );
 
   const MOBILE_LABELS: Record<number, string> = exelixiFlow
     ? {
+        1: 'Documentos',
         2: 'Cliente',
-        3: product.hasVehicle ? 'Vehículo' : 'Plan',
+        3: 'Vehículo',
         4: 'Plan',
         5: 'Pago',
         6: 'Listo',
@@ -78,11 +83,10 @@ export function TopProgressBar() {
 
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-10 pb-2.5 pt-2.5 lg:py-3">
           <div className="flex gap-1.5 h-1">
-            {segments.map((n) => {
-              const mappedStep = exelixiFlow ? n + 1 : n;
-              const isComplete = mappedStep < Math.min(step, (exelixiFlow ? 5 : TOTAL_STEPS) + 1);
-              const isActive = mappedStep === step && step <= (exelixiFlow ? 5 : TOTAL_STEPS);
-              const isUpcoming = mappedStep > step;
+            {stepNumbers.map((n) => {
+              const isComplete = n < step;
+              const isActive = n === step && step <= 5;
+              const isUpcoming = n > step;
 
               return (
                 <div
@@ -96,7 +100,7 @@ export function TopProgressBar() {
                     />
                   )}
                   {isActive && <div className="absolute inset-0 shimmer-line rounded-full" />}
-                  {isUpcoming && step > (exelixiFlow ? 5 : TOTAL_STEPS) && (
+                  {isUpcoming && step > 5 && (
                     <div className="absolute inset-0 bg-gradient-to-r from-indigo-500 via-violet-500 to-fuchsia-500 rounded-full" />
                   )}
                 </div>

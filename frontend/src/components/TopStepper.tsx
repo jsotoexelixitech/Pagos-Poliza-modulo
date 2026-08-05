@@ -36,8 +36,10 @@ export function TopStepper() {
     requiredDocTypes: getDefaultRequiredDocs(product.id),
   };
 
+  // Misma visual que RCV: stepper completo también en Exélixi (paridad de flujo).
   const STEPS = product.exelixiCatalog
     ? [
+        { n: 1, label: 'Documentos', Icon: FileText },
         { n: 2, label: 'Cliente', Icon: UserCog },
         ...(product.hasVehicle
           ? [{ n: 3, label: 'Vehículo', Icon: Car }]
@@ -55,19 +57,29 @@ export function TopStepper() {
         { n: 5, label: 'Pago', Icon: CreditCard },
       ];
 
+  /** Pasos que pagos renderiza localmente en flujo Exélixi. */
+  const EXELIXI_LOCAL_STEPS = [5];
+
+  function bridgeNavAvailable(): boolean {
+    return Boolean(window.__bridgeNavigateStep ?? window.__bridge?.navigateToStep);
+  }
+
+  function allowedExelixiTarget(target: number): boolean {
+    if (!STEPS.some((s) => s.n === target)) return false;
+    // Pasos de otros módulos solo navegables con la cadena (bridge) activa.
+    if (!EXELIXI_LOCAL_STEPS.includes(target) && !bridgeNavAvailable()) return false;
+    return true;
+  }
+
   function canGoTo(target: number): boolean {
-    if (product.exelixiCatalog) {
-      const allowed = STEPS.map((s) => s.n);
-      if (!allowed.includes(target)) return false;
-    }
+    if (product.exelixiCatalog && !allowedExelixiTarget(target)) return false;
     return canNavigateToStep(step, target, navSnapshot);
   }
 
   async function goToStep(target: number) {
     if (navigating || target === step) return;
     if (product.exelixiCatalog) {
-      const allowed = STEPS.map((s) => s.n);
-      if (!allowed.includes(target)) return;
+      if (!allowedExelixiTarget(target)) return;
     } else if (target < 1 || target > 5) {
       return;
     }
