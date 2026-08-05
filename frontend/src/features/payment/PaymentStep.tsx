@@ -95,11 +95,15 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
   } = useWizardStore();
 
   const genericCheckout = isGenericCheckoutMode({ checkout });
+  // Piloto Exélixi: el pago se simula (sin conexión bancaria real).
+  const exelixiSimulated = !genericCheckout && isExelixiCatalogProduct();
 
   const producto = new URLSearchParams(window.location.search).get('product') as 'rcv' | 'funerario' ?? 'rcv';
   const { config } = useProductConfig(EMPRESA_ID, producto, 'pagos');
 
   const availableMethods = PAYMENT_OPTIONS.filter(opt => {
+    // Exélixi piloto: solo pago móvil (simulado); OTP/SyPago es de La Mundial.
+    if (exelixiSimulated) return opt.method === 'mobile';
     if (genericCheckout && checkoutRules?.methods?.length) {
       return checkoutRules.methods.includes(opt.method);
     }
@@ -273,6 +277,35 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
 
     // Solo se envía la fecha (YYYY-MM-DD) — la nueva API no requiere hora
     const paidOn = fechaPagoM;
+
+    // Piloto Exélixi: simula la verificación sin llamar a ningún banco.
+    if (exelixiSimulated) {
+      await new Promise((r) => setTimeout(r, 900));
+      const simAmount = parseFloat(montoPagoM);
+      const simulated: VerifyMobilePaymentResponse = {
+        success: true,
+        isVerified: true,
+        reference: `SIM-${Date.now().toString().slice(-8)}`,
+        verifiedAmount: simAmount,
+        verifiedOn: new Date().toISOString(),
+        message: 'Pago simulado — piloto Exélixi (sin conexión bancaria).',
+        code: 'SIMULATED',
+      };
+      setVerifyResult(simulated);
+      setVerifyStatus('success');
+      setPaymentVerified(true);
+      const capture: PaymentCapture = {
+        reference: simulated.reference ?? undefined,
+        amount: simAmount,
+        paidOn,
+        bankCode: bankCode || undefined,
+        sourcePhone: telefonoPago || undefined,
+        cci_rif: cedulaPago ? cedulaPago.toUpperCase() : undefined,
+      };
+      setPaymentCapture(capture);
+      triggerAutoEmit(capture);
+      return;
+    }
 
     try {
       const result = await verifyMobilePayment({
@@ -611,7 +644,11 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-display font-bold text-sm text-slate-900 leading-tight">{label}</p>
-                <p className="text-[0.7rem] text-slate-500 mt-0.5">{sub}</p>
+                <p className="text-[0.7rem] text-slate-500 mt-0.5">
+                  {exelixiSimulated && method === 'mobile'
+                    ? 'Simulado · piloto Exélixi'
+                    : sub}
+                </p>
               </div>
             </button>
           ))}
@@ -636,7 +673,22 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
         {paymentMethod === 'mobile' && (
           <div className="animate-fade-in space-y-4">
 
-            {/* Card datos del banco destino */}
+            {/* Piloto Exélixi: sin cuenta bancaria real — el pago se simula */}
+            {exelixiSimulated && (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                <p className="text-[0.65rem] font-black uppercase tracking-wider text-amber-700 mb-1.5">
+                  Modo piloto Exélixi · Pago simulado
+                </p>
+                <p className="text-xs text-amber-800 leading-relaxed">
+                  Completa los datos del pago y pulsa «Verificar»: la verificación se
+                  simula y no se conecta con ningún banco. La póliza se emitirá con una
+                  referencia de prueba.
+                </p>
+              </div>
+            )}
+
+            {/* Card datos del banco destino (solo flujos La Mundial) */}
+            {!exelixiSimulated && (
             <div className="rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50 to-violet-50 p-4">
               <p className="text-[0.65rem] font-bold uppercase tracking-wider text-indigo-400 mb-3">Realiza tu pago a esta cuenta</p>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -672,6 +724,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
                 ⚡ Envía el pago móvil a este número y luego ingresa los datos del movimiento para verificación automática.
               </p>
             </div>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* fila 1: banco · teléfono */}
@@ -775,8 +828,8 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
               {(verifyStatus === 'failed' || verifyStatus === 'error') && <XCircle size={16} />}
               {verifyStatus === 'idle'    && <Smartphone size={16} />}
 
-              {verifyStatus === 'loading' ? 'Verificando con Banco Activo...' :
-               verifyStatus === 'success' ? 'Pago verificado correctamente' :
+              {verifyStatus === 'loading' ? (exelixiSimulated ? 'Simulando verificación...' : 'Verificando con Banco Activo...') :
+               verifyStatus === 'success' ? (exelixiSimulated ? 'Pago simulado correctamente' : 'Pago verificado correctamente') :
                verifyStatus === 'failed'  ? 'Pago no encontrado · Reintentar' :
                verifyStatus === 'error'   ? 'Error · Reintentar' :
                'Verificar pago móvil'}
@@ -794,7 +847,9 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
                     <CheckCircle2 size={18} className="text-white" strokeWidth={2.5} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-emerald-800 mb-2">Pago verificado por Banco Activo</p>
+                    <p className="text-sm font-bold text-emerald-800 mb-2">
+                      {exelixiSimulated ? 'Pago simulado — piloto Exélixi' : 'Pago verificado por Banco Activo'}
+                    </p>
                     <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
                       {verifyResult.reference && (
                         <>
