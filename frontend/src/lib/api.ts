@@ -412,10 +412,19 @@ export interface SypagoOtpConfirmPayload {
   concept?       : string;
 }
 
+export interface SypagoStatusInfo {
+  code  : string;
+  label : string;
+  state : 'pending' | 'approved' | 'rejected';
+}
+
 export interface SypagoOtpConfirmResponse {
   success          : boolean;
   transaction_id   : string;
   operation_secret : string;
+  status?          : string;
+  statusInfo?      : SypagoStatusInfo;
+  ref_ibp?         : string | null;
   mock?            : boolean;
 }
 
@@ -423,8 +432,28 @@ export interface SypagoTransactionStatus {
   success        : boolean;
   transaction_id : string;
   status         : string;
+  statusInfo?    : SypagoStatusInfo;
   mock?          : boolean;
   [key: string]  : unknown;
+}
+
+const SYPAGO_FINAL_STATUSES = new Set(['ACCP', 'RJCT', 'CANC']);
+
+function _sypagoStatusCode(status?: string): string {
+  return String(status || '').toUpperCase();
+}
+
+export function isSypagoApproved(status?: string, statusInfo?: SypagoStatusInfo): boolean {
+  return statusInfo?.state === 'approved' || _sypagoStatusCode(status) === 'ACCP';
+}
+
+export function isSypagoRejected(status?: string, statusInfo?: SypagoStatusInfo): boolean {
+  return statusInfo?.state === 'rejected' || ['RJCT', 'CANC'].includes(_sypagoStatusCode(status));
+}
+
+export function isSypagoPending(status?: string, statusInfo?: SypagoStatusInfo): boolean {
+  if (isSypagoApproved(status, statusInfo) || isSypagoRejected(status, statusInfo)) return false;
+  return statusInfo?.state === 'pending' || ['PEND', 'PROC'].includes(_sypagoStatusCode(status));
 }
 
 export class SypagoError extends Error {
@@ -485,6 +514,23 @@ export async function sypagoGetStatus(transactionId: string): Promise<SypagoTran
   } catch (err) {
     _throwSypago(err);
   }
+}
+
+/** Reintenta la consulta de estado hasta ACCP/RJCT/CANC o agotar intentos. */
+export async function pollSypagoStatus(
+  transactionId: string,
+  opts?: { maxAttempts?: number; intervalMs?: number },
+): Promise<SypagoTransactionStatus> {
+  const maxAttempts = opts?.maxAttempts ?? 8;
+  const intervalMs  = opts?.intervalMs ?? 3000;
+  let last = await sypagoGetStatus(transactionId);
+
+  for (let i = 1; i < maxAttempts && !SYPAGO_FINAL_STATUSES.has(_sypagoStatusCode(last.status)); i++) {
+    await new Promise((r) => setTimeout(r, intervalMs * i));
+    last = await sypagoGetStatus(transactionId);
+  }
+
+  return last;
 }
 
 // ── Catálogo INMA ──────────────────────────────────────────────────────────

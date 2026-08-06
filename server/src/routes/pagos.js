@@ -289,16 +289,23 @@ router.post('/otp/confirm', otpConfirmLimiter, async (req, res) => {
       otp           : parsedOtp,
       concept,
     });
-    // Guardamos operation_secret (para validar la firma del webhook) y el
-    // estado inicial. La respuesta definitiva (ACCP/RJCT) llega por webhook.
+    // Consultar el estatus real en SyPago (PEND/PROC → ACCP/RJCT) antes de responder.
+    let finalStatus = { status: 'PEND', statusInfo: sypagoClient.normalizeStatus('PEND') };
     if (result && result.transaction_id) {
+      finalStatus = await sypagoClient.pollTransactionStatus(result.transaction_id);
       sypagoStore.put(result.transaction_id, {
         operationSecret: result.operation_secret || null,
-        status         : 'PEND',
-        statusInfo     : sypagoClient.normalizeStatus('PEND'),
+        status         : finalStatus.status,
+        statusInfo     : finalStatus.statusInfo,
       });
     }
-    const responseBody = { success: true, ...result, statusInfo: sypagoClient.normalizeStatus('PEND') };
+    const responseBody = {
+      success: true,
+      ...result,
+      status    : finalStatus.status,
+      statusInfo: finalStatus.statusInfo,
+      ref_ibp   : finalStatus.ref_ibp ?? null,
+    };
     _otpIdemSet(idemKey, responseBody);
     return res.status(200).json(responseBody);
   } catch (err) {

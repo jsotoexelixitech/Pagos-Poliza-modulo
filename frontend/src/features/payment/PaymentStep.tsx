@@ -28,6 +28,10 @@ import {
   type VerifyMobilePaymentResponse,
   sypagoRequestOtp,
   sypagoConfirmOtp,
+  pollSypagoStatus,
+  isSypagoApproved,
+  isSypagoRejected,
+  isSypagoPending,
   type SypagoOtpConfirmResponse,
   SypagoError,
   quotePolicy,
@@ -76,7 +80,7 @@ const PAYMENT_OPTIONS: {
 ];
 
 type VerifyStatus = 'idle' | 'loading' | 'success' | 'failed' | 'error';
-type OtpStep = 'form' | 'requesting' | 'awaiting_otp' | 'confirming' | 'done' | 'error';
+type OtpStep = 'form' | 'requesting' | 'awaiting_otp' | 'confirming' | 'polling' | 'done' | 'error';
 
 const TODAY_ISO = new Date().toISOString().split('T')[0];
 
@@ -465,14 +469,38 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
         otp           : otpCode.trim(),
         concept       : getCheckoutPaymentConcept(checkout),
       });
-      setOtpResult(result);
+
+      let final = result;
+      if (
+        result.transaction_id &&
+        isSypagoPending(result.status, result.statusInfo)
+      ) {
+        setOtpStep('polling');
+        final = await pollSypagoStatus(result.transaction_id);
+      }
+
+      if (isSypagoRejected(final.status, final.statusInfo)) {
+        throw new SypagoError({
+          message: final.statusInfo?.label || 'El banco rechazó el débito.',
+          code   : 'SYPAGO_REJECTED',
+        });
+      }
+
+      if (!isSypagoApproved(final.status, final.statusInfo)) {
+        throw new SypagoError({
+          message: 'El pago sigue en proceso. Espera unos minutos y consulta el estado antes de emitir.',
+          code   : 'SYPAGO_STILL_PENDING',
+        });
+      }
+
+      setOtpResult(final);
       setOtpStep('done');
       setPaymentVerified(true);
       const capture: PaymentCapture = {
-        transactionId: result.transaction_id,
+        transactionId: final.transaction_id,
         amount: parseFloat(otpAmount),
         paidOn: TODAY_ISO,
-        reference: result.transaction_id,
+        reference: final.ref_ibp || final.transaction_id,
         bankCode: otpBankCode || undefined,
       };
       setPaymentCapture(capture);
@@ -482,14 +510,14 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
         checkoutRules,
         checkoutPayload,
         paymentVerified: true,
-        code: 'OK',
-        message: 'Pago OTP confirmado',
+        code: final.status || 'ACCP',
+        message: final.statusInfo?.label || 'Pago OTP confirmado',
         payment: {
           method: 'otp',
-          transactionId: result.transaction_id,
+          transactionId: final.transaction_id,
           amount: parseFloat(otpAmount),
           paidOn: TODAY_ISO,
-          reference: result.transaction_id,
+          reference: final.ref_ibp || final.transaction_id,
         },
       });
       // Latch queda activo en 'done' — no se puede volver a confirmar
@@ -1031,7 +1059,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
             )}
 
             {/* Paso 2: ingresar OTP */}
-            {(otpStep === 'awaiting_otp' || otpStep === 'confirming') && (
+            {(otpStep === 'awaiting_otp' || otpStep === 'confirming' || otpStep === 'polling') && (
               <div className="space-y-4 animate-fade-in">
                 {/* Banner de instrucción */}
                 <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-4 flex items-start gap-3">
@@ -1074,7 +1102,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
                   </div>
                   <button
                     type="button"
-                    disabled={otpCooldown > 0 || otpStep === 'confirming'}
+                    disabled={otpCooldown > 0 || otpStep === 'confirming' || otpStep === 'polling'}
                     onClick={async () => {
                       setOtpCode('');
                       await handleOtpRequest();
@@ -1097,12 +1125,14 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
                   </button>
                   <button
                     type="button"
-                    disabled={otpCode.length < 6 || otpStep === 'confirming' || confirmInFlight.current}
+                    disabled={otpCode.length < 6 || otpStep === 'confirming' || otpStep === 'polling' || confirmInFlight.current}
                     onClick={handleOtpConfirm}
                     className="flex-1 flex items-center justify-center gap-2 py-3 px-5 rounded-xl font-bold text-sm bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-[0_8px_20px_rgba(16,185,129,0.35)] hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
                   >
                     {otpStep === 'confirming'
                       ? <><Loader2 size={16} className="animate-spin" /> Autorizando débito...</>
+                      : otpStep === 'polling'
+                      ? <><Loader2 size={16} className="animate-spin" /> Consultando estado con el banco...</>
                       : <><ClipboardCheck size={16} /> Confirmar pago</>
                     }
                   </button>
@@ -1119,11 +1149,17 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-emerald-800 mb-2">
-                      {otpResult.mock ? 'Pago autorizado [MODO PRUEBA]' : 'Débito autorizado por SyPago'}
+                      {otpResult.mock ? 'Pago autorizado [MODO PRUEBA]' : 'Pago confirmado por SyPago'}
                     </p>
                     <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
                       <dt className="text-slate-500 font-semibold">ID de transacción</dt>
                       <dd className="font-mono font-bold text-slate-800 truncate">{otpResult.transaction_id}</dd>
+                      {otpResult.status && (
+                        <>
+                          <dt className="text-slate-500 font-semibold">Estado</dt>
+                          <dd className="font-bold text-emerald-700">{otpResult.statusInfo?.label || otpResult.status}</dd>
+                        </>
+                      )}
                       <dt className="text-slate-500 font-semibold">Pagador</dt>
                       <dd className="text-slate-700">{otpName}</dd>
                       <dt className="text-slate-500 font-semibold">Monto</dt>
@@ -1134,7 +1170,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
                     <p className="text-[0.65rem] text-emerald-600/70 mt-2">
                       {genericCheckout
                         ? 'Tu sistema recibirá el resultado del pago automáticamente.'
-                        : 'El resultado definitivo se recibirá vía webhook. Puedes continuar a emitir la póliza.'}
+                        : 'Pago aprobado por el banco. Puedes continuar a emitir la póliza.'}
                     </p>
                   </div>
                 </div>

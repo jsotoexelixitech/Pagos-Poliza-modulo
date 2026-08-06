@@ -360,10 +360,46 @@ async function getTransactionStatus(transactionId) {
   }
 }
 
+const PENDING_STATUSES = new Set(['PEND', 'PROC']);
+
+function _sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Consulta el estado real de la transacción hasta resultado definitivo o agotar intentos.
+ * Mismo patrón que SysIP (getTransactionOtp): espera inicial + reintentos con backoff.
+ */
+async function pollTransactionStatus(transactionId, { maxAttempts = 10, initialDelayMs = 5000 } = {}) {
+  const cfg = _getConfig();
+
+  if (cfg.mock) {
+    return {
+      transaction_id: transactionId,
+      status        : 'ACCP',
+      statusInfo    : normalizeStatus('ACCP'),
+      mock          : true,
+    };
+  }
+
+  await _sleep(initialDelayMs);
+  let last = await getTransactionStatus(transactionId);
+  let attempt = 1;
+
+  while (PENDING_STATUSES.has(String(last.status || '').toUpperCase()) && attempt < maxAttempts) {
+    await _sleep(2000 * attempt);
+    attempt++;
+    last = await getTransactionStatus(transactionId);
+  }
+
+  return last;
+}
+
 module.exports = {
   requestOtp,
   confirmOtp,
   getTransactionStatus,
+  pollTransactionStatus,
   normalizeStatus,
   verifyWebhookSignature,
 };
