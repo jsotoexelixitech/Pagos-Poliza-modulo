@@ -1,16 +1,15 @@
 /**
- * Cliente Banco Activo — Verificación de Pago Móvil vía SysIP La Mundial
+ * Cliente Meritop — Verificación de Pago Móvil vía SysIP La Mundial
  *
  * NO usa Meritop directo (srv001 no tiene ruta VPN al banco).
- * Solo consulta el proxy de La Mundial:
+ * Consulta el proxy de La Mundial:
  *
  *   POST {LAMUNDIAL_PAYMENTS_URL}{LAMUNDIAL_PAYMENTS_PATH}
  *
- * Rutas en SysIP main:
- *   /api/v1/external/payments/bancoActivo/find-mobile-pay  (Swagger, requiere apikey)
- *   /api/v1/payments/bancoActivo/find-mobile-pay           (alternativa QA)
+ * Ruta por defecto (misma que SysIP front):
+ *   /api/v1/bancamiga/meritop/find-mobile-pay
  *
- * Payload:
+ * Payload (igual que bancamiga-mobile-pay.component.ts):
  *   { xtelefono, cbanco_ref, cbanco_dest, mmonto, cci_rif, telefono_dest, fmovimiento }
  */
 
@@ -19,10 +18,11 @@ const axios = require('axios');
 const DEFAULT_TIMEOUT    = 20_000;
 const DEFAULT_DEST_PHONE = '04143966962';
 const DEFAULT_DEST_BANCO = '0171';
-const DEFAULT_BASE_URL   = 'https://qaapisys2000.lamundialdeseguros.com';
+const DEFAULT_BASE_URL   = 'https://apisys2000.lamundialdeseguros.com';
 
-const PATH_EXTERNAL = '/api/v1/external/payments/bancoActivo/find-mobile-pay';
-const PATH_PAYMENTS = '/api/v1/payments/bancoActivo/find-mobile-pay';
+const PATH_MERITOP   = '/api/v1/bancamiga/meritop/find-mobile-pay';
+const PATH_EXTERNAL  = '/api/v1/external/payments/bancoActivo/find-mobile-pay';
+const PATH_PAYMENTS  = '/api/v1/payments/bancoActivo/find-mobile-pay';
 
 const RESULT_CODES = {
   B000: 'Transacción encontrada (pago ya usado por el cliente)',
@@ -40,11 +40,11 @@ const RESULT_CODES = {
   210:  'Error interno del proveedor',
 };
 
-/** Resuelve rutas a probar (env explícita → external → payments). */
+/** Resuelve rutas a probar (env explícita → meritop → external → payments). */
 function _resolvePaths() {
   const custom = (process.env.LAMUNDIAL_PAYMENTS_PATH || '').trim();
   if (custom) return [custom.startsWith('/') ? custom : `/${custom}`];
-  return [PATH_EXTERNAL, PATH_PAYMENTS];
+  return [PATH_MERITOP, PATH_EXTERNAL, PATH_PAYMENTS];
 }
 
 /** URL principal (health/diagnóstico). */

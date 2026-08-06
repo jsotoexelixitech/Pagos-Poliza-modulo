@@ -53,7 +53,7 @@ app.get('/api/health', (_req, res) => {
     lamundialPayments: {
       enabled: process.env.LAMUNDIAL_PAYMENTS_ENABLED !== 'false',
       mock: process.env.LAMUNDIAL_PAYMENTS_MOCK === 'true',
-      url: (process.env.LAMUNDIAL_PAYMENTS_URL || 'http://172.30.149.75:3000').replace(/\/$/, ''),
+      url: (process.env.LAMUNDIAL_PAYMENTS_URL || 'https://apisys2000.lamundialdeseguros.com').replace(/\/$/, ''),
       verifyMobileTarget: getVerifyMobileTargetUrl(),
     },
     sypago:  { mock: process.env.SYPAGO_MOCK === 'true', url: process.env.SYPAGO_URL || null },
