@@ -18,6 +18,7 @@ import {
   isGenericCheckoutMode,
 } from '../../lib/checkout';
 import { notifyClientCheckoutStatus } from '../../lib/checkout-notify';
+import { isPaymentMethodEnabled } from '../../lib/payment-methods';
 
 const EMPRESA_ID = Number(import.meta.env.VITE_EMPRESA_ID ?? 1);
 
@@ -105,10 +106,10 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
     // Exélixi piloto: solo pago móvil (simulado); OTP/SyPago es de La Mundial.
     if (exelixiSimulated) return opt.method === 'mobile';
     if (genericCheckout && checkoutRules?.methods?.length) {
-      return checkoutRules.methods.includes(opt.method);
+      if (!checkoutRules.methods.includes(opt.method)) return false;
+      return isPaymentMethodEnabled(opt.method, config?.metodos);
     }
-    if (!config?.metodos) return true;
-    return config.metodos[opt.method]?.activo ?? true;
+    return isPaymentMethodEnabled(opt.method, config?.metodos);
   });
 
   // Si el bridge hidró `quote` pero excluyó `quoteState` (está en HYDRATE_EXCLUDE),
