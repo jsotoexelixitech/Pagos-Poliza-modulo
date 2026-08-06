@@ -470,13 +470,14 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
         concept       : getCheckoutPaymentConcept(checkout),
       });
 
-      let final = result;
+      let final: SypagoOtpConfirmResponse = result;
       if (
         result.transaction_id &&
         isSypagoPending(result.status, result.statusInfo)
       ) {
         setOtpStep('polling');
-        final = await pollSypagoStatus(result.transaction_id);
+        const polled = await pollSypagoStatus(result.transaction_id);
+        final = { ...result, ...polled };
       }
 
       if (isSypagoRejected(final.status, final.statusInfo)) {

@@ -421,7 +421,7 @@ export interface SypagoStatusInfo {
 export interface SypagoOtpConfirmResponse {
   success          : boolean;
   transaction_id   : string;
-  operation_secret : string;
+  operation_secret?  : string;
   status?          : string;
   statusInfo?      : SypagoStatusInfo;
   ref_ibp?         : string | null;
