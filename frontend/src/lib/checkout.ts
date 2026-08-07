@@ -22,9 +22,9 @@ function decodeTokenPayload(token: string): Record<string, unknown> | null {
 function getAccessTokenFromBrowser(): string | null {
   if (typeof window === 'undefined') return null;
   return (
-    new URLSearchParams(window.location.search).get('nexus_token') ||
     sessionStorage.getItem('nexus_access_token_pagos') ||
-    sessionStorage.getItem('nexus_access_token')
+    sessionStorage.getItem('nexus_access_token') ||
+    new URLSearchParams(window.location.search).get('nexus_token')
   );
 }
 
