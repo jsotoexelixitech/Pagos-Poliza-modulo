@@ -122,12 +122,20 @@ export default function App() {
       window.open(result.policy.urlpoliza, '_blank', 'noopener,noreferrer');
     }
     if (result.policy.url_conductor_habitual) {
-      window.open(result.policy.url_conductor_habitual, '_blank', 'noopener,noreferrer');
+      // Evitar bloqueo del popup al abrir dos PDFs seguidos
+      setTimeout(() => {
+        window.open(result.policy.url_conductor_habitual!, '_blank', 'noopener,noreferrer');
+      }, 400);
     }
 
+    const docHint = result.policy.url_conductor_habitual
+      ? ' · PDFs abiertos en nuevas pestañas'
+      : result.policy.urlpoliza
+        ? ' · PDF abierto en nueva pestaña'
+        : '';
     toast.success(
       '¡Póliza emitida!',
-      `Número ${result.policy.cnpoliza}${result.policy.urlpoliza ? ' · PDF abierto en nueva pestaña' : ''}`,
+      `Número ${result.policy.cnpoliza}${docHint}`,
       6000,
     );
 

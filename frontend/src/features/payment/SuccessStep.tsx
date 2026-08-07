@@ -41,13 +41,15 @@ export function SuccessStep() {
     if (pdfUrl) {
       window.open(pdfUrl, '_blank', 'noopener,noreferrer');
       if (conductorUrl) {
-        window.open(conductorUrl, '_blank', 'noopener,noreferrer');
+        setTimeout(() => {
+          window.open(conductorUrl, '_blank', 'noopener,noreferrer');
+        }, 400);
       }
       toast.success(
         'Abriendo documentos',
-        conductorUrl 
-          ? 'La póliza y el anexo se abrieron en nuevas pestañas.'
-          : 'El PDF se abrió en una nueva pestaña.'
+        conductorUrl
+          ? 'La póliza y el anexo se abrirán en nuevas pestañas.'
+          : 'El PDF se abrió en una nueva pestaña.',
       );
     } else {
       toast.warning(
