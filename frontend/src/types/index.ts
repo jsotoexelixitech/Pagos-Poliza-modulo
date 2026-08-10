@@ -250,6 +250,10 @@ export interface IssuedPolicy {
   urlpoliza?: string;
   /** URL al PDF del Anexo Conductor Habitual generado internamente. */
   url_conductor_habitual?: string;
+  /** URL PDF Club Arys (cobertura ccober=15). */
+  url_club_arys?: string;
+  /** URL comprobante ingreso de caja Sis2000. */
+  url_ingreso_caja?: string;
   /** Identificador interno (no es el numero oficial). */
   internalPolicyId?: string;
   ncuota?: number;

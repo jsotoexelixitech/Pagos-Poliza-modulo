@@ -9,6 +9,7 @@ import { Button } from './components/ui/Button';
 import { PaymentStep } from './features/payment/PaymentStep';
 import { SuccessStep } from './features/payment/SuccessStep';
 import { emitPolicy, emitFuneral, emitExelixiPolicy, PolicyEmitError } from './lib/api';
+import { emissionPdfHint, openEmissionPdfs } from './lib/openEmissionPdfs';
 import { isFunerario, isRcv, isExelixiCatalogProduct } from './lib/product';
 import { readStoredBuilderProduct } from './lib/exelixi-catalog';
 import {
@@ -86,9 +87,11 @@ export default function App() {
     };
   }
 
-  /** Estado para emisión funerario — incluye cuestionario de salud y personas. */
-  function buildFuneralEmitState() {
+  /** Estado para emisión funerario — incluye pago verificado para ingreso de caja. */
+  function buildFuneralEmitState(paymentCtx?: PaymentEmitContext) {
     const snap = useWizardStore.getState();
+    const paymentVerified = paymentCtx?.paymentVerified ?? snap.paymentVerified;
+    const paymentCapture = paymentCtx?.paymentCapture ?? snap.paymentCapture;
     return {
       product: 'funerario' as const,
       tomador: snap.tomador,
@@ -99,43 +102,42 @@ export default function App() {
       beneficiario: snap.beneficiario,
       selectedPlan: snap.selectedPlan,
       paymentMethod: snap.paymentMethod,
+      paymentVerified,
+      paymentCapture,
       metadataCanal: snap.metadataCanal,
       checkout: snap.checkout,
       checkoutPayload: snap.checkoutPayload,
     };
   }
 
-  function applyEmissionResult(result: Awaited<ReturnType<typeof emitPolicy>>) {
+  function applyEmissionResult(
+    result: Awaited<ReturnType<typeof emitPolicy>>,
+    product: 'rcv' | 'funerario' | 'generic' = 'rcv',
+  ) {
     setPolicy({
       number: result.policy.number,
       cnpoliza: result.policy.cnpoliza,
       cnrecibo: result.policy.cnrecibo,
       urlpoliza: result.policy.urlpoliza,
       url_conductor_habitual: result.policy.url_conductor_habitual,
+      url_club_arys: product === 'rcv' ? result.policy.url_club_arys : undefined,
+      url_ingreso_caja: product === 'generic' ? undefined : result.policy.url_ingreso_caja,
       internalPolicyId: result.policy.internalPolicyId,
       ncuota: result.policy.ncuota,
       emittedAt: result.policy.emittedAt,
       quote: result.policy.quote,
     });
 
-    if (result.policy.urlpoliza) {
-      window.open(result.policy.urlpoliza, '_blank', 'noopener,noreferrer');
-    }
-    if (result.policy.url_conductor_habitual) {
-      // Evitar bloqueo del popup al abrir dos PDFs seguidos
-      setTimeout(() => {
-        window.open(result.policy.url_conductor_habitual!, '_blank', 'noopener,noreferrer');
-      }, 400);
-    }
+    const opened = openEmissionPdfs({
+      urlpoliza: result.policy.urlpoliza,
+      url_club_arys: product === 'rcv' ? result.policy.url_club_arys : undefined,
+      url_conductor_habitual: product === 'rcv' ? result.policy.url_conductor_habitual : undefined,
+      url_ingreso_caja: product === 'generic' ? undefined : result.policy.url_ingreso_caja,
+    });
 
-    const docHint = result.policy.url_conductor_habitual
-      ? ' · PDFs abiertos en nuevas pestañas'
-      : result.policy.urlpoliza
-        ? ' · PDF abierto en nueva pestaña'
-        : '';
     toast.success(
       '¡Póliza emitida!',
-      `Número ${result.policy.cnpoliza}${docHint}`,
+      `Número ${result.policy.cnpoliza}${emissionPdfHint(opened)}`,
       6000,
     );
 
@@ -200,7 +202,7 @@ export default function App() {
     setEmitting(true);
     try {
       const result = await emitExelixiPolicy({ state: buildExelixiEmitState(paymentCtx) });
-      applyEmissionResult(result);
+      applyEmissionResult(result, 'generic');
     } catch (err) {
       handleEmissionError(err);
     } finally {
@@ -227,7 +229,7 @@ export default function App() {
         plan: planCode as 'RCVBAS' | 'RUSPAT',
         frecuencia: 'A',
       });
-      applyEmissionResult(result);
+      applyEmissionResult(result, 'rcv');
     } catch (err) {
       handleEmissionError(err);
     } finally {
@@ -350,6 +352,13 @@ export default function App() {
       );
       return;
     }
+    if (paymentRequired && !store.paymentVerified) {
+      toast.warning(
+        'Pago pendiente',
+        'Verifica o confirma el pago con el banco antes de emitir.',
+      );
+      return;
+    }
 
     setEmitting(true);
     try {
@@ -357,7 +366,7 @@ export default function App() {
         state: buildFuneralEmitState(),
         frecuencia: (store.funeral?.frecuencia as 'A' | 'S' | 'M' | 'T' | 'C') ?? 'M',
       });
-      applyEmissionResult(result);
+      applyEmissionResult(result, 'funerario');
     } catch (err) {
       handleEmissionError(err);
     } finally {

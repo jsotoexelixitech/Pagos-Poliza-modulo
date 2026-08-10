@@ -7,6 +7,7 @@ import {
   Calendar, Copy, ExternalLink,
 } from 'lucide-react';
 import { formatUsdShort } from '../../lib/money';
+import { openEmissionPdfs } from '../../lib/openEmissionPdfs';
 
 /**
  * Reinicio OCR desde cero: sin sid (nueva sesión bridge) + wizardStep=1.
@@ -65,6 +66,9 @@ export function SuccessStep() {
   const reciboNum = policy?.cnrecibo || '';
   const pdfUrl = policy?.urlpoliza || '';
   const conductorUrl = policy?.url_conductor_habitual || '';
+  const arysUrl = policy?.url_club_arys || '';
+  const ingresoCajaUrl = policy?.url_ingreso_caja || '';
+  const hasDocuments = Boolean(pdfUrl || conductorUrl || arysUrl || ingresoCajaUrl);
   const emittedDate = policy?.emittedAt
     ? new Date(policy.emittedAt).toLocaleDateString('es-VE', { day: '2-digit', month: 'short', year: 'numeric' })
     : new Date().toLocaleDateString('es-VE', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -83,26 +87,22 @@ export function SuccessStep() {
   };
 
   const downloadPdf = () => {
-    if (pdfUrl) {
-      window.open(pdfUrl, '_blank', 'noopener,noreferrer');
-      if (conductorUrl) {
-        setTimeout(() => {
-          window.open(conductorUrl, '_blank', 'noopener,noreferrer');
-        }, 400);
-      }
-      toast.success(
-        'Abriendo documentos',
-        conductorUrl
-          ? 'La póliza y el anexo se abrirán en nuevas pestañas.'
-          : 'El PDF se abrió en una nueva pestaña.',
-      );
-    } else {
+    if (!hasDocuments) {
       toast.warning(
         'PDF no disponible',
         'La Mundial no devolvió URL de descarga para esta emisión. Contacta soporte.',
         5000,
       );
+      return;
     }
+
+    const opened = openEmissionPdfs({
+      urlpoliza: pdfUrl,
+      url_club_arys: arysUrl,
+      url_conductor_habitual: conductorUrl,
+      url_ingreso_caja: ingresoCajaUrl,
+    });
+    toast.success('Abriendo documentos', `${opened.length} archivo(s) en nuevas pestañas.`);
   };
 
   /** QA — Emitir otra: OCR desde cero (Paso 01), sin reutilizar sid de la emisión anterior. */
@@ -308,6 +308,40 @@ export function SuccessStep() {
                 </a>
               </div>
             ) : null}
+
+            {arysUrl ? (
+              <div className="pt-4 border-t border-slate-100">
+                <p className="text-[0.58rem] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                  Club Arys
+                </p>
+                <a
+                  href={arysUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-[0.7rem] font-semibold text-indigo-600 hover:text-indigo-800 transition-colors break-all underline-offset-2 hover:underline"
+                >
+                  <ExternalLink size={11} className="shrink-0" />
+                  <span className="truncate">{arysUrl}</span>
+                </a>
+              </div>
+            ) : null}
+
+            {ingresoCajaUrl ? (
+              <div className="pt-4 border-t border-slate-100">
+                <p className="text-[0.58rem] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                  Ingreso de caja
+                </p>
+                <a
+                  href={ingresoCajaUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-[0.7rem] font-semibold text-amber-700 hover:text-amber-900 transition-colors break-all underline-offset-2 hover:underline"
+                >
+                  <ExternalLink size={11} className="shrink-0" />
+                  <span className="truncate">{ingresoCajaUrl}</span>
+                </a>
+              </div>
+            ) : null}
           </div>
 
           <div className="mt-6 pt-4 border-t border-slate-100 flex items-center gap-2 text-[0.66rem] text-slate-500">
@@ -322,20 +356,11 @@ export function SuccessStep() {
           variant="primary"
           size="lg"
           onClick={downloadPdf}
+          disabled={!hasDocuments}
         >
           <Download size={15} />
           Descargar Documentos
         </Button>
-        {conductorUrl && (
-          <Button
-            variant="secondary"
-            size="lg"
-            onClick={() => window.open(conductorUrl, '_blank', 'noopener,noreferrer')}
-          >
-            <Download size={15} />
-            Anexo Conductor
-          </Button>
-        )}
       </div>
 
       <div className="text-center">
