@@ -8,9 +8,35 @@ import {
 } from 'lucide-react';
 import { formatUsdShort } from '../../lib/money';
 
+/** URL de reinicio en Paso 01 Documentos (módulo OCR). */
+function getOcrRestartUrl(): string {
+  const configured = import.meta.env.VITE_OCR_CONTINUE_BASE as string | undefined;
+  const base = (configured?.replace(/\/$/, '') || '/ocr').replace(/\/$/, '');
+  const params = new URLSearchParams({ wizardStep: '1' });
+
+  try {
+    const current = new URL(window.location.href);
+    const product =
+      current.searchParams.get('product')
+      || sessionStorage.getItem('exelixi_product')
+      || 'rcv';
+    params.set('product', product);
+
+    const nexusToken =
+      current.searchParams.get('nexus_token')
+      || sessionStorage.getItem('nexus_access_token_pagos')
+      || sessionStorage.getItem('nexus_access_token_ocr');
+    if (nexusToken) params.set('nexus_token', nexusToken);
+  } catch {
+    params.set('product', 'rcv');
+  }
+
+  return `${base}/?${params.toString()}`;
+}
+
 export function SuccessStep() {
   const {
-    policy, tomador, selectedPlan, checkout, paymentCapture, reset,
+    policy, tomador, selectedPlan, checkout, paymentCapture, reset, goTo,
   } = useWizardStore();
 
   const genericCheckout = isGenericCheckoutMode({ checkout });
@@ -58,6 +84,67 @@ export function SuccessStep() {
         5000,
       );
     }
+  };
+
+  /** QA #88 — enviar documentos por correo (mailto); Web Share solo como refuerzo móvil. */
+  const shareDocuments = () => {
+    const lines = [
+      `Póliza: ${policyNum}`,
+      reciboNum ? `Recibo: ${reciboNum}` : '',
+      `Titular: ${holder}`,
+      '',
+      'Documentos:',
+      pdfUrl ? `Cuadro póliza / recibo: ${pdfUrl}` : 'Cuadro póliza: no disponible',
+      conductorUrl ? `Anexo conductor habitual: ${conductorUrl}` : '',
+    ].filter(Boolean).join('\n');
+
+    const subject = encodeURIComponent(`Póliza RCV ${policyNum} — La Mundial de Seguros`);
+    const body = encodeURIComponent(lines);
+    const to = encodeURIComponent((tomador.email || '').trim());
+    const mailto = `mailto:${to}?subject=${subject}&body=${body}`;
+
+    const openMailto = () => {
+      window.location.href = mailto;
+      toast.success(
+        'Abriendo correo',
+        'Se preparó un mensaje con los enlaces de los documentos.',
+        3500,
+      );
+    };
+
+    if (typeof navigator.share === 'function') {
+      void navigator
+        .share({
+          title: `Póliza ${policyNum}`,
+          text: lines,
+          ...(pdfUrl ? { url: pdfUrl } : {}),
+        })
+        .catch(() => openMailto());
+      return;
+    }
+
+    openMailto();
+  };
+
+  /**
+   * QA #105 — reiniciar en Paso 01 Documentos (OCR), no en Checkout/Pago.
+   * Limpia el wizard, conserva step=6 solo para permitir navigateToStep(1), y cae a /ocr/.
+   */
+  const emitAnotherPolicy = async () => {
+    reset();
+    goTo(6);
+
+    try {
+      const nav = window.__bridgeNavigateStep ?? window.__bridge?.navigateToStep;
+      if (typeof nav === 'function') {
+        const ok = await nav(1);
+        if (ok) return;
+      }
+    } catch {
+      /* fallback abajo */
+    }
+
+    window.location.href = getOcrRestartUrl();
   };
 
   if (genericCheckout) {
@@ -287,13 +374,7 @@ export function SuccessStep() {
         <Button
           variant="secondary"
           size="lg"
-          onClick={() => {
-            if (navigator.share) {
-              navigator.share({ title: 'Mi póliza', text: `Póliza ${policyNum}` }).catch(() => {});
-            } else {
-              toast.warning('No disponible', 'Tu navegador no soporta compartir nativamente.');
-            }
-          }}
+          onClick={shareDocuments}
         >
           <Share2 size={15} />
           Compartir
@@ -302,7 +383,8 @@ export function SuccessStep() {
 
       <div className="text-center">
         <button
-          onClick={() => reset()}
+          type="button"
+          onClick={() => { void emitAnotherPolicy(); }}
           className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-indigo-600 transition-colors font-semibold"
         >
           <RefreshCw size={13} />
