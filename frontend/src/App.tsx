@@ -19,7 +19,7 @@ import {
 } from './lib/checkout';
 import { useNexusTokenMetadata } from './hooks/useNexusTokenMetadata';
 import { toast } from './store/toastStore';
-import { Zap, ShieldCheck, HelpCircle, Sparkles } from 'lucide-react';
+import { Zap, ShieldCheck, Sparkles } from 'lucide-react';
 import type { PaymentEmitContext } from './types';
 
 export default function App() {
@@ -402,6 +402,7 @@ export default function App() {
                           : 'Una conexión cifrada protege la operación de extremo a extremo.'}
                     </p>
                   </div>
+                  {/* TEMP: CTA ayuda oculta hasta nuevo aviso
                   {!genericCheckout && (
                   <a
                     href={exelixiFlow
@@ -413,6 +414,7 @@ export default function App() {
                     ¿Necesitas ayuda?
                   </a>
                   )}
+                  */}
                 </div>
               </header>
             )}
