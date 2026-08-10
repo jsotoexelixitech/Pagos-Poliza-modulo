@@ -9,7 +9,7 @@ import { Button } from './components/ui/Button';
 import { PaymentStep } from './features/payment/PaymentStep';
 import { SuccessStep } from './features/payment/SuccessStep';
 import { emitPolicy, emitFuneral, emitExelixiPolicy, PolicyEmitError } from './lib/api';
-import { emissionPdfHint, openEmissionPdfs } from './lib/openEmissionPdfs';
+import { emissionPdfHint, openEmissionPdfs, reserveEmissionPopups } from './lib/openEmissionPdfs';
 import { isFunerario, isRcv, isExelixiCatalogProduct } from './lib/product';
 import { readStoredBuilderProduct } from './lib/exelixi-catalog';
 import {
@@ -200,6 +200,7 @@ export default function App() {
     }
 
     setEmitting(true);
+    reserveEmissionPopups();
     try {
       const result = await emitExelixiPolicy({ state: buildExelixiEmitState(paymentCtx) });
       applyEmissionResult(result, 'generic');
@@ -222,6 +223,7 @@ export default function App() {
     }
 
     setEmitting(true);
+    reserveEmissionPopups();
     try {
       const planCode = snap.selectedPlan?.cplan ?? 'RCVBAS';
       const result = await emitPolicy({
@@ -361,6 +363,7 @@ export default function App() {
     }
 
     setEmitting(true);
+    reserveEmissionPopups();
     try {
       const result = await emitFuneral({
         state: buildFuneralEmitState(),

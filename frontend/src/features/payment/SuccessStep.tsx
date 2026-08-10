@@ -7,7 +7,7 @@ import {
   Calendar, Copy, ExternalLink,
 } from 'lucide-react';
 import { formatUsdShort } from '../../lib/money';
-import { openEmissionPdfs } from '../../lib/openEmissionPdfs';
+import { openEmissionPdfs, reserveEmissionPopups } from '../../lib/openEmissionPdfs';
 
 /**
  * Reinicio OCR desde cero: sin sid (nueva sesión bridge) + wizardStep=1.
@@ -96,6 +96,7 @@ export function SuccessStep() {
       return;
     }
 
+    reserveEmissionPopups();
     const opened = openEmissionPdfs({
       urlpoliza: pdfUrl,
       url_club_arys: arysUrl,
