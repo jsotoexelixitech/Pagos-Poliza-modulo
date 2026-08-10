@@ -402,19 +402,6 @@ export default function App() {
                           : 'Una conexión cifrada protege la operación de extremo a extremo.'}
                     </p>
                   </div>
-                  {/* TEMP: CTA ayuda oculta hasta nuevo aviso
-                  {!genericCheckout && (
-                  <a
-                    href={exelixiFlow
-                      ? 'mailto:soporte@exelixitech.com?subject=Suscripci%C3%B3n%20Ex%C3%A9lixi%20-%20Soporte'
-                      : 'mailto:soporte@lamundialdeseguros.com?subject=Suscripci%C3%B3n%20RCV%20-%20Soporte'}
-                    className="hidden sm:inline-flex items-center gap-2 px-3.5 py-2 rounded-full glass-light text-slate-600 hover:text-indigo-600 text-xs font-bold transition-all hover:-translate-y-0.5"
-                  >
-                    <HelpCircle size={13} />
-                    ¿Necesitas ayuda?
-                  </a>
-                  )}
-                  */}
                 </div>
               </header>
             )}
