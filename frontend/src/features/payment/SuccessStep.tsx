@@ -1,4 +1,3 @@
-import { useEffect, useRef, useState } from 'react';
 import { useWizardStore } from '../../store/wizardStore';
 import { Button } from '../../components/ui/Button';
 import { toast } from '../../store/toastStore';
@@ -8,12 +7,7 @@ import {
   Calendar, Copy, ExternalLink,
 } from 'lucide-react';
 import { formatUsdShort } from '../../lib/money';
-import {
-  countEmissionDocs,
-  markEmissionDocsOpened,
-  openEmissionPdfs,
-  wereEmissionDocsOpened,
-} from '../../lib/openEmissionPdfs';
+import { openEmissionPdfs } from '../../lib/openEmissionPdfs';
 
 /**
  * Reinicio OCR desde cero: sin sid (nueva sesión bridge) + wizardStep=1.
@@ -88,23 +82,10 @@ export function SuccessStep() {
     url_conductor_habitual: conductorUrl,
     url_ingreso_caja: ingresoCajaUrl,
   };
-  const docCount = countEmissionDocs(docsPayload);
-  const [docsModalOpen, setDocsModalOpen] = useState(false);
-  const autoPromptChecked = useRef(false);
-
-  useEffect(() => {
-    if (!hasDocuments || !policyNum || autoPromptChecked.current) return;
-    autoPromptChecked.current = true;
-    if (!wereEmissionDocsOpened(policyNum)) {
-      setDocsModalOpen(true);
-    }
-  }, [hasDocuments, policyNum]);
 
   const handleOpenDocuments = () => {
     if (!hasDocuments) return;
     const opened = openEmissionPdfs(docsPayload);
-    markEmissionDocsOpened(policyNum);
-    setDocsModalOpen(false);
     toast.success('Abriendo documentos', `${opened.length} archivo(s) en nuevas pestañas.`);
   };
 
@@ -194,7 +175,6 @@ export function SuccessStep() {
 
   return (
     <div className="animate-fade-in py-2">
-      {/* Encabezado sobrio */}
       <div className="text-center mb-8">
         <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-emerald-50 border border-emerald-200 mb-4">
           <CheckCircle2 size={28} className="text-emerald-600" strokeWidth={2.2} />
@@ -208,11 +188,10 @@ export function SuccessStep() {
           Tu póliza está activa
         </h2>
         <p className="text-slate-500 max-w-md mx-auto leading-relaxed text-sm">
-          La póliza fue emitida correctamente. Puedes descargar el PDF cuando quieras.
+          La póliza fue emitida correctamente. Los documentos se abrieron en nuevas pestañas.
         </p>
       </div>
 
-      {/* Tarjeta de detalle — diseño sobrio */}
       <div className="max-w-2xl mx-auto mb-8">
         <div className="rounded-2xl bg-white border border-slate-200 p-6 sm:p-7">
           <div className="flex items-center justify-between mb-5 pb-4 border-b border-slate-100">
@@ -389,34 +368,6 @@ export function SuccessStep() {
           Emitir otra póliza
         </button>
       </div>
-
-      {docsModalOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4">
-          <div className="w-full max-w-md rounded-2xl bg-white border border-slate-200 p-6 shadow-xl">
-            <p className="text-[0.7rem] font-bold text-emerald-700 uppercase tracking-wider mb-2">
-              Emisión completada
-            </p>
-            <h3 className="font-display text-xl font-bold text-slate-900 mb-2">
-              Póliza {policyNum}
-            </h3>
-            <p className="text-sm text-slate-600 mb-6 leading-relaxed">
-              Se abrirán {docCount} documento(s) en nuevas pestañas: póliza
-              {arysUrl ? ', Club Arys' : ''}
-              {conductorUrl ? ', conductor habitual' : ''}
-              {ingresoCajaUrl ? ' e ingreso de caja' : ''}.
-            </p>
-            <div className="flex gap-3">
-              <Button variant="primary" size="lg" className="flex-1" onClick={handleOpenDocuments}>
-                <Download size={15} />
-                Abrir documentos
-              </Button>
-              <Button variant="secondary" size="lg" onClick={() => setDocsModalOpen(false)}>
-                Después
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

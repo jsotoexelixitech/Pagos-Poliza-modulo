@@ -172,13 +172,14 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
   const [verifyError,  setVerifyError]  = useState<string>('');
   const autoEmitStarted = useRef(false);
 
-  const triggerAutoEmit = (capture: PaymentCapture) => {
+  const triggerAutoEmit = async (capture: PaymentCapture) => {
     if (!onPaymentVerified || autoEmitStarted.current) return;
     autoEmitStarted.current = true;
-    const ctx: PaymentEmitContext = { paymentVerified: true, paymentCapture: capture };
-    void Promise.resolve(onPaymentVerified(ctx)).catch(() => {
+    try {
+      await onPaymentVerified({ paymentVerified: true, paymentCapture: capture });
+    } catch {
       autoEmitStarted.current = false;
-    });
+    }
   };
 
   // ── SyPago Débito OTP ─────────────────────────────────────────────────
@@ -308,7 +309,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
         cci_rif: cedulaPago ? cedulaPago.toUpperCase() : undefined,
       };
       setPaymentCapture(capture);
-      triggerAutoEmit(capture);
+      await triggerAutoEmit(capture);
       return;
     }
 
@@ -334,7 +335,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
           cci_rif: cedulaPago ? cedulaPago.toUpperCase() : undefined,
         };
         setPaymentCapture(capture);
-        triggerAutoEmit(capture);
+        await triggerAutoEmit(capture);
         void notifyClientCheckoutStatus({
           checkout,
           checkoutRules,
@@ -505,7 +506,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
         bankCode: otpBankCode || undefined,
       };
       setPaymentCapture(capture);
-      triggerAutoEmit(capture);
+      await triggerAutoEmit(capture);
       void notifyClientCheckoutStatus({
         checkout,
         checkoutRules,

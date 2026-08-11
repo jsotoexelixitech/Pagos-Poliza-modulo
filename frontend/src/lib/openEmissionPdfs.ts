@@ -14,15 +14,10 @@ function collectEmissionUrls(docs: EmissionPdfDocs): string[] {
   ].filter((url): url is string => Boolean(url && String(url).trim()));
 }
 
-export function emissionDocsStorageKey(cnpoliza: string): string {
-  return `emission-docs-opened:${cnpoliza}`;
-}
-
-export function countEmissionDocs(docs: EmissionPdfDocs): number {
-  return collectEmissionUrls(docs).length;
-}
-
-/** Patrón SysIP: window.open(url, '_blank') en cadena síncrona (con clic del usuario). */
+/**
+ * SysIP pay-form / general.component: window.open(url, '_blank') en cadena síncrona.
+ * Llamar justo después del alert de éxito en applyEmissionResult.
+ */
 export function openEmissionPdfs(docs: EmissionPdfDocs): string[] {
   const urls = collectEmissionUrls(docs);
   for (const url of urls) {
@@ -31,16 +26,17 @@ export function openEmissionPdfs(docs: EmissionPdfDocs): string[] {
   return urls;
 }
 
-export function markEmissionDocsOpened(cnpoliza: string): void {
-  sessionStorage.setItem(emissionDocsStorageKey(cnpoliza), '1');
-}
-
-export function wereEmissionDocsOpened(cnpoliza: string): boolean {
-  return sessionStorage.getItem(emissionDocsStorageKey(cnpoliza)) === '1';
-}
-
 export function emissionPdfHint(opened: string[]): string {
   if (opened.length === 0) return '';
   if (opened.length === 1) return ' · PDF abierto en nueva pestaña';
   return ` · ${opened.length} documentos abiertos en nuevas pestañas`;
+}
+
+/** Igual que SysIP pay-form tras emitir: aviso de éxito y abrir PDFs en cadena. */
+export function notifyEmissionSuccessAndOpenPdfs(
+  cnpoliza: string,
+  docs: EmissionPdfDocs,
+): string[] {
+  window.alert(`Se ha generado exitosamente su emisión bajo el número ${cnpoliza}.`);
+  return openEmissionPdfs(docs);
 }
