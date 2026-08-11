@@ -111,8 +111,8 @@ export async function uploadDocument(
  */
 export interface EmitPolicyPayload {
   state: unknown;
-  plan?: 'RCVBAS' | 'RUSPAT';
-  frecuencia?: 'A' | 'S' | 'M' | 'T' | 'C';
+  plan?: string;
+  frecuencia?: string;
 }
 
 export interface PolicyQuote {

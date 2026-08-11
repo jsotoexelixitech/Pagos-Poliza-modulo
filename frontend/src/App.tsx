@@ -233,10 +233,11 @@ export default function App() {
     setEmitting(true);
     try {
       const planCode = snap.selectedPlan?.cplan ?? 'RCVBAS';
+      const frecuencia = snap.rcv?.frecuencia || 'A';
       const result = await emitPolicy({
         state: buildRcvEmitState(paymentCtx),
-        plan: planCode as 'RCVBAS' | 'RUSPAT',
-        frecuencia: 'A',
+        plan: planCode,
+        frecuencia,
       });
       applyEmissionResult(result, 'rcv');
     } catch (err) {

@@ -12,6 +12,7 @@ import type {
   PolicyQuote,
   QuoteState,
   FuneralData,
+  RcvPlanData,
   CheckoutData,
   CheckoutRules,
   CheckoutPayer,
@@ -47,6 +48,11 @@ const defaultPerson = (): PersonData => ({
   relacion: '',
   telefono: '',
   email: '',
+});
+
+const defaultRcv = (): RcvPlanData => ({
+  frecuencia: 'A',
+  ndias: null,
 });
 
 const defaultFuneral = (): FuneralData => ({
@@ -120,6 +126,7 @@ const initialState: WizardState = {
   ocrDone: false,
   tomador: defaultTomador(),
   funeral: defaultFuneral(),
+  rcv: defaultRcv(),
   sameInsured: true,
   asegurado: defaultPerson(),
   differentPayer: false,
