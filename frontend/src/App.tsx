@@ -14,7 +14,6 @@ import { readStoredBuilderProduct } from './lib/exelixi-catalog';
 import {
   isEmbeddedMetadataCheckout,
   isGenericCheckoutMode,
-  isPaymentBypassEnabled,
   requiresPaymentBeforeContinue,
 } from './lib/checkout';
 import { useNexusTokenMetadata } from './hooks/useNexusTokenMetadata';
@@ -40,7 +39,6 @@ export default function App() {
   const exelixiFlow = isExelixiCatalogProduct();
   const genericCheckout = isGenericCheckoutMode(store);
   const embeddedCheckout = isEmbeddedMetadataCheckout(store);
-  const paymentBypass = isPaymentBypassEnabled();
   const paymentRequired = requiresPaymentBeforeContinue(store, funeralFlow);
 
   /** Funerario legacy: emitir sin bloquear por verificación bancaria. */
@@ -335,16 +333,12 @@ export default function App() {
     : exelixiFlow
       ? store.paymentVerified
         ? (emitting ? 'Emitiendo póliza Exélixi...' : 'Emitir póliza')
-        : paymentBypass && !emitting
-          ? 'Emitir (sin pago · QA)'
-          : (emitting ? 'Emitiendo...' : 'Verificar pago para emitir')
+        : (emitting ? 'Emitiendo...' : 'Verificar pago para emitir')
       : funeralFlow
       ? (emitting ? 'Emitiendo póliza...' : 'Emitir póliza')
       : store.paymentVerified
         ? (emitting ? 'Emitiendo y activando recibo...' : 'Reemitir póliza')
-        : paymentBypass && !emitting
-          ? 'Continuar (sin pago · QA)'
-          : (emitting ? 'Emitiendo póliza...' : 'Verificar pago para emitir');
+        : (emitting ? 'Emitiendo póliza...' : 'Verificar pago para emitir');
 
   async function handleEmitir() {
     if (!funeralFlow) return;

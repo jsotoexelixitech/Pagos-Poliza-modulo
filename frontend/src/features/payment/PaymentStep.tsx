@@ -16,6 +16,7 @@ import { isExelixiCatalogProduct } from '../../lib/product';
 import {
   getCheckoutPaymentConcept,
   isGenericCheckoutMode,
+  isPaymentBypassEnabled,
 } from '../../lib/checkout';
 import { notifyClientCheckoutStatus } from '../../lib/checkout-notify';
 import { isPaymentMethodEnabled } from '../../lib/payment-methods';
@@ -98,21 +99,23 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
     paymentMethod, setPaymentMethod,
     selectedPlan, quote, quoteState, vehicle,
     checkout, checkoutRules, checkoutPayer, checkoutPayload,
+    tomador,
     setQuote, setQuoteState,
     setPaymentVerified,
     setPaymentCapture,
   } = useWizardStore();
 
   const genericCheckout = isGenericCheckoutMode({ checkout });
-  // Piloto Exélixi: el pago se simula (sin conexión bancaria real).
-  const exelixiSimulated = !genericCheckout && isExelixiCatalogProduct();
+  const qaMobileBypass = isPaymentBypassEnabled();
+  // Piloto Exélixi o QA RCV: el pago móvil se simula (sin conexión bancaria real).
+  const mobilePaymentSimulated = !genericCheckout && (isExelixiCatalogProduct() || qaMobileBypass);
 
   const producto = new URLSearchParams(window.location.search).get('product') as 'rcv' | 'funerario' ?? 'rcv';
   const { config } = useProductConfig(EMPRESA_ID, producto, 'pagos');
 
   const availableMethods = PAYMENT_OPTIONS.filter(opt => {
-    // Exélixi piloto: solo pago móvil (simulado); OTP/SyPago es de La Mundial.
-    if (exelixiSimulated) return opt.method === 'mobile';
+    // QA / piloto: solo pago móvil simulado; OTP/SyPago es de La Mundial.
+    if (mobilePaymentSimulated) return opt.method === 'mobile';
     if (genericCheckout && checkoutRules?.methods?.length) {
       if (!checkoutRules.methods.includes(opt.method)) return false;
       return isPaymentMethodEnabled(opt.method, config?.metodos);
@@ -175,6 +178,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
   const [verifyResult, setVerifyResult] = useState<VerifyMobilePaymentResponse | null>(null);
   const [verifyError,  setVerifyError]  = useState<string>('');
   const autoEmitStarted = useRef(false);
+  const autoVerifyStarted = useRef(false);
 
   const triggerAutoEmit = async (capture: PaymentCapture) => {
     if (!onPaymentVerified || autoEmitStarted.current) return;
@@ -221,6 +225,29 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
     setPaymentVerified(false);
     confirmInFlight.current = false;
   }, [paymentMethod, setPaymentVerified]);
+
+  // QA RCV: prellenar pago móvil desde tomador para auto-verificación.
+  useEffect(() => {
+    if (!mobilePaymentSimulated || !qaMobileBypass || genericCheckout) return;
+    if (!bankCode) {
+      setBankCode('0171');
+      setBankLabel('Banco Activo');
+    }
+    if (!telefonoPago && tomador.telefono) {
+      setTelPago(formatTelefono(tomador.telefono));
+    } else if (!telefonoPago) {
+      setTelPago(formatTelefono('04141234567'));
+    }
+    if (!cedulaPago && tomador.identificacion) {
+      const doc = `${tomador.tipoDoc || 'V'}${tomador.identificacion}`.replace(/\s/g, '');
+      setCedulaPago(formatCedulaRif(doc));
+    } else if (!cedulaPago) {
+      setCedulaPago(formatCedulaRif('V12345678'));
+    }
+    if (!fechaPagoM) setFechaM(TODAY_ISO);
+  // Solo al montar en modo QA
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Sincroniza el monto en Bs con la cotización oficial cada vez que cambia.
   // No es editable por el usuario: es el monto exacto a pagar (prima anual a tasa BCV).
@@ -290,8 +317,8 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
     // Solo se envía la fecha (YYYY-MM-DD) — la nueva API no requiere hora
     const paidOn = fechaPagoM;
 
-    // Piloto Exélixi: simula la verificación sin llamar a ningún banco.
-    if (exelixiSimulated) {
+    // Piloto Exélixi / QA RCV: simula la verificación sin llamar a ningún banco.
+    if (mobilePaymentSimulated) {
       await new Promise((r) => setTimeout(r, 900));
       const simAmount = parseFloat(montoPagoM);
       const simulated: VerifyMobilePaymentResponse = {
@@ -300,7 +327,9 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
         reference: `SIM-${Date.now().toString().slice(-8)}`,
         verifiedAmount: simAmount,
         verifiedOn: new Date().toISOString(),
-        message: 'Pago simulado — piloto Exélixi (sin conexión bancaria).',
+        message: qaMobileBypass
+          ? 'Pago simulado — QA Exélixi (sin conexión bancaria).'
+          : 'Pago simulado — piloto Exélixi (sin conexión bancaria).',
         code: 'SIMULATED',
       };
       setVerifyResult(simulated);
@@ -401,6 +430,15 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       });
     }
   }
+
+  // QA / piloto: verificación automática al completar el formulario (botón deshabilitado).
+  useEffect(() => {
+    if (!mobilePaymentSimulated || paymentMethod !== 'mobile') return;
+    if (!pagoMovilListo || verifyStatus !== 'idle' || autoVerifyStarted.current) return;
+    autoVerifyStarted.current = true;
+    void handleVerificar();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mobilePaymentSimulated, paymentMethod, pagoMovilListo, verifyStatus]);
 
   // ── Validaciones OTP (SyPago) ─────────────────────────────────────────
   // Mismo patrón que pago móvil: errores de formato mientras escribe,
@@ -687,8 +725,8 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
               <div className="flex-1 min-w-0">
                 <p className="font-display font-bold text-sm text-slate-900 leading-tight">{label}</p>
                 <p className="text-[0.7rem] text-slate-500 mt-0.5">
-                  {exelixiSimulated && method === 'mobile'
-                    ? 'Simulado · piloto Exélixi'
+                  {mobilePaymentSimulated && method === 'mobile'
+                    ? (qaMobileBypass ? 'Simulado · QA pruebas' : 'Simulado · piloto Exélixi')
                     : sub}
                 </p>
               </div>
@@ -715,22 +753,22 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
         {paymentMethod === 'mobile' && (
           <div className="animate-fade-in space-y-4">
 
-            {/* Piloto Exélixi: sin cuenta bancaria real — el pago se simula */}
-            {exelixiSimulated && (
+            {/* Piloto / QA: sin cuenta bancaria real — el pago se simula */}
+            {mobilePaymentSimulated && (
               <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
                 <p className="text-[0.65rem] font-black uppercase tracking-wider text-amber-700 mb-1.5">
-                  Modo piloto Exélixi · Pago simulado
+                  {qaMobileBypass ? 'Modo QA · Pago móvil simulado' : 'Modo piloto Exélixi · Pago simulado'}
                 </p>
                 <p className="text-xs text-amber-800 leading-relaxed">
-                  Completa los datos del pago y pulsa «Verificar»: la verificación se
-                  simula y no se conecta con ningún banco. La póliza se emitirá con una
-                  referencia de prueba.
+                  {qaMobileBypass
+                    ? 'Los datos se completan automáticamente y la verificación se simula al cargar. No se conecta con el banco; la póliza emite como pagada con referencia SIM-.'
+                    : 'Completa los datos del pago y pulsa «Verificar»: la verificación se simula y no se conecta con ningún banco. La póliza se emitirá con una referencia de prueba.'}
                 </p>
               </div>
             )}
 
-            {/* Card datos del banco destino (solo flujos La Mundial) */}
-            {!exelixiSimulated && (
+            {/* Card datos del banco destino (solo flujos La Mundial producción) */}
+            {!mobilePaymentSimulated && (
             <div className="rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50 to-violet-50 p-4">
               <p className="text-[0.65rem] font-bold uppercase tracking-wider text-indigo-400 mb-3">Realiza tu pago a esta cuenta</p>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -852,7 +890,11 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
             {/* Botón verificar */}
             <button
               type="button"
-              disabled={!pagoMovilListo || verifyStatus === 'loading' || verifyStatus === 'success'}
+              disabled={
+                mobilePaymentSimulated
+                  ? true
+                  : !pagoMovilListo || verifyStatus === 'loading' || verifyStatus === 'success'
+              }
               onClick={handleVerificar}
               className={`
                 w-full flex items-center justify-center gap-2 py-3 px-5 rounded-xl font-bold text-sm
@@ -870,10 +912,11 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
               {(verifyStatus === 'failed' || verifyStatus === 'error') && <XCircle size={16} />}
               {verifyStatus === 'idle'    && <Smartphone size={16} />}
 
-              {verifyStatus === 'loading' ? (exelixiSimulated ? 'Simulando verificación...' : 'Verificando con Banco Activo...') :
-               verifyStatus === 'success' ? (exelixiSimulated ? 'Pago simulado correctamente' : 'Pago verificado correctamente') :
+              {verifyStatus === 'loading' ? (mobilePaymentSimulated ? 'Simulando verificación...' : 'Verificando con Banco Activo...') :
+               verifyStatus === 'success' ? (mobilePaymentSimulated ? 'Pago simulado correctamente' : 'Pago verificado correctamente') :
                verifyStatus === 'failed'  ? 'Pago no encontrado · Reintentar' :
                verifyStatus === 'error'   ? 'Error · Reintentar' :
+               mobilePaymentSimulated ? 'Verificación automática (QA)' :
                'Verificar pago móvil'}
 
               {(verifyStatus === 'failed' || verifyStatus === 'error') && (
@@ -890,7 +933,9 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-emerald-800 mb-2">
-                      {exelixiSimulated ? 'Pago simulado — piloto Exélixi' : 'Pago verificado por Banco Activo'}
+                      {mobilePaymentSimulated
+                        ? (qaMobileBypass ? 'Pago simulado — QA Exélixi' : 'Pago simulado — piloto Exélixi')
+                        : 'Pago verificado por Banco Activo'}
                     </p>
                     <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
                       {verifyResult.reference && (

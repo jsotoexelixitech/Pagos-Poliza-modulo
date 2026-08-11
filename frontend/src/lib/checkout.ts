@@ -166,7 +166,6 @@ export function requiresPaymentBeforeContinue(
   state: Pick<WizardState, 'checkout' | 'checkoutRules'>,
   funeralFlow: boolean,
 ): boolean {
-  if (isPaymentBypassEnabled()) return false;
   if (hasGenericCheckout(state)) {
     return state.checkoutRules?.requirePayment !== false;
   }
@@ -174,9 +173,15 @@ export function requiresPaymentBeforeContinue(
 }
 
 /**
- * QA temporal: permite emitir RCV sin verificar pago móvil.
+ * QA temporal: simula verificación de pago móvil (sin Meritop/Banco Activo).
  * Activar con VITE_SKIP_PAYMENT_VERIFY=true en el build de pagos-web.
+ * La póliza emite con paymentVerified=true y referencia SIM-* (recibo activado).
  */
 export function isPaymentBypassEnabled(): boolean {
   return import.meta.env.VITE_SKIP_PAYMENT_VERIFY === 'true';
+}
+
+/** Pago móvil simulado (Exélixi piloto o bypass QA RCV/funerario). */
+export function isMobilePaymentSimulated(): boolean {
+  return isPaymentBypassEnabled();
 }
