@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useWizardStore } from '../../store/wizardStore';
 import { Button } from '../../components/ui/Button';
 import { toast } from '../../store/toastStore';
@@ -9,9 +9,10 @@ import {
 } from 'lucide-react';
 import { formatUsdShort } from '../../lib/money';
 import {
-  emissionDocsStorageKey,
+  countEmissionDocs,
+  markEmissionDocsOpened,
   openEmissionPdfs,
-  openEmissionPdfsAfterConfirm,
+  wereEmissionDocsOpened,
 } from '../../lib/openEmissionPdfs';
 
 /**
@@ -81,23 +82,31 @@ export function SuccessStep() {
   const primaUsd = policy?.quote?.mprimaext;
   const primaVes = policy?.quote?.mprima;
   const ptasa = policy?.quote?.ptasa;
-  const autoOpenAttempted = useRef(false);
+  const docsPayload = {
+    urlpoliza: pdfUrl,
+    url_club_arys: arysUrl,
+    url_conductor_habitual: conductorUrl,
+    url_ingreso_caja: ingresoCajaUrl,
+  };
+  const docCount = countEmissionDocs(docsPayload);
+  const [docsModalOpen, setDocsModalOpen] = useState(false);
+  const autoPromptChecked = useRef(false);
 
-  // Respaldo SysIP: si applyEmissionResult no abrió (p. ej. recarga en paso 6), alert + popups aquí.
   useEffect(() => {
-    if (!hasDocuments || !policyNum || autoOpenAttempted.current) return;
-    if (sessionStorage.getItem(emissionDocsStorageKey(policyNum))) return;
-    autoOpenAttempted.current = true;
-    openEmissionPdfsAfterConfirm(
-      {
-        urlpoliza: pdfUrl,
-        url_club_arys: arysUrl,
-        url_conductor_habitual: conductorUrl,
-        url_ingreso_caja: ingresoCajaUrl,
-      },
-      policyNum,
-    );
-  }, [hasDocuments, policyNum, pdfUrl, arysUrl, conductorUrl, ingresoCajaUrl]);
+    if (!hasDocuments || !policyNum || autoPromptChecked.current) return;
+    autoPromptChecked.current = true;
+    if (!wereEmissionDocsOpened(policyNum)) {
+      setDocsModalOpen(true);
+    }
+  }, [hasDocuments, policyNum]);
+
+  const handleOpenDocuments = () => {
+    if (!hasDocuments) return;
+    const opened = openEmissionPdfs(docsPayload);
+    markEmissionDocsOpened(policyNum);
+    setDocsModalOpen(false);
+    toast.success('Abriendo documentos', `${opened.length} archivo(s) en nuevas pestañas.`);
+  };
 
   const copyPolicy = async () => {
     try {
@@ -109,22 +118,7 @@ export function SuccessStep() {
   };
 
   const downloadPdf = () => {
-    if (!hasDocuments) {
-      toast.warning(
-        'PDF no disponible',
-        'La Mundial no devolvió URL de descarga para esta emisión. Contacta soporte.',
-        5000,
-      );
-      return;
-    }
-
-    const opened = openEmissionPdfs({
-      urlpoliza: pdfUrl,
-      url_club_arys: arysUrl,
-      url_conductor_habitual: conductorUrl,
-      url_ingreso_caja: ingresoCajaUrl,
-    });
-    toast.success('Abriendo documentos', `${opened.length} archivo(s) en nuevas pestañas.`);
+    handleOpenDocuments();
   };
 
   /** QA — Emitir otra: OCR desde cero (Paso 01), sin reutilizar sid de la emisión anterior. */
@@ -395,6 +389,34 @@ export function SuccessStep() {
           Emitir otra póliza
         </button>
       </div>
+
+      {docsModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4">
+          <div className="w-full max-w-md rounded-2xl bg-white border border-slate-200 p-6 shadow-xl">
+            <p className="text-[0.7rem] font-bold text-emerald-700 uppercase tracking-wider mb-2">
+              Emisión completada
+            </p>
+            <h3 className="font-display text-xl font-bold text-slate-900 mb-2">
+              Póliza {policyNum}
+            </h3>
+            <p className="text-sm text-slate-600 mb-6 leading-relaxed">
+              Se abrirán {docCount} documento(s) en nuevas pestañas: póliza
+              {arysUrl ? ', Club Arys' : ''}
+              {conductorUrl ? ', conductor habitual' : ''}
+              {ingresoCajaUrl ? ' e ingreso de caja' : ''}.
+            </p>
+            <div className="flex gap-3">
+              <Button variant="primary" size="lg" className="flex-1" onClick={handleOpenDocuments}>
+                <Download size={15} />
+                Abrir documentos
+              </Button>
+              <Button variant="secondary" size="lg" onClick={() => setDocsModalOpen(false)}>
+                Después
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

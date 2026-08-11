@@ -18,7 +18,11 @@ export function emissionDocsStorageKey(cnpoliza: string): string {
   return `emission-docs-opened:${cnpoliza}`;
 }
 
-/** Patrón SysIP pay-form: window.open(url, '_blank') en cadena síncrona. */
+export function countEmissionDocs(docs: EmissionPdfDocs): number {
+  return collectEmissionUrls(docs).length;
+}
+
+/** Patrón SysIP: window.open(url, '_blank') en cadena síncrona (con clic del usuario). */
 export function openEmissionPdfs(docs: EmissionPdfDocs): string[] {
   const urls = collectEmissionUrls(docs);
   for (const url of urls) {
@@ -27,24 +31,12 @@ export function openEmissionPdfs(docs: EmissionPdfDocs): string[] {
   return urls;
 }
 
-/**
- * SysIP abre PDFs tras un alert bloqueante (pay-form.component.ts ~L246–276):
- * el clic en «Aceptar» devuelve activación de usuario y el navegador permite popups.
- */
-export function openEmissionPdfsAfterConfirm(
-  docs: EmissionPdfDocs,
-  cnpoliza: string,
-): string[] {
-  const urls = collectEmissionUrls(docs);
-  if (urls.length === 0) return [];
-
-  window.alert(
-    `Se ha generado exitosamente su emisión bajo el número ${cnpoliza}.\n\n` +
-      `Al aceptar se abrirán ${urls.length} documento(s) en nuevas pestañas.`,
-  );
-  const opened = openEmissionPdfs(docs);
+export function markEmissionDocsOpened(cnpoliza: string): void {
   sessionStorage.setItem(emissionDocsStorageKey(cnpoliza), '1');
-  return opened;
+}
+
+export function wereEmissionDocsOpened(cnpoliza: string): boolean {
+  return sessionStorage.getItem(emissionDocsStorageKey(cnpoliza)) === '1';
 }
 
 export function emissionPdfHint(opened: string[]): string {

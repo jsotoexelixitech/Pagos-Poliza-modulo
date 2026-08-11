@@ -9,7 +9,6 @@ import { Button } from './components/ui/Button';
 import { PaymentStep } from './features/payment/PaymentStep';
 import { SuccessStep } from './features/payment/SuccessStep';
 import { emitPolicy, emitFuneral, emitExelixiPolicy, PolicyEmitError } from './lib/api';
-import { emissionPdfHint, openEmissionPdfsAfterConfirm } from './lib/openEmissionPdfs';
 import { isFunerario, isRcv, isExelixiCatalogProduct } from './lib/product';
 import { readStoredBuilderProduct } from './lib/exelixi-catalog';
 import {
@@ -128,18 +127,9 @@ export default function App() {
       quote: result.policy.quote,
     });
 
-    const docs = {
-      urlpoliza: result.policy.urlpoliza,
-      url_club_arys: product === 'rcv' ? result.policy.url_club_arys : undefined,
-      url_conductor_habitual: product === 'rcv' ? result.policy.url_conductor_habitual : undefined,
-      url_ingreso_caja: product === 'generic' ? undefined : result.policy.url_ingreso_caja,
-    };
-
-    const opened = openEmissionPdfsAfterConfirm(docs, result.policy.cnpoliza);
-
     toast.success(
       '¡Póliza emitida!',
-      `Número ${result.policy.cnpoliza}${emissionPdfHint(opened)}`,
+      `Número ${result.policy.cnpoliza}`,
       6000,
     );
 
