@@ -69,6 +69,7 @@ export default function App() {
     const paymentCapture = paymentCtx?.paymentCapture ?? snap.paymentCapture;
     return {
       product: 'rcv' as const,
+      rcv: snap.rcv,
       tomador: snap.tomador,
       sameInsured: snap.sameInsured,
       asegurado: snap.asegurado,
@@ -234,10 +235,12 @@ export default function App() {
     try {
       const planCode = snap.selectedPlan?.cplan ?? 'RCVBAS';
       const frecuencia = snap.rcv?.frecuencia || 'A';
+      const ndias = snap.rcv?.ndias;
       const result = await emitPolicy({
         state: buildRcvEmitState(paymentCtx),
         plan: planCode,
         frecuencia,
+        ndias: ndias ?? undefined,
       });
       applyEmissionResult(result, 'rcv');
     } catch (err) {

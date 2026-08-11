@@ -113,6 +113,7 @@ export interface EmitPolicyPayload {
   state: unknown;
   plan?: string;
   frecuencia?: string;
+  ndias?: number | null;
 }
 
 export interface PolicyQuote {
