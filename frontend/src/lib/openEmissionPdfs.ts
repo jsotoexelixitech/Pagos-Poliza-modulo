@@ -26,30 +26,48 @@ function discardReservedPopups(): void {
   reservedPopups = [];
 }
 
-/** Reserva pestañas en el gesto del usuario (clic emitir/verificar), antes del await. */
+function hasLiveReservedPopups(): boolean {
+  return reservedPopups.some((popup) => popup && !popup.closed);
+}
+
+/**
+ * Reserva pestañas en el gesto del usuario (clic verificar/emitir), antes del await.
+ * No usar noopener: el navegador devuelve null y no se puede asignar location.href.
+ * Idempotente: si ya hay pestañas vivas (p. ej. tras verificar pago), no las reemplaza.
+ */
 export function reserveEmissionPopups(slotCount = MAX_EMISSION_POPUPS): void {
+  if (hasLiveReservedPopups()) return;
+
   discardReservedPopups();
   reservedPopups = Array.from({ length: slotCount }, () =>
-    window.open('about:blank', '_blank', 'noopener,noreferrer'),
+    window.open('about:blank', '_blank'),
   );
 }
 
-function scheduleFallbackOpen(url: string, index: number): void {
-  setTimeout(() => {
-    window.open(url, '_blank', 'noopener,noreferrer');
-  }, index * POPUP_DELAY_MS);
+/** Patrón SysIP pay-form: window.open(url, '_blank') en cadena, sin setTimeout. */
+function openUrlDirect(url: string): void {
+  window.open(url, '_blank');
 }
 
-/** Abre documentos post-emisión usando pestañas reservadas o fallback con delay. */
+function scheduleFallbackOpen(url: string, index: number): void {
+  if (index === 0) {
+    openUrlDirect(url);
+    return;
+  }
+  setTimeout(() => openUrlDirect(url), index * POPUP_DELAY_MS);
+}
+
+/** Abre documentos post-emisión usando pestañas reservadas o fallback directo. */
 export function openEmissionPdfs(docs: EmissionPdfDocs): string[] {
   const urls = collectEmissionUrls(docs);
   if (urls.length === 0) return [];
 
-  if (reservedPopups.length > 0) {
+  if (hasLiveReservedPopups()) {
     urls.forEach((url, index) => {
       const popup = reservedPopups[index];
       if (popup && !popup.closed) {
         popup.location.href = url;
+        popup.opener = null;
         return;
       }
       scheduleFallbackOpen(url, index);
