@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { useWizardStore } from '../../store/wizardStore';
 import { Button } from '../../components/ui/Button';
 import { toast } from '../../store/toastStore';
@@ -7,7 +8,11 @@ import {
   Calendar, Copy, ExternalLink,
 } from 'lucide-react';
 import { formatUsdShort } from '../../lib/money';
-import { openEmissionPdfs } from '../../lib/openEmissionPdfs';
+import {
+  emissionDocsStorageKey,
+  openEmissionPdfs,
+  openEmissionPdfsAfterConfirm,
+} from '../../lib/openEmissionPdfs';
 
 /**
  * Reinicio OCR desde cero: sin sid (nueva sesión bridge) + wizardStep=1.
@@ -76,6 +81,23 @@ export function SuccessStep() {
   const primaUsd = policy?.quote?.mprimaext;
   const primaVes = policy?.quote?.mprima;
   const ptasa = policy?.quote?.ptasa;
+  const autoOpenAttempted = useRef(false);
+
+  // Respaldo SysIP: si applyEmissionResult no abrió (p. ej. recarga en paso 6), alert + popups aquí.
+  useEffect(() => {
+    if (!hasDocuments || !policyNum || autoOpenAttempted.current) return;
+    if (sessionStorage.getItem(emissionDocsStorageKey(policyNum))) return;
+    autoOpenAttempted.current = true;
+    openEmissionPdfsAfterConfirm(
+      {
+        urlpoliza: pdfUrl,
+        url_club_arys: arysUrl,
+        url_conductor_habitual: conductorUrl,
+        url_ingreso_caja: ingresoCajaUrl,
+      },
+      policyNum,
+    );
+  }, [hasDocuments, policyNum, pdfUrl, arysUrl, conductorUrl, ingresoCajaUrl]);
 
   const copyPolicy = async () => {
     try {
