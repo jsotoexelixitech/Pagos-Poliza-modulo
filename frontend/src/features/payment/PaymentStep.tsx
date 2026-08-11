@@ -19,6 +19,10 @@ import {
 } from '../../lib/checkout';
 import { notifyClientCheckoutStatus } from '../../lib/checkout-notify';
 import { isPaymentMethodEnabled } from '../../lib/payment-methods';
+import {
+  releaseEmissionPopupSlots,
+  reserveEmissionPopupSlots,
+} from '../../lib/openEmissionPdfs';
 
 const EMPRESA_ID = Number(import.meta.env.VITE_EMPRESA_ID ?? 1);
 
@@ -179,6 +183,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       await onPaymentVerified({ paymentVerified: true, paymentCapture: capture });
     } catch {
       autoEmitStarted.current = false;
+      releaseEmissionPopupSlots();
     }
   };
 
@@ -277,6 +282,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
   // ── Función verificar pago móvil ─────────────────────────────────────
   async function handleVerificar() {
     if (!pagoMovilListo) return;
+    if (onPaymentVerified) reserveEmissionPopupSlots();
     setVerifyStatus('loading');
     setVerifyResult(null);
     setVerifyError('');
@@ -354,6 +360,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
           },
         });
       } else {
+        releaseEmissionPopupSlots();
         setPaymentCapture(null);
         void notifyClientCheckoutStatus({
           checkout,
@@ -372,6 +379,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
         });
       }
     } catch (err) {
+      releaseEmissionPopupSlots();
       const msg = err instanceof MobilePaymentVerifyError
         ? err.message
         : 'Error inesperado al verificar el pago.';
@@ -457,6 +465,8 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
     if (confirmInFlight.current) return;
     confirmInFlight.current = true;
 
+    if (onPaymentVerified) reserveEmissionPopupSlots();
+
     setOtpStep('confirming');
     setOtpError('');
     try {
@@ -524,6 +534,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       });
       // Latch queda activo en 'done' — no se puede volver a confirmar
     } catch (err) {
+      releaseEmissionPopupSlots();
       const msg = err instanceof SypagoError ? err.message : 'Error al confirmar pago.';
       setOtpError(msg);
       setOtpStep('error');

@@ -19,7 +19,12 @@ import {
 } from './lib/checkout';
 import { useNexusTokenMetadata } from './hooks/useNexusTokenMetadata';
 import { toast } from './store/toastStore';
-import { emissionPdfHint, notifyEmissionSuccessAndOpenPdfs } from './lib/openEmissionPdfs';
+import {
+  emissionPdfHint,
+  notifyEmissionSuccessAndOpenPdfs,
+  releaseEmissionPopupSlots,
+  reserveEmissionPopupSlots,
+} from './lib/openEmissionPdfs';
 import { Zap, ShieldCheck, Sparkles } from 'lucide-react';
 import type { PaymentEmitContext } from './types';
 
@@ -114,6 +119,15 @@ export default function App() {
     result: Awaited<ReturnType<typeof emitPolicy>>,
     product: 'rcv' | 'funerario' | 'generic' = 'rcv',
   ) {
+    const docs = {
+      urlpoliza: result.policy.urlpoliza,
+      url_club_arys: product === 'rcv' ? result.policy.url_club_arys : undefined,
+      url_conductor_habitual: product === 'rcv' ? result.policy.url_conductor_habitual : undefined,
+      url_ingreso_caja: product === 'generic' ? undefined : result.policy.url_ingreso_caja,
+    };
+
+    const opened = notifyEmissionSuccessAndOpenPdfs(result.policy.cnpoliza, docs);
+
     setPolicy({
       number: result.policy.number,
       cnpoliza: result.policy.cnpoliza,
@@ -127,15 +141,6 @@ export default function App() {
       emittedAt: result.policy.emittedAt,
       quote: result.policy.quote,
     });
-
-    const docs = {
-      urlpoliza: result.policy.urlpoliza,
-      url_club_arys: product === 'rcv' ? result.policy.url_club_arys : undefined,
-      url_conductor_habitual: product === 'rcv' ? result.policy.url_conductor_habitual : undefined,
-      url_ingreso_caja: product === 'generic' ? undefined : result.policy.url_ingreso_caja,
-    };
-
-    const opened = notifyEmissionSuccessAndOpenPdfs(result.policy.cnpoliza, docs);
 
     toast.success(
       '¡Póliza emitida!',
@@ -201,6 +206,8 @@ export default function App() {
       return;
     }
 
+    if (!paymentCtx) reserveEmissionPopupSlots();
+
     setEmitting(true);
     try {
       const result = await emitExelixiPolicy({ state: buildExelixiEmitState(paymentCtx) });
@@ -222,6 +229,8 @@ export default function App() {
       );
       return;
     }
+
+    if (!paymentCtx) reserveEmissionPopupSlots();
 
     setEmitting(true);
     try {
@@ -362,6 +371,7 @@ export default function App() {
       return;
     }
 
+    reserveEmissionPopupSlots();
     setEmitting(true);
     try {
       const result = await emitFuneral({
@@ -513,6 +523,7 @@ export default function App() {
 }
 
 function handleEmissionError(err: unknown) {
+  releaseEmissionPopupSlots();
   if (err instanceof PolicyEmitError) {
     switch (err.code) {
       case 'LAMUNDIAL_PLATE_ALREADY_INSURED':
