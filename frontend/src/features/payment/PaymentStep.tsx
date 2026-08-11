@@ -19,7 +19,6 @@ import {
 } from '../../lib/checkout';
 import { notifyClientCheckoutStatus } from '../../lib/checkout-notify';
 import { isPaymentMethodEnabled } from '../../lib/payment-methods';
-import { reserveEmissionPopups } from '../../lib/openEmissionPdfs';
 
 const EMPRESA_ID = Number(import.meta.env.VITE_EMPRESA_ID ?? 1);
 
@@ -277,7 +276,6 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
   // ── Función verificar pago móvil ─────────────────────────────────────
   async function handleVerificar() {
     if (!pagoMovilListo) return;
-    if (onPaymentVerified) reserveEmissionPopups();
     setVerifyStatus('loading');
     setVerifyResult(null);
     setVerifyError('');
@@ -457,7 +455,6 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
     // Bloqueo síncrono — impide que dos clicks simultáneos pasen al mismo tiempo
     if (confirmInFlight.current) return;
     confirmInFlight.current = true;
-    if (onPaymentVerified) reserveEmissionPopups();
 
     setOtpStep('confirming');
     setOtpError('');

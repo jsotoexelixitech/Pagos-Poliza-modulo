@@ -5,11 +5,6 @@ export type EmissionPdfDocs = {
   url_ingreso_caja?: string;
 };
 
-const POPUP_DELAY_MS = 400;
-const MAX_EMISSION_POPUPS = 4;
-
-let reservedPopups: (Window | null)[] = [];
-
 function collectEmissionUrls(docs: EmissionPdfDocs): string[] {
   return [
     docs.urlpoliza,
@@ -19,69 +14,16 @@ function collectEmissionUrls(docs: EmissionPdfDocs): string[] {
   ].filter((url): url is string => Boolean(url && String(url).trim()));
 }
 
-function discardReservedPopups(): void {
-  reservedPopups.forEach((popup) => {
-    if (popup && !popup.closed) popup.close();
-  });
-  reservedPopups = [];
-}
-
-function hasLiveReservedPopups(): boolean {
-  return reservedPopups.some((popup) => popup && !popup.closed);
-}
-
 /**
- * Reserva pestañas en el gesto del usuario (clic verificar/emitir), antes del await.
- * No usar noopener: el navegador devuelve null y no se puede asignar location.href.
- * Idempotente: si ya hay pestañas vivas (p. ej. tras verificar pago), no las reemplaza.
+ * Abre documentos post-emisión — patrón SysIP (pay-form / general.component):
+ * window.open(url, '_blank') en cadena síncrona, sin about:blank ni setTimeout.
+ * Debe llamarse en applyEmissionResult justo al recibir la respuesta de emisión.
  */
-export function reserveEmissionPopups(slotCount = MAX_EMISSION_POPUPS): void {
-  if (hasLiveReservedPopups()) return;
-
-  discardReservedPopups();
-  reservedPopups = Array.from({ length: slotCount }, () =>
-    window.open('about:blank', '_blank'),
-  );
-}
-
-/** Patrón SysIP pay-form: window.open(url, '_blank') en cadena, sin setTimeout. */
-function openUrlDirect(url: string): void {
-  window.open(url, '_blank');
-}
-
-function scheduleFallbackOpen(url: string, index: number): void {
-  if (index === 0) {
-    openUrlDirect(url);
-    return;
-  }
-  setTimeout(() => openUrlDirect(url), index * POPUP_DELAY_MS);
-}
-
-/** Abre documentos post-emisión usando pestañas reservadas o fallback directo. */
 export function openEmissionPdfs(docs: EmissionPdfDocs): string[] {
   const urls = collectEmissionUrls(docs);
-  if (urls.length === 0) return [];
-
-  if (hasLiveReservedPopups()) {
-    urls.forEach((url, index) => {
-      const popup = reservedPopups[index];
-      if (popup && !popup.closed) {
-        popup.location.href = url;
-        popup.opener = null;
-        return;
-      }
-      scheduleFallbackOpen(url, index);
-    });
-
-    for (let i = urls.length; i < reservedPopups.length; i += 1) {
-      const extra = reservedPopups[i];
-      if (extra && !extra.closed) extra.close();
-    }
-    reservedPopups = [];
-    return urls;
+  for (const url of urls) {
+    window.open(url, '_blank');
   }
-
-  urls.forEach((url, index) => scheduleFallbackOpen(url, index));
   return urls;
 }
 
