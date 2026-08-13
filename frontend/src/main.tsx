@@ -27,7 +27,8 @@ function ExelixiHandoffBootstrap({ children }: { children: ReactNode }) {
   return children;
 }
 
-const isConfigRoute = window.location.pathname === '/config';
+// /config (dev) o /pagos/config (prod con prefijo Apache)
+const isConfigRoute = /\/config\/?$/.test(window.location.pathname);
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
