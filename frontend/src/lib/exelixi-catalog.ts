@@ -1,0 +1,157 @@
+import { readExelixiWizardHandoff } from './exelixi-wizard-handoff';
+
+export type BuilderProductBranch =
+  | 'AUTOMOVIL'
+  | 'SALUD'
+  | 'VIDA'
+  | 'PATRIMONIAL'
+  | 'INCLUSIVO'
+  | 'RCV_OBLIGATORIO';
+
+export interface BuilderCatalogProduct {
+  id: string;
+  commercialName: string;
+  internalCode: string;
+  branch: BuilderProductBranch;
+  status: string;
+  productPlans?: { id?: string; name: string; isActive?: boolean }[];
+}
+
+export const BUILDER_PRODUCT_STORAGE_KEY = 'exelixi_builder_product';
+
+export function isExelixiCatalogEntryPath(pathname?: string): boolean {
+  const path = (pathname ?? window.location.pathname).replace(/\/$/, '') || '/';
+  return path.endsWith('/exelixi') || path.includes('/ocr/exelixi');
+}
+
+export function isExelixiCatalogFlowHint(hints?: {
+  url?: string | null;
+  nombre?: string | null;
+  moduloNombre?: string | null;
+}): boolean {
+  if (hints?.url) {
+    try {
+      const parsed = new URL(hints.url, window.location.origin);
+      if (parsed.searchParams.get('product') === 'rcv' || parsed.searchParams.get('product') === 'funerario') {
+        return false;
+      }
+      const flow = parsed.searchParams.get('flow');
+      if (flow === 'exelixi-catalog' || flow === 'exelixi') return true;
+      if (isExelixiCatalogEntryPath(parsed.pathname)) return true;
+    } catch {
+      /* ignore */
+    }
+  }
+  const label = `${hints?.nombre ?? ''} ${hints?.moduloNombre ?? ''}`.toLowerCase();
+  return (
+    label.includes('exelixi')
+    && (
+      label.includes('catalogo')
+      || label.includes('catálogo')
+      || label.includes('generica')
+      || label.includes('genérica')
+    )
+  );
+}
+
+export function isExelixiCatalogFlow(): boolean {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    // ?flow=exelixi-catalog manda — igual que ?product=rcv para La Mundial.
+    const flow = params.get('flow');
+    if (flow === 'exelixi-catalog' || flow === 'exelixi') return true;
+    const product = params.get('product');
+    if (product === 'rcv' || product === 'funerario') return false;
+    if (isExelixiCatalogEntryPath()) return true;
+  } catch {
+    /* ignore */
+  }
+  return false;
+}
+
+export function ensureExelixiFlowQueryParam(active: boolean): void {
+  if (!active || isExelixiCatalogFlow()) return;
+  try {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('product') === 'rcv' || url.searchParams.get('product') === 'funerario') {
+      return;
+    }
+    url.searchParams.set('flow', 'exelixi-catalog');
+    window.history.replaceState({}, '', url.toString());
+  } catch {
+    /* ignore */
+  }
+}
+
+export function readStoredBuilderProduct(): BuilderCatalogProduct | null {
+  try {
+    const raw = sessionStorage.getItem(BUILDER_PRODUCT_STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as BuilderCatalogProduct;
+  } catch {
+    return null;
+  }
+}
+
+export function branchHasVehicle(branch: BuilderProductBranch): boolean {
+  return branch === 'AUTOMOVIL' || branch === 'RCV_OBLIGATORIO';
+}
+
+export function isFunerarioLikeProduct(product: BuilderCatalogProduct): boolean {
+  const name = product.commercialName.toLowerCase();
+  return name.includes('funerar') || name.includes('funeral');
+}
+
+export interface ExelixiCatalogProductView {
+  label: string;
+  fullLabel: string;
+  hasVehicle: boolean;
+  useFuneralStep: boolean;
+  skipPersonasStep: boolean;
+  builderProductId: string;
+}
+
+export function getExelixiCatalogProductView(): ExelixiCatalogProductView | null {
+  const builder = readStoredBuilderProduct();
+  if (!builder) {
+    // Deep-link ?flow=exelixi sin producto persistido: vista genérica Exélixi
+    // (evita caer al branding La Mundial).
+    if (!isExelixiCatalogFlow()) return null;
+    return {
+      label: 'Exélixi',
+      fullLabel: 'Catálogo Exélixi',
+      hasVehicle: false,
+      useFuneralStep: false,
+      skipPersonasStep: true,
+      builderProductId: '',
+    };
+  }
+
+  const hasVehicle = branchHasVehicle(builder.branch);
+  const funeralStep = !hasVehicle && isFunerarioLikeProduct(builder);
+
+  return {
+    label: builder.commercialName,
+    fullLabel: builder.commercialName,
+    hasVehicle,
+    useFuneralStep: funeralStep,
+    skipPersonasStep: !hasVehicle && !funeralStep,
+    builderProductId: builder.id,
+  };
+}
+
+/** Restaura wizardStore desde handoff standalone (formulario → emisión → pagos). */
+export function applyExelixiWizardHandoff(
+  setState: (partial: Record<string, unknown>) => void,
+  goTo: (step: number) => void,
+): boolean {
+  if (!isExelixiCatalogFlow()) return false;
+
+  const handoff = readExelixiWizardHandoff();
+  if (!handoff) return false;
+
+  const { savedAt: _savedAt, ...data } = handoff;
+  setState(data as Record<string, unknown>);
+  goTo(5);
+  return true;
+}

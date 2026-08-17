@@ -1,0 +1,966 @@
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useWizardStore } from '../../store/wizardStore';
+import { Field, Input, Select, Textarea } from '../../components/ui/FormField';
+import { ToggleSwitch } from '../../components/ui/ToggleSwitch';
+import { SectionCard } from '../emission/EmissionStep';
+import { useCatalogs, useCiudades } from '../../hooks/useCatalogs';
+import { SearchSelect } from '../../components/ui/SearchSelect';
+import { IdentityInput } from '../../components/ui/IdentityInput';
+import { formatTelefono } from '@exelixi/shared';
+import {
+  Car, UserCog, Sparkles, ScanLine, ShieldCheck,
+  Loader2, AlertTriangle,
+} from 'lucide-react';
+import { toast } from '../../store/toastStore';
+import { cn } from '../../lib/utils';
+import { catalogoApi, type InmaMarca, type InmaModelo, type InmaVersion, type CategoriaUso } from '../../lib/api';
+import type { VehicleData } from '../../types';
+
+const COLOR_SWATCHES: Record<string, string> = {
+  blanco: '#F8FAFC', negro: '#0F172A', gris: '#94A3B8', plateado: '#CBD5E1',
+  rojo: '#EF4444', azul: '#3B82F6', verde: '#10B981', amarillo: '#F59E0B',
+  marrón: '#92400E', beige: '#F5DEB3',
+};
+
+function getColorSwatch(name: string): string {
+  if (!name) return '#E2E8F0';
+  return COLOR_SWATCHES[name.toLowerCase().trim()] ?? '#94A3B8';
+}
+
+function normText(s: string) {
+  return String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
+}
+
+function findBestMatch<T>(
+  list: T[], text: string, key: keyof T
+): T | undefined {
+  if (!text || !list.length) return undefined;
+  const n = normText(text);
+  const val = (i: T) => normText(String(i[key] ?? ''));
+
+  const exact = list.find((i) => val(i) === n);
+  if (exact) return exact;
+
+  const isShortPrefix = /^[A-Z]{1,4}$/.test(n) && !/\d/.test(n);
+  if (isShortPrefix) {
+    const byPrefix = list.filter((i) => val(i).startsWith(n));
+    if (byPrefix.length) {
+      return byPrefix.reduce((best, cur) =>
+        val(cur).length > val(best).length ? cur : best,
+      );
+    }
+  }
+
+  const partial = list.filter((i) => {
+    const v = val(i);
+    if (!v) return false;
+    if (v.startsWith(n) || n.startsWith(v)) return true;
+    return n.includes(v) || v.includes(n);
+  });
+  if (!partial.length) return undefined;
+
+  return partial.reduce((best, cur) => (val(cur).length > val(best).length ? cur : best));
+}
+
+interface VehicleErrors {
+  placa?: string;
+  año?: string;
+  marca?: string;
+  modelo?: string;
+  uso?: string;
+  color?: string;
+  serial?: string;
+  cond_nombre?: string;
+  cond_apellido?: string;
+  cond_licencia?: string;
+  cond_identificacion?: string;
+  cond_telefono?: string;
+  cond_email?: string;
+  cond_sexo?: string;
+  cond_estadoCivil?: string;
+  cond_estado?: string;
+  cond_ciudad?: string;
+  cond_direccion?: string;
+}
+
+// ── Hook catálogo INMA ────────────────────────────────────────────────────────
+function useInmaCatalog() {
+  const [marcas,    setMarcas]    = useState<InmaMarca[]>([]);
+  const [modelos,   setModelos]   = useState<InmaModelo[]>([]);
+  const [versiones, setVersiones] = useState<InmaVersion[]>([]);
+  const [categoriasUso, setCategoriasUso] = useState<CategoriaUso[]>([]);
+  const [loadM,  setLoadM]  = useState(false);
+  const [loadMo, setLoadMo] = useState(false);
+  const [loadV,  setLoadV]  = useState(false);
+  const [loadCu, setLoadCu] = useState(false);
+
+  const loadMarcas = useCallback(async (y: number) => {
+    if (!y || y < 1990) return;
+    setLoadM(true); setMarcas([]); setModelos([]); setVersiones([]); setCategoriasUso([]);
+    try { setMarcas((await catalogoApi.marcas(y)).data.data ?? []); } catch { /* silencioso */ }
+    finally { setLoadM(false); }
+  }, []);
+
+  const loadModelos = useCallback(async (y: number, cmarca: string) => {
+    if (!y || !cmarca) return;
+    setLoadMo(true); setModelos([]); setVersiones([]); setCategoriasUso([]);
+    try { setModelos((await catalogoApi.modelos(y, cmarca)).data.data ?? []); } catch { }
+    finally { setLoadMo(false); }
+  }, []);
+
+  const loadVersiones = useCallback(async (y: number, cmarca: string, cmodelo: string) => {
+    if (!y || !cmarca || !cmodelo) return;
+    setLoadV(true); setVersiones([]); setCategoriasUso([]);
+    try { setVersiones((await catalogoApi.versiones(y, cmarca, cmodelo)).data.data ?? []); } catch { }
+    finally { setLoadV(false); }
+  }, []);
+
+  const loadCategoriasUso = useCallback(async (y: number, cmarca: string, cmodelo: string, cversion: string) => {
+    if (!y || !cmarca || !cmodelo || !cversion) return;
+    setLoadCu(true); setCategoriasUso([]);
+    try { setCategoriasUso((await catalogoApi.categoriasUso(y, cmarca, cmodelo, cversion)).data.data ?? []); }
+    catch { /* fallback: el formulario muestra opciones genéricas si la lista queda vacía */ }
+    finally { setLoadCu(false); }
+  }, []);
+
+  const resetModelos  = useCallback(() => { setModelos([]); setVersiones([]); setCategoriasUso([]); }, []);
+  const resetVersiones = useCallback(() => { setVersiones([]); setCategoriasUso([]); }, []);
+  const resetCategoriasUso = useCallback(() => setCategoriasUso([]), []);
+
+  return {
+    marcas, modelos, versiones, categoriasUso,
+    loadM, loadMo, loadV, loadCu,
+    loadMarcas, loadModelos, loadVersiones, loadCategoriasUso,
+    resetModelos, resetVersiones, resetCategoriasUso,
+  };
+}
+
+// ── Componente principal ──────────────────────────────────────────────────────
+export function VehicleStep() {
+  const {
+    vehicle, setVehicle,
+    hasDriver, setHasDriver,
+    conductor, setConductor,
+    documents,
+    selectedPlan,
+  } = useWizardStore();
+
+  const [errors, setErrors] = useState<VehicleErrors>({});
+  const [verified, setVerified] = useState(false);
+  const catalogs = useCatalogs();
+  const conductorCiudades = useCiudades(conductor.cestado);
+
+  // Rango de años del catálogo INMA
+  const [anios, setAnios] = useState<number[]>([]);
+
+  // Refs para controlar el auto-select por OCR (no sobrescribir selección manual)
+  const autoSelectedMarca  = useRef(false);
+  const autoSelectedModelo = useRef(false);
+
+  const {
+    marcas, modelos, versiones, categoriasUso,
+    loadM, loadMo, loadV, loadCu,
+    loadMarcas, loadModelos, loadVersiones, loadCategoriasUso,
+    resetModelos, resetVersiones,
+  } = useInmaCatalog();
+
+  const ocrCert     = documents.certificado.ocr;
+  const hasOcr      = !!(ocrCert?.marca || ocrCert?.modelo || ocrCert?.placa);
+  const hasOcrCodes = !!(vehicle.cmarca && vehicle.cmodelo);
+
+  // ── Cargar rango de años al montar ────────────────────────────────────────
+  useEffect(() => {
+    catalogoApi.anios()
+      .then(r => {
+        const { min = 2000, max = new Date().getFullYear() + 1 } = r.data as { min?: number; max?: number };
+        const y: number[] = [];
+        for (let yr = max; yr >= min; yr--) y.push(yr);
+        setAnios(y);
+        // Si el OCR trajo año pero no está seteado, usarlo
+        if (!vehicle.año && ocrCert?.año) {
+          setVehicle({ año: String(ocrCert.año) });
+        }
+      })
+      .catch(() => {
+        const y: number[] = [];
+        for (let yr = new Date().getFullYear() + 1; yr >= 1990; yr--) y.push(yr);
+        setAnios(y);
+      });
+  // Solo al montar
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Cuando cambia el año: cargar marcas y resetear refs de auto-select ────
+  useEffect(() => {
+    const y = parseInt(vehicle.año, 10);
+    if (!y || y < 1990) return;
+    autoSelectedMarca.current  = false;
+    autoSelectedModelo.current = false;
+    resetModelos();
+    loadMarcas(y);
+  }, [vehicle.año, loadMarcas, resetModelos]);
+
+  // ── Cuando cargan las marcas: auto-seleccionar OCR marca ─────────────────
+  useEffect(() => {
+    if (!marcas.length) return;
+    if (autoSelectedMarca.current) return;
+    if (vehicle.cmarca) return; // usuario ya eligió
+    if (!ocrCert?.marca) return;
+
+    const match = findBestMatch(marcas, ocrCert.marca, 'xmarca' as keyof InmaMarca);
+    if (match) {
+      autoSelectedMarca.current = true;
+      setVehicle({ cmarca: match.cmarca, marca: match.xmarca, cmodelo: '', modelo: '', cversion: '', ccategoria_uso: undefined, xcategoria_uso: '' });
+    }
+  // Solo cuando marcas cambia
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [marcas]);
+
+  // ── Cuando cambia cmarca: cargar modelos ─────────────────────────────────
+  useEffect(() => {
+    const y = parseInt(vehicle.año, 10);
+    if (!vehicle.cmarca || !y) return;
+    autoSelectedModelo.current = false;
+    resetVersiones();
+    loadModelos(y, vehicle.cmarca);
+  }, [vehicle.cmarca, vehicle.año, loadModelos, resetVersiones]);
+
+  // ── Cuando cargan los modelos: auto-seleccionar OCR modelo ───────────────
+  useEffect(() => {
+    if (!modelos.length) return;
+    if (autoSelectedModelo.current) return;
+    if (vehicle.cmodelo) return;
+    if (!ocrCert?.modelo) return;
+
+    const match = findBestMatch(modelos, ocrCert.modelo, 'xmodelo' as keyof InmaModelo);
+    if (match) {
+      autoSelectedModelo.current = true;
+      setVehicle({ cmodelo: match.cmodelo, modelo: match.xmodelo, cversion: '', ccategoria_uso: undefined, xcategoria_uso: '' });
+    } else {
+      // Fallback: informar que no se encontró el modelo exacto
+      toast.warning(
+        'Modelo no encontrado',
+        `No encontramos "${ocrCert.modelo}" en el catálogo. Selecciónalo manualmente.`,
+        5000,
+      );
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelos]);
+
+  // ── Resolver por texto (marca/modelo) si tenemos valores pero no códigos INMA ──
+  useEffect(() => {
+    const y = parseInt(vehicle.año, 10);
+    if (!y || y < 1990) return;
+    if (!vehicle.marca || !vehicle.modelo) return;
+    if (vehicle.cmarca && vehicle.cmodelo) return; // ya tenemos códigos
+
+    let cancelled = false;
+    catalogoApi.resolver(y, vehicle.marca, vehicle.modelo)
+      .then(({ data }) => {
+        if (cancelled) return;
+        if (!data?.success) return;
+        const updates: Partial<VehicleData> = {};
+        if (data.cmarca) {
+          updates.cmarca = data.cmarca;
+          updates.marca = data.xmarca ?? vehicle.marca;
+        }
+        if (data.cmodelo) {
+          updates.cmodelo = data.cmodelo;
+          updates.modelo = data.xmodelo ?? vehicle.modelo;
+        }
+        if (Object.keys(updates).length > 0) {
+          // Limpia selección dependiente para forzar carga de modelos/versiones con códigos reales
+          setVehicle({
+            ...updates,
+            cversion: '',
+            ccategoria_uso: undefined,
+            xcategoria_uso: '',
+            uso: vehicle.uso,
+          });
+        }
+      })
+      .catch(() => {})
+      .finally(() => {});
+
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vehicle.año, vehicle.marca, vehicle.modelo]);
+
+  // ── Cuando cambia cmodelo: cargar versiones ───────────────────────────────
+  useEffect(() => {
+    const y = parseInt(vehicle.año, 10);
+    if (!vehicle.cmarca || !vehicle.cmodelo || !y) return;
+    loadVersiones(y, vehicle.cmarca, vehicle.cmodelo);
+  }, [vehicle.cmodelo, vehicle.cmarca, vehicle.año, loadVersiones]);
+
+  // ── Cuando cambia cversion: cargar categorías de uso (depende de la versión)
+  useEffect(() => {
+    const y = parseInt(vehicle.año, 10);
+    if (!vehicle.cmarca || !vehicle.cmodelo || !vehicle.cversion || !y) return;
+    loadCategoriasUso(y, vehicle.cmarca, vehicle.cmodelo, vehicle.cversion);
+  }, [vehicle.cversion, vehicle.cmodelo, vehicle.cmarca, vehicle.año, loadCategoriasUso]);
+
+  /**
+   * Match versión.ccategotr → categoría.ccategoria_uso.
+   * Preselecciona el uso y deja el campo bloqueado (mismo valor va a planes).
+   */
+  useEffect(() => {
+    if (loadCu || !vehicle.cversion || categoriasUso.length === 0) return;
+
+    const ver = versiones.find((v) => String(v.cversion) === String(vehicle.cversion));
+    const target = ver?.ccategotr ?? vehicle.ccategotr;
+
+    if (target == null || target === '') {
+      if (categoriasUso.length === 1 && vehicle.ccategoria_uso == null) {
+        const c = categoriasUso[0];
+        setVehicle({
+          ccategoria_uso: c.ccategoria_uso,
+          xcategoria_uso: c.xcategoria_uso,
+          uso: c.xcategoria_uso,
+        });
+      }
+      return;
+    }
+
+    const match = categoriasUso.find(
+      (c) => Number(c.ccategoria_uso) === Number(target),
+    );
+    if (!match) return;
+    if (String(vehicle.ccategoria_uso) === String(match.ccategoria_uso)) return;
+
+    setVehicle({
+      ccategoria_uso: match.ccategoria_uso,
+      xcategoria_uso: match.xcategoria_uso,
+      uso: match.xcategoria_uso,
+      ccategotr: target,
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categoriasUso, vehicle.cversion, vehicle.ccategotr, versiones, loadCu]);
+
+  const usoLockedByCcategotr = (() => {
+    if (!vehicle.cversion || categoriasUso.length === 0) return false;
+    const ver = versiones.find((v) => String(v.cversion) === String(vehicle.cversion));
+    const target = ver?.ccategotr ?? vehicle.ccategotr;
+    if (target == null || target === '') return false;
+    return categoriasUso.some((c) => Number(c.ccategoria_uso) === Number(target));
+  })();
+
+  // ── Validación ────────────────────────────────────────────────────────────
+  const validate = async () => {
+    const e: VehicleErrors = {};
+    const req  = (v?: string) => !(v ?? '').trim();
+    const len  = (v?: string) => (v ?? '').trim().length;
+    const digs = (v?: string) => (v ?? '').replace(/\D/g, '').length;
+
+    if (req(vehicle.placa)) {
+      e.placa = 'La placa es obligatoria';
+    } else if (len(vehicle.placa) < 6) {
+      e.placa = 'La placa debe tener al menos 6 caracteres';
+    }
+
+    if (req(vehicle.año)) e.año = 'Selecciona el año del vehículo';
+    if (req(vehicle.marca))  e.marca  = 'La marca es obligatoria';
+    if (req(vehicle.cmodelo)) e.modelo = 'Selecciona el modelo del catálogo';
+    else if (req(vehicle.modelo)) e.modelo = 'El modelo es obligatorio';
+
+    if (req(vehicle.cversion)) e.uso = 'Debes seleccionar la versión exacta del vehículo';
+    else if (!vehicle.ccategoria_uso && req(vehicle.uso)) e.uso = 'Selecciona el uso del vehículo';
+
+    if (req(vehicle.color)) {
+      e.color = 'El color es obligatorio';
+    } else if (len(vehicle.color) < 2) {
+      e.color = 'El color debe tener al menos 2 caracteres';
+    } else if (len(vehicle.color) > 15) {
+      e.color = 'El color no puede superar 15 caracteres';
+    }
+
+    if (req(vehicle.serial)) {
+      e.serial = 'El serial del vehículo es obligatorio';
+    } else if (len(vehicle.serial) < 10) {
+      e.serial = 'El serial debe tener al menos 10 caracteres';
+    }
+
+    if (hasDriver) {
+      const nombre   = (conductor.nombre   ?? '').trim();
+      const apellido = (conductor.apellido ?? '').trim();
+      const licencia = (conductor.licencia ?? '').trim();
+
+      if (!nombre) {
+        e.cond_nombre = 'El nombre del conductor es obligatorio';
+      } else if (nombre.length < 2) {
+        e.cond_nombre = 'El nombre debe tener al menos 2 caracteres';
+      }
+
+      if (!apellido) {
+        e.cond_apellido = 'El apellido del conductor es obligatorio';
+      } else if (apellido.length < 2) {
+        e.cond_apellido = 'El apellido debe tener al menos 2 caracteres';
+      }
+
+      if (!licencia) {
+        e.cond_licencia = 'El número de licencia es obligatorio';
+      }
+      if (req(conductor.identificacion)) e.cond_identificacion = 'La identificación es obligatoria';
+      if (req(conductor.telefono))       e.cond_telefono       = 'El teléfono es obligatorio';
+      if (req(conductor.sexo))           e.cond_sexo           = 'El sexo es obligatorio';
+      if (req(conductor.estadoCivil))    e.cond_estadoCivil    = 'El estado civil es obligatorio';
+      if (req(conductor.estado))         e.cond_estado         = 'El estado es obligatorio';
+      if (req(conductor.ciudad))         e.cond_ciudad         = 'La ciudad es obligatoria';
+      if (req(conductor.direccion))      e.cond_direccion      = 'La dirección es obligatoria';
+
+      void digs; // usado en validaciones adicionales si se requieren
+    }
+
+    setErrors(e);
+
+    if (Object.keys(e).length > 0) {
+      return false;
+    }
+
+    try {
+      const { validateVehicle } = await import('../../lib/api');
+      toast.info('Validando vehículo', 'Verificando placa y serial...', 2000);
+      const res = await validateVehicle(vehicle.placa || '', vehicle.serial || '', {
+        serialMotor: vehicle.serialMotor,
+        plan: selectedPlan?.cplan,
+      });
+      if (!res.success) {
+        const msg = res.message || 'El vehículo no puede ser asegurado.';
+        toast.error('Atención', msg, 6000);
+        setErrors({ ...e, placa: msg, serial: msg });
+        return false;
+      }
+    } catch {
+      toast.error('Error', 'No se pudo validar el vehículo. Inténtalo de nuevo.');
+      setErrors({ ...e, placa: 'No se pudo validar', serial: 'No se pudo validar' });
+      return false;
+    }
+
+    return true;
+  };
+  (window as unknown as Record<string, unknown>).__validateStep3 = validate;
+
+  const codesReady = !!(vehicle.cmarca && vehicle.cmodelo && vehicle.cversion);
+
+  return (
+    <div className="animate-fade-in space-y-5">
+
+      {/* ── Banner OCR ────────────────────────────────────────────────────────── */}
+      {hasOcr && (
+        <div className="rounded-2xl bg-gradient-to-br from-indigo-600 via-violet-600 to-fuchsia-600 text-white p-4 sm:p-5 shadow-[0_18px_40px_-12px_rgba(15,26,90,0.32)] relative overflow-hidden">
+          <div className="absolute -top-12 -right-12 w-40 h-40 rounded-full bg-white/10 blur-3xl pointer-events-none" />
+          <div className="absolute -bottom-12 -left-12 w-32 h-32 rounded-full bg-fuchsia-300/15 blur-3xl pointer-events-none" />
+          <div className="relative flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
+            <div className="flex items-start gap-3 min-w-0 flex-1">
+              <div className="w-10 h-10 rounded-xl bg-white/15 backdrop-blur-md grid place-items-center flex-shrink-0 ring-1 ring-white/20">
+                {(loadM || loadMo) ? (
+                  <Loader2 size={18} className="animate-spin text-white" />
+                ) : (
+                  <ScanLine size={18} className="text-white" />
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="font-display font-black text-sm flex items-center gap-2 flex-wrap">
+                  Datos precargados del documento
+                  {(loadM || loadMo) && (
+                    <span className="text-[0.6rem] font-bold bg-white/20 px-2 py-0.5 rounded-full tracking-wider animate-pulse">
+                      Cargando catálogo…
+                    </span>
+                  )}
+                  {!loadM && !loadMo && hasOcrCodes && (
+                    <span className="text-[0.6rem] font-bold bg-white/20 px-2 py-0.5 rounded-full tracking-wider">
+                      IA ✓
+                    </span>
+                  )}
+                </p>
+                <p className="text-xs text-indigo-100 mt-0.5 leading-relaxed">
+                  {hasOcrCodes
+                    ? 'Marca y modelo identificados en el catálogo. Solo confirma la versión.'
+                    : 'Revisa los campos y completa lo que falte. Puedes cambiar cualquier valor.'}
+                </p>
+              </div>
+            </div>
+            {hasOcrCodes && !verified && (
+              <button
+                type="button"
+                onClick={() => {
+                  setVerified(true);
+                  toast.success(
+                    'Datos confirmados',
+                    'Marca, modelo y año quedan bloqueados. Pulsa "Editar" si necesitas cambiarlos.',
+                    3500,
+                  );
+                }}
+                className="self-start sm:self-auto flex-shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white/95 hover:bg-white text-indigo-700 text-xs font-bold shadow-[0_6px_16px_rgba(0,0,0,0.15)] transition-all active:scale-95"
+              >
+                <ShieldCheck size={14} /> Confirmar datos
+              </button>
+            )}
+            {verified && (
+              <div className="self-start sm:self-auto flex-shrink-0 flex items-center gap-2">
+                <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-400/95 text-emerald-950 text-xs font-bold ring-1 ring-emerald-300">
+                  <ShieldCheck size={14} /> Verificado
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setVerified(false);
+                    toast.info('Datos desbloqueados', 'Ya puedes modificar marca, modelo y año.', 2500);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-white text-xs font-semibold ring-1 ring-white/30 transition-all active:scale-95"
+                  title="Desbloquear y editar"
+                >
+                  Editar
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Formulario del vehículo ────────────────────────────────────────────── */}
+      <SectionCard Icon={Car} title="¿Cuál es tu vehículo?" description="Cuéntanos sobre el vehículo que deseas asegurar">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+          {/* Placa con selector de tipo (Nacional / Extranjera) */}
+          <Field
+            label={
+              <span className="flex items-center justify-between gap-2 w-full">
+                <span>Placa</span>
+                <span className="inline-flex items-center gap-0 rounded-lg bg-slate-100 p-0.5 text-[0.65rem] font-bold border border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setVehicle({ tipoPlaca: 'nacional' })}
+                    className={cn(
+                      'px-2.5 py-1 rounded-md transition-all',
+                      vehicle.tipoPlaca === 'nacional'
+                        ? 'bg-indigo-600 text-white shadow-sm'
+                        : 'text-slate-500 hover:text-slate-700',
+                    )}
+                  >
+                    ✓ Nacional
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setVehicle({ tipoPlaca: 'extranjera' })}
+                    className={cn(
+                      'px-2.5 py-1 rounded-md transition-all',
+                      vehicle.tipoPlaca === 'extranjera'
+                        ? 'bg-indigo-600 text-white shadow-sm'
+                        : 'text-slate-500 hover:text-slate-700',
+                    )}
+                  >
+                    Extranjera
+                  </button>
+                </span>
+              </span> as unknown as string
+            }
+            error={errors.placa}
+          >
+            <Input
+              value={vehicle.placa}
+              onChange={(e) => setVehicle({ placa: e.target.value.toUpperCase() })}
+              placeholder={vehicle.tipoPlaca === 'extranjera' ? 'ABC-1234' : 'AE123KT'}
+              className="uppercase font-mono tracking-wider"
+              maxLength={vehicle.tipoPlaca === 'extranjera' ? 12 : 8}
+            />
+          </Field>
+
+          {/* Año — selector del catálogo INMA */}
+          <Field label="Año del vehículo *" error={errors.año}>
+            {anios.length > 0 ? (
+              <Select
+                value={vehicle.año}
+                disabled={verified}
+                onChange={(e) => {
+                  setVehicle({ año: e.target.value, cmarca: '', marca: '', cmodelo: '', modelo: '', cversion: '', ccategoria_uso: undefined, xcategoria_uso: '' });
+                }}
+              >
+                <option value="">— Selecciona año —</option>
+                {anios.map(y => (
+                  <option key={y} value={String(y)}>{y}</option>
+                ))}
+              </Select>
+            ) : (
+              <div className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-sm text-slate-500 flex items-center gap-2">
+                <Loader2 size={14} className="animate-spin shrink-0" />
+                Cargando años…
+              </div>
+            )}
+          </Field>
+
+          {/* Marca */}
+          <Field
+            label={
+              <span className="flex items-center gap-1.5">
+                Marca
+                {loadM && <Loader2 size={11} className="animate-spin text-indigo-400" />}
+                {vehicle.cmarca && !loadM && <span className="text-[0.6rem] text-emerald-600 font-bold bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">✓</span>}
+              </span> as unknown as string
+            }
+            error={errors.marca}
+          >
+            {marcas.length > 0 ? (
+              <Select
+                value={vehicle.cmarca ?? ''}
+                disabled={verified}
+                onChange={(e) => {
+                  const cmarca = e.target.value;
+                  const xmarca = marcas.find(m => m.cmarca === cmarca)?.xmarca ?? '';
+                  autoSelectedMarca.current = true;
+                  autoSelectedModelo.current = false;
+                  setVehicle({ cmarca, marca: xmarca, cmodelo: '', modelo: '', cversion: '', ccategoria_uso: undefined, xcategoria_uso: '' });
+                }}
+              >
+                <option value="">— Selecciona marca —</option>
+                {marcas.map(m => (
+                  <option key={m.cmarca} value={m.cmarca}>{m.xmarca}</option>
+                ))}
+              </Select>
+            ) : vehicle.año ? (
+              loadM ? (
+                <div className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-sm text-slate-500 flex items-center gap-2">
+                  <Loader2 size={14} className="animate-spin shrink-0" /> Cargando marcas…
+                </div>
+              ) : (
+                <Input
+                  value={vehicle.marca}
+                  onChange={(e) => setVehicle({ marca: e.target.value, cmarca: '' })}
+                  placeholder="Primero selecciona el año"
+                />
+              )
+            ) : (
+              <div className="w-full px-3.5 py-2.5 border border-dashed border-slate-300 rounded-xl bg-slate-50 text-xs text-slate-500 flex items-center gap-2">
+                <AlertTriangle size={13} className="shrink-0 text-amber-400" />
+                Selecciona el año primero
+              </div>
+            )}
+          </Field>
+
+          {/* Modelo */}
+          <Field
+            label={
+              <span className="flex items-center gap-1.5">
+                Modelo
+                {loadMo && <Loader2 size={11} className="animate-spin text-indigo-400" />}
+                {vehicle.cmodelo && !loadMo && <span className="text-[0.6rem] text-emerald-600 font-bold bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">✓</span>}
+              </span> as unknown as string
+            }
+            error={errors.modelo}
+          >
+            {modelos.length > 0 ? (
+              <Select
+                value={vehicle.cmodelo ?? ''}
+                disabled={verified}
+                onChange={(e) => {
+                  const cmodelo = e.target.value;
+                  const xmodelo = modelos.find(m => m.cmodelo === cmodelo)?.xmodelo ?? '';
+                  autoSelectedModelo.current = true;
+                  setVehicle({ cmodelo, modelo: xmodelo, cversion: '', ccategoria_uso: undefined, xcategoria_uso: '' });
+                }}
+              >
+                <option value="">— Selecciona modelo —</option>
+                {modelos.map(m => (
+                  <option key={m.cmodelo} value={m.cmodelo}>{m.xmodelo}</option>
+                ))}
+              </Select>
+            ) : vehicle.cmarca ? (
+              loadMo ? (
+                <div className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-sm text-slate-500 flex items-center gap-2">
+                  <Loader2 size={14} className="animate-spin shrink-0" /> Cargando modelos…
+                </div>
+              ) : (
+                <Input
+                  value={vehicle.modelo}
+                  onChange={(e) => setVehicle({ modelo: e.target.value, cmodelo: '' })}
+                  placeholder="Corolla, Aveo…"
+                />
+              )
+            ) : (
+              <div className="w-full px-3.5 py-2.5 border border-dashed border-slate-300 rounded-xl bg-slate-50 text-xs text-slate-500 flex items-center gap-2">
+                <AlertTriangle size={13} className="shrink-0 text-amber-400" />
+                Selecciona la marca primero
+              </div>
+            )}
+          </Field>
+
+          {/* Versión + Uso — emparejados en la misma fila (cada uno media columna) */}
+          {(vehicle.cmodelo || loadV) && (
+            <Field
+              label={
+                <span className="flex items-center gap-1.5">
+                  Versión
+                  {loadV && <Loader2 size={11} className="animate-spin text-indigo-400" />}
+                  {!vehicle.cversion && !loadV && (
+                    <span className="text-[0.6rem] font-bold text-violet-600 bg-violet-50 border border-violet-200 px-1.5 py-0.5 rounded-full">
+                      requerido
+                    </span>
+                  )}
+                </span> as unknown as string
+              }
+            >
+              {versiones.length > 0 ? (
+                <Select
+                  value={vehicle.cversion ?? ''}
+                  onChange={(e) => {
+                    const ver = versiones.find(v => v.cversion === e.target.value);
+                    setVehicle({
+                      cversion: e.target.value,
+                      // ctipo determina qué planes RCV están disponibles (1=particular, 4=moto...)
+                      ctipo: ver?.ctipo != null ? Number(ver.ctipo) : undefined,
+                      // ccategotr → match con ccategoria_uso al cargar categorías
+                      ccategotr: ver?.ccategotr ?? undefined,
+                      // Reset; el efecto de match rellena el uso automáticamente
+                      ccategoria_uso: undefined,
+                      xcategoria_uso: '',
+                      uso: '',
+                    });
+                  }}
+                  className={!vehicle.cversion ? 'border-violet-300 focus:border-violet-500 ring-2 ring-violet-100' : ''}
+                >
+                  <option value="">— Selecciona la versión —</option>
+                  {versiones.map(v => (
+                    <option key={v.cversion} value={v.cversion}>{v.xversion}</option>
+                  ))}
+                </Select>
+              ) : loadV ? (
+                <div className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-sm text-slate-500 flex items-center gap-2">
+                  <Loader2 size={14} className="animate-spin shrink-0" /> Cargando versiones…
+                </div>
+              ) : null}
+            </Field>
+          )}
+
+          {/* Uso — categorías dinámicas según la versión seleccionada */}
+          <Field
+            error={errors.uso}
+            label={
+              <span className="flex items-center gap-1.5">
+                ¿Para qué usas el vehículo? *
+                {loadCu && <Loader2 size={11} className="animate-spin text-indigo-400" />}
+                {vehicle.ccategoria_uso != null && vehicle.ccategoria_uso !== '' && !loadCu && (
+                  <span className="text-[0.6rem] text-emerald-600 font-bold bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">✓</span>
+                )}
+                {usoLockedByCcategotr && (
+                  <span className="text-[0.6rem] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded-full">
+                    según versión
+                  </span>
+                )}
+                {!vehicle.cversion && (
+                  <span className="text-[0.6rem] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">
+                    selecciona la versión primero
+                  </span>
+                )}
+              </span> as unknown as string
+            }
+            hint={
+              !vehicle.cversion
+                ? 'Selecciona la versión del vehículo para ver las categorías.'
+                : usoLockedByCcategotr
+                  ? 'Uso definido por la versión del vehículo (no editable).'
+                  : undefined
+            }
+          >
+            {!vehicle.cversion ? (
+              <div className="w-full px-3.5 py-2.5 border border-dashed border-slate-300 rounded-xl bg-slate-50 text-xs text-slate-500 flex items-center gap-2">
+                <AlertTriangle size={13} className="shrink-0 text-amber-400" />
+                Selecciona la versión primero
+              </div>
+            ) : loadCu ? (
+              <div className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-sm text-slate-500 flex items-center gap-2">
+                <Loader2 size={14} className="animate-spin shrink-0" /> Cargando categorías…
+              </div>
+            ) : categoriasUso.length > 0 ? (
+              <Select
+                value={vehicle.ccategoria_uso != null ? String(vehicle.ccategoria_uso) : ''}
+                disabled={usoLockedByCcategotr}
+                onChange={(e) => {
+                  if (usoLockedByCcategotr) return;
+                  const code = e.target.value;
+                  const match = categoriasUso.find(c => String(c.ccategoria_uso) === code);
+                  setVehicle({
+                    ccategoria_uso: match ? match.ccategoria_uso : undefined,
+                    xcategoria_uso: match?.xcategoria_uso ?? '',
+                    // Mantenemos `uso` (texto) sincronizado para retrocompatibilidad de UI/store
+                    uso: match?.xcategoria_uso ?? vehicle.uso,
+                  });
+                }}
+                className={
+                  usoLockedByCcategotr
+                    ? 'bg-slate-50 text-slate-700 cursor-not-allowed'
+                    : vehicle.ccategoria_uso == null
+                      ? 'border-violet-300 focus:border-violet-500 ring-2 ring-violet-100'
+                      : ''
+                }
+              >
+                <option value="">— Selecciona la categoría de uso —</option>
+                {categoriasUso.map(c => (
+                  <option key={c.ccategoria_uso} value={String(c.ccategoria_uso)}>{c.xcategoria_uso}</option>
+                ))}
+              </Select>
+            ) : (
+              <Select value={vehicle.uso} onChange={(e) => setVehicle({ uso: e.target.value })}>
+                <option value="Particular">Uso personal / familiar</option>
+                <option value="Comercial">Negocio o empresa</option>
+                <option value="Carga">Carga y transporte</option>
+                <option value="Transporte público">Transporte de pasajeros</option>
+              </Select>
+            )}
+          </Field>
+
+          {/* Confirmación amigable cuando el vehículo está completo */}
+          {codesReady && (
+            <div className="sm:col-span-2 flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-700">
+              <ShieldCheck size={14} className="shrink-0 text-emerald-500" />
+              <span>
+                <strong>{vehicle.marca} {vehicle.modelo}</strong> listo para cotización — selecciona el plan en el siguiente paso.
+              </span>
+            </div>
+          )}
+
+          {/* Color */}
+          <Field label="Color *" error={errors.color}>
+            <div className="relative">
+              <Input
+                value={vehicle.color}
+                onChange={(e) => setVehicle({ color: e.target.value.replace(/[^a-zA-ZáéíóúüñÁÉÍÓÚÜÑ\s]/g, '').slice(0, 15) })}
+                placeholder="Plateado"
+                maxLength={15}
+                style={{ paddingLeft: '2.25rem' }}
+              />
+              <span
+                className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full border border-slate-300 shadow-inner pointer-events-none"
+                style={{ background: getColorSwatch(vehicle.color) }}
+                aria-hidden
+              />
+            </div>
+          </Field>
+
+          {/* Serial de carrocería (VIN) */}
+          <Field label="Serial de carrocería (VIN) *" error={errors.serial} hint="Entre 10 y 17 caracteres alfanuméricos del documento del vehículo">
+            <Input
+              value={vehicle.serial}
+              onChange={(e) => setVehicle({ serial: e.target.value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 17) })}
+              placeholder="1HGBH41JXMN109186"
+              className="font-mono uppercase tracking-wider"
+              maxLength={17}
+            />
+          </Field>
+
+          {/* Serial del motor — opcional */}
+          <Field label="Serial del motor" hint="Opcional · Máx. 60 caracteres · Aparece en el documento del vehículo">
+            <Input
+              value={vehicle.serialMotor ?? ''}
+              onChange={(e) => setVehicle({ serialMotor: e.target.value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 60) })}
+              placeholder="Ej. 4A123456789"
+              className="font-mono uppercase tracking-wider"
+              maxLength={60}
+            />
+          </Field>
+        </div>
+
+        {/* Vista previa de placa */}
+        <div className="mt-5 pt-5 border-t border-slate-100 flex items-center gap-3 sm:gap-4 flex-wrap">
+          <p className="text-[0.62rem] font-black text-slate-500 uppercase tracking-widest inline-flex items-center gap-1.5">
+            <Sparkles size={11} className="text-indigo-500" /> Vista previa
+          </p>
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap min-w-0">
+            <div className="rounded-md bg-white border-2 border-slate-900 px-3 py-1.5 font-mono font-black text-slate-900 text-sm tracking-widest shadow-sm">
+              {vehicle.placa || 'AAA000'}
+            </div>
+            <span className="text-sm text-slate-700 font-bold truncate max-w-[200px]">
+              {[vehicle.marca, vehicle.modelo].filter(Boolean).join(' ') || 'Marca · Modelo'}
+            </span>
+            {vehicle.año && <span className="text-xs text-slate-500 font-mono">{vehicle.año}</span>}
+            {vehicle.color && (
+              <span className="inline-flex items-center gap-1.5 text-xs text-slate-500 capitalize">
+                <span className="w-3 h-3 rounded-full ring-1 ring-slate-300" style={{ background: getColorSwatch(vehicle.color) }} />
+                {vehicle.color}
+              </span>
+            )}
+          </div>
+        </div>
+      </SectionCard>
+
+      {/* ── Conductor habitual ─────────────────────────────────────────────────── */}
+      <SectionCard Icon={UserCog} title="¿Hay otro conductor?" description="Si alguien más conduce este vehículo con frecuencia, regístralo aquí">
+        <ToggleSwitch
+          checked={hasDriver} onChange={setHasDriver}
+          label="Sí, hay otra persona que lo maneja"
+          description="Puede ser un familiar, empleado o cualquier persona que utilice el vehículo con regularidad."
+        />
+        {hasDriver && (
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 animate-fade-in">
+              <Field label="Cédula o documento *" error={errors.cond_identificacion}>
+                <IdentityInput
+                  tipoDoc={conductor.tipoDoc ?? 'V'}
+                  identificacion={conductor.identificacion}
+                  onTipoDocChange={(v) => setConductor({ tipoDoc: v })}
+                  onIdentificacionChange={(v) => setConductor({ identificacion: v })}
+                />
+              </Field>
+              <div className="hidden sm:block"></div>
+              <Field label="Nombre *" error={errors.cond_nombre}>
+                <Input value={conductor.nombre} onChange={(e) => setConductor({ nombre: String(e.target.value).replace(/[^a-zA-ZáéíóúüñÁÉÍÓÚÜÑ\s]/g, '') })} placeholder="Nombre" />
+              </Field>
+              <Field label="Apellido *" error={errors.cond_apellido}>
+                <Input value={conductor.apellido} onChange={(e) => setConductor({ apellido: String(e.target.value).replace(/[^a-zA-ZáéíóúüñÁÉÍÓÚÜÑ\s]/g, '') })} placeholder="Apellido" />
+              </Field>
+              <Field label="Teléfono *" error={errors.cond_telefono}>
+                <Input value={conductor.telefono ?? ''} onChange={(e) => setConductor({ telefono: formatTelefono(e.target.value) })} placeholder="04121234567" type="tel" maxLength={11} />
+              </Field>
+              <Field label="Correo electrónico" error={errors.cond_email}>
+                <Input value={conductor.email ?? ''} onChange={(e) => setConductor({ email: e.target.value })} placeholder="correo@ejemplo.com" type="email" />
+              </Field>
+              <Field label="Estado *" error={errors.cond_estado}>
+                <SearchSelect
+                  value={conductor.cestado}
+                  options={catalogs.estados.map((s) => ({ value: String(s.code), label: s.label }))}
+                  onChange={(code, label) => setConductor({ estado: label, cestado: code ? Number(code) : undefined, ciudad: '', cciudad: undefined })}
+                  placeholder="Escribe para buscar estado..." loading={catalogs.loading}
+                />
+              </Field>
+              <Field label="Ciudad *" error={errors.cond_ciudad} hint={conductor.cestado ? '' : 'Selecciona primero el estado'}>
+                <SearchSelect
+                  value={conductor.cciudad}
+                  options={conductorCiudades.ciudades.map((c) => ({ value: String(c.code), label: c.label }))}
+                  onChange={(code, label) => setConductor({ ciudad: label, cciudad: code ? Number(code) : undefined })}
+                  placeholder={conductor.cestado ? 'Escribe para buscar ciudad...' : 'Selecciona primero el estado'}
+                  disabled={!conductor.cestado} loading={conductorCiudades.loading}
+                />
+              </Field>
+              <Field label="Fecha de nacimiento *">
+                <Input value={conductor.fechaNac ?? ''} onChange={(e) => setConductor({ fechaNac: e.target.value })} type="date" />
+              </Field>
+              <Field label="Sexo *" error={errors.cond_sexo}>
+                <SearchSelect
+                  value={conductor.sexo}
+                  options={catalogs.sexos.length > 0 ? catalogs.sexos.map((s) => ({ value: String(s.label), label: s.label })) : [{ value: 'Femenino', label: 'Femenino' }, { value: 'Masculino', label: 'Masculino' }]}
+                  onChange={(value) => setConductor({ sexo: value })} placeholder="— Seleccionar —" loading={catalogs.loading}
+                />
+              </Field>
+              <Field label="Estado civil *" error={errors.cond_estadoCivil}>
+                <SearchSelect
+                  value={conductor.estadoCivil}
+                  options={catalogs.estadosCivil.length > 0 ? catalogs.estadosCivil.map((s) => ({ value: String(s.label), label: s.label })) : [{ value: 'Soltero(a)', label: 'Soltero(a)' }, { value: 'Casado(a)', label: 'Casado(a)' }, { value: 'Divorciado(a)', label: 'Divorciado(a)' }, { value: 'Viudo(a)', label: 'Viudo(a)' }]}
+                  onChange={(value) => setConductor({ estadoCivil: value })} placeholder="— Seleccionar —" loading={catalogs.loading}
+                />
+              </Field>
+              <div className="hidden sm:block"></div>
+              <Field label="Dirección *" error={errors.cond_direccion} full>
+                <Textarea value={conductor.direccion ?? ''} onChange={(e) => setConductor({ direccion: e.target.value })} placeholder="Dirección completa" rows={2} />
+              </Field>
+              <Field label="Número de licencia de conducir *" error={errors.cond_licencia} full>
+                <Input
+                  value={conductor.licencia ?? ''}
+                  onChange={(e) => setConductor({ licencia: e.target.value.toUpperCase() })}
+                  placeholder="Ej. LIC-0234567"
+                  className="uppercase font-mono tracking-wider"
+                />
+              </Field>
+          </div>
+        )}
+      </SectionCard>
+    </div>
+  );
+}
