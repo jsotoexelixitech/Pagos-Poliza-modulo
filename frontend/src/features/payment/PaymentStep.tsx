@@ -9,7 +9,7 @@ import {
   CheckCircle2, XCircle, RefreshCw, Send, ClipboardCheck,
 } from 'lucide-react';
 import { formatUsdShort, vesAnnual } from '../../lib/money';
-import { formatTelefono } from '@exelixi/shared';
+import { formatTelefono } from '../../lib/phone';
 import { formatCedulaRif, validateCedulaRif } from '../../lib/cedula-rif';
 import { useProductConfig } from '../../hooks/useProductConfig';
 import { isExelixiCatalogProduct } from '../../lib/product';

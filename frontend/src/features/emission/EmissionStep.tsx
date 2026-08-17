@@ -6,7 +6,7 @@ import { ToggleSwitch } from '../../components/ui/ToggleSwitch';
 import { SearchSelect } from '../../components/ui/SearchSelect';
 import { useCatalogs, useCiudades } from '../../hooks/useCatalogs';
 import { User, UserPlus, Heart, Wallet, ShieldAlert } from 'lucide-react';
-import { formatTelefono, isValidPhonePrefix } from '@exelixi/shared';
+import { formatTelefono, isValidPhonePrefix } from '../../lib/phone';
 
 
 export function SectionCard({
@@ -164,7 +164,7 @@ export function EmissionStep() {
     } else if (digs(tomador.telefono) !== 11) {
       e.telefono = 'El teléfono debe tener exactamente 11 dígitos (ej. 04121234567)';
     } else if (!isValidPhonePrefix(tomador.telefono || '')) {
-      e.telefono = 'El prefijo debe ser válido en Venezuela (ej. 0414, 0412, 0212)';
+      e.telefono = 'El prefijo no es válido (Digitel 0412/0422 · Movistar 0414/0424 · Movilnet 0416/0426 · fijos 02XX)';
     }
 
     if (req(tomador.email)) {
@@ -235,7 +235,7 @@ export function EmissionStep() {
       } else if (digs(pagador.telefono) !== 11) {
         e.pag_telefono = 'El teléfono debe tener exactamente 11 dígitos (ej. 04121234567)';
       } else if (!isValidPhonePrefix(pagador.telefono || '')) {
-        e.pag_telefono = 'El prefijo debe ser válido en Venezuela (ej. 0414, 0412, 0212)';
+        e.pag_telefono = 'El prefijo no es válido (Digitel 0412/0422 · Movistar 0414/0424 · Movilnet 0416/0426 · fijos 02XX)';
       }
 
       const pagEmail = (pagador.email ?? '').trim();
