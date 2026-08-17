@@ -51,6 +51,15 @@ function normalizeStatus(raw) {
   return { code, ...map };
 }
 
+/** SyPago exige solo dígitos (ej. 04141234567), no máscaras tipo (0424) 367-8907. */
+function normalizeDebtorPhone(raw) {
+  let d = String(raw ?? '').replace(/\D/g, '');
+  if (d.length >= 1 && d[0] !== '0' && /^[24589]/.test(d[0])) {
+    d = `0${d}`;
+  }
+  return d.slice(0, 11);
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function _getConfig() {
@@ -204,9 +213,10 @@ function _handleError(err, operation) {
  */
 async function requestOtp({ documentType, documentNumber, debtorBankCode, debtorPhone, amount }) {
   const cfg = _getConfig();
+  const phone = normalizeDebtorPhone(debtorPhone);
 
   if (cfg.mock) {
-    console.log('[SyPago MOCK] requestOtp →', { documentType, documentNumber, debtorBankCode, debtorPhone, amount });
+    console.log('[SyPago MOCK] requestOtp →', { documentType, documentNumber, debtorBankCode, debtorPhone: phone, amount });
     return { success: true, mock: true, message: 'OTP enviada al teléfono del cliente [MODO PRUEBA]' };
   }
 
@@ -223,7 +233,7 @@ async function requestOtp({ documentType, documentNumber, debtorBankCode, debtor
     debitor_account: {
       bank_code: debtorBankCode,
       type     : 'CELE',
-      number   : debtorPhone,
+      number   : phone,
     },
     amount: {
       amt     : amount,
@@ -265,6 +275,7 @@ async function requestOtp({ documentType, documentNumber, debtorBankCode, debtor
  */
 async function confirmOtp({ documentType, documentNumber, debtorBankCode, debtorPhone, debtorName, amount, otp, concept }) {
   const cfg = _getConfig();
+  const phone = normalizeDebtorPhone(debtorPhone);
 
   if (cfg.mock) {
     const txId = _randomId();
@@ -307,7 +318,7 @@ async function confirmOtp({ documentType, documentNumber, debtorBankCode, debtor
       account: {
         bank_code: debtorBankCode,
         type     : 'CELE',
-        number   : debtorPhone,
+        number   : phone,
       },
     },
   };
