@@ -17,8 +17,8 @@ export type OpenEmissionResult = {
   blockedCount: number;
 };
 
-/** Tras emisión: mostrar prompt en pantalla de éxito para abrir PDFs con clic del usuario. */
-export const PAGOS_PROMPT_OPEN_DOCS_KEY = 'pagos_prompt_open_docs';
+/** Pestañas reservadas en el clic de pago (antes del await) para evitar bloqueo de popups. */
+let reservedPdfTabs: Window[] = [];
 
 function collectEmissionUrls(docs: EmissionPdfDocs): string[] {
   return listEmissionDocs(docs).map((d) => d.url);
@@ -49,7 +49,27 @@ export function countEmissionDocs(docs: EmissionPdfDocs): number {
   return listEmissionDocs(docs).length;
 }
 
-/** form GET + target=_blank — permite varias pestañas en un mismo clic de usuario. */
+/** Llamar de forma síncrona en el handler del clic (Confirmar pago / Verificar) antes de cualquier await. */
+export function reserveEmissionPdfTabs(maxCount = 4): void {
+  discardReservedPdfTabs();
+  for (let i = 0; i < maxCount; i += 1) {
+    const tab = window.open('about:blank', '_blank');
+    if (tab) reservedPdfTabs.push(tab);
+  }
+}
+
+export function discardReservedPdfTabs(): void {
+  for (const tab of reservedPdfTabs) {
+    try {
+      if (tab && !tab.closed) tab.close();
+    } catch {
+      /* ignore */
+    }
+  }
+  reservedPdfTabs = [];
+}
+
+/** form GET + target=_blank — fallback si no hay pestaña reservada. */
 function openUrlViaForm(url: string): void {
   const form = document.createElement('form');
   form.method = 'GET';
@@ -62,47 +82,65 @@ function openUrlViaForm(url: string): void {
 }
 
 /**
- * Abre URLs en pestañas nuevas. Llamar dentro del handler de un clic del usuario.
+ * Navega pestañas reservadas o abre vía form. Tras emisión async.
  */
 export function openEmissionPdfs(docs: EmissionPdfDocs): OpenEmissionResult {
   const urls = collectEmissionUrls(docs);
   const opened: string[] = [];
+  let blockedCount = 0;
+  const tabs = reservedPdfTabs;
+  reservedPdfTabs = [];
 
-  for (const url of urls) {
-    openUrlViaForm(url);
-    opened.push(url);
+  urls.forEach((url, index) => {
+    const tab = tabs[index];
+    if (tab && !tab.closed) {
+      try {
+        tab.location.href = url;
+        opened.push(url);
+        return;
+      } catch {
+        /* fallback */
+      }
+    }
+    try {
+      openUrlViaForm(url);
+      opened.push(url);
+    } catch {
+      blockedCount += 1;
+    }
+  });
+
+  for (let i = urls.length; i < tabs.length; i += 1) {
+    try {
+      if (tabs[i] && !tabs[i].closed) tabs[i].close();
+    } catch {
+      /* ignore */
+    }
   }
 
   return {
     opened,
     total: urls.length,
-    blockedCount: 0,
+    blockedCount,
   };
 }
 
 export function emissionPdfHint(result: OpenEmissionResult): string {
   if (result.total === 0) return '';
-  if (result.total === 1) return ' · Pulsa «Abrir documento» para ver el PDF';
-  return ` · Pulsa «Abrir ${result.total} documentos» para ver los PDFs`;
-}
-
-export function markPromptOpenDocsAfterEmission(docs: EmissionPdfDocs): void {
-  if (countEmissionDocs(docs) > 0) {
-    sessionStorage.setItem(PAGOS_PROMPT_OPEN_DOCS_KEY, '1');
+  if (result.blockedCount > 0) {
+    return ' · Algunos PDFs no se abrieron; usa los enlaces en pantalla';
   }
+  if (result.total === 1) return ' · Documento abierto en nueva pestaña';
+  return ` · ${result.total} documentos abiertos en nuevas pestañas`;
 }
 
-export function consumePromptOpenDocsFlag(): boolean {
-  const pending = sessionStorage.getItem(PAGOS_PROMPT_OPEN_DOCS_KEY) === '1';
-  if (pending) sessionStorage.removeItem(PAGOS_PROMPT_OPEN_DOCS_KEY);
-  return pending;
-}
-
-/** Tras emisión async: marca prompt (el navegador no abre popups sin clic). */
+/** Tras emisión: abre PDFs automáticamente (pestañas reservadas en el clic de pago). */
 export function notifyEmissionSuccessAndOpenPdfs(
   _cnpoliza: string,
   docs: EmissionPdfDocs,
 ): OpenEmissionResult {
-  markPromptOpenDocsAfterEmission(docs);
-  return { opened: [], total: countEmissionDocs(docs), blockedCount: countEmissionDocs(docs) };
+  if (countEmissionDocs(docs) === 0) {
+    return { opened: [], total: 0, blockedCount: 0 };
+  }
+  return openEmissionPdfs(docs);
 }

@@ -1,18 +1,13 @@
-import { useEffect, useState } from 'react';
 import { useWizardStore } from '../../store/wizardStore';
 import { Button } from '../../components/ui/Button';
 import { toast } from '../../store/toastStore';
 import { isGenericCheckoutMode } from '../../lib/checkout';
 import {
   CheckCircle2, Download, RefreshCw, ShieldCheck,
-  Calendar, Copy, ExternalLink, FileText,
+  Calendar, Copy, ExternalLink,
 } from 'lucide-react';
 import { formatUsdShort } from '../../lib/money';
-import {
-  consumePromptOpenDocsFlag,
-  listEmissionDocs,
-  openEmissionPdfs,
-} from '../../lib/openEmissionPdfs';
+import { listEmissionDocs, openEmissionPdfs } from '../../lib/openEmissionPdfs';
 
 /**
  * Reinicio OCR desde cero: sin sid (nueva sesión bridge) + wizardStep=1.
@@ -89,18 +84,9 @@ export function SuccessStep() {
   };
   const docItems = listEmissionDocs(docsPayload);
   const docCount = docItems.length;
-  const [docsPromptOpen, setDocsPromptOpen] = useState(false);
-
-  useEffect(() => {
-    if (!hasDocuments) return;
-    if (consumePromptOpenDocsFlag()) {
-      setDocsPromptOpen(true);
-    }
-  }, [hasDocuments]);
 
   const handleOpenDocuments = () => {
     if (!hasDocuments) return;
-    setDocsPromptOpen(false);
     openEmissionPdfs(docsPayload);
 
     toast.success(
@@ -210,7 +196,7 @@ export function SuccessStep() {
         <p className="text-slate-500 max-w-md mx-auto leading-relaxed text-sm">
           La póliza fue emitida correctamente.
           {hasDocuments
-            ? ' Pulsa «Abrir documentos» para ver los PDFs en nuevas pestañas.'
+            ? ' Los documentos se abren automáticamente en nuevas pestañas al emitir.'
             : ' Contacta soporte si necesitas el certificado digital.'}
         </p>
       </div>
@@ -375,10 +361,9 @@ export function SuccessStep() {
           size="lg"
           onClick={handleOpenDocuments}
           disabled={!hasDocuments}
-          className={docsPromptOpen ? 'ring-4 ring-indigo-300/60 animate-pulse' : ''}
         >
           <Download size={15} />
-          {docCount > 1 ? `Abrir ${docCount} documentos` : 'Abrir documento'}
+          {docCount > 1 ? `Volver a abrir ${docCount} documentos` : 'Volver a abrir documento'}
         </Button>
       </div>
 
@@ -396,57 +381,6 @@ export function SuccessStep() {
               {doc.label}
             </a>
           ))}
-        </div>
-      )}
-
-      {docsPromptOpen && hasDocuments && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/45 backdrop-blur-[2px]">
-          <div
-            className="w-full max-w-md rounded-2xl bg-white border border-slate-200 shadow-2xl p-6 sm:p-7 animate-fade-in"
-            role="dialog"
-            aria-labelledby="docs-prompt-title"
-          >
-            <div className="flex items-start gap-3 mb-4">
-              <div className="w-11 h-11 rounded-xl bg-indigo-50 border border-indigo-100 grid place-items-center shrink-0">
-                <FileText size={20} className="text-indigo-600" />
-              </div>
-              <div>
-                <p id="docs-prompt-title" className="font-display font-bold text-lg text-slate-900">
-                  Documentos listos
-                </p>
-                <p className="text-sm text-slate-500 mt-1 leading-relaxed">
-                  Tu póliza <span className="font-mono font-semibold text-slate-700">{policyNum}</span> fue emitida.
-                  Abre cada documento o pulsa «Abrir todos».
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-2 mb-4">
-              {docItems.map((doc) => (
-                <a
-                  key={doc.key}
-                  href={doc.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={() => setDocsPromptOpen(false)}
-                  className="flex items-center gap-2.5 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50 transition-colors"
-                >
-                  <ExternalLink size={14} className="shrink-0" />
-                  {doc.label}
-                </a>
-              ))}
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-2.5">
-              <Button variant="primary" className="w-full sm:flex-1" onClick={handleOpenDocuments}>
-                <ExternalLink size={15} />
-                Abrir {docCount > 1 ? 'todos los documentos' : 'documento'}
-              </Button>
-              <Button variant="secondary" className="w-full sm:flex-1" onClick={() => setDocsPromptOpen(false)}>
-                Ver en pantalla
-              </Button>
-            </div>
-          </div>
         </div>
       )}
 
