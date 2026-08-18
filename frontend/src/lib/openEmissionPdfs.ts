@@ -17,8 +17,8 @@ export type OpenEmissionResult = {
   blockedCount: number;
 };
 
-/** Ventana auxiliar abierta en el clic de pago (conserva gesto del usuario para N pestañas). */
-let docOpenerWindow: Window | null = null;
+/** Cola compartida con doc-opener.html (localStorage — compartido entre pestañas mismo origen). */
+export const PAGOS_EMISSION_DOCS_KEY = 'pagos_emission_docs_pending';
 
 function collectEmissionUrls(docs: EmissionPdfDocs): string[] {
   return listEmissionDocs(docs).map((d) => d.url);
@@ -54,108 +54,90 @@ function docOpenerPageUrl(): string {
   return `${window.location.origin}${base}doc-opener.html`;
 }
 
-/**
- * Llamar de forma síncrona al confirmar pago (antes de cualquier await).
- * Abre UNA pestaña auxiliar (no about:blank) que luego dispara los PDFs.
- */
+/** Sincronico al confirmar pago: abre pestaña auxiliar que hara polling a localStorage. */
 export function prepareEmissionDocOpener(): void {
-  closeEmissionDocOpener();
-  docOpenerWindow = window.open(docOpenerPageUrl(), 'exelixi_emission_docs');
+  localStorage.removeItem(PAGOS_EMISSION_DOCS_KEY);
+  window.open(docOpenerPageUrl(), 'exelixi_emission_docs');
 }
 
-export function closeEmissionDocOpener(): void {
-  if (docOpenerWindow && !docOpenerWindow.closed) {
+export function queueEmissionDocs(urls: string[]): void {
+  if (urls.length === 0) {
+    localStorage.removeItem(PAGOS_EMISSION_DOCS_KEY);
+    return;
+  }
+  localStorage.setItem(PAGOS_EMISSION_DOCS_KEY, JSON.stringify(urls));
+}
+
+/**
+ * Patrón SysIP pay-form.component.ts: window.open(url, '_blank') por cada documento.
+ * Tras await de emisión (mismo handler async que inició con clic del usuario).
+ */
+function openUrlsLikeLaMundial(urls: string[]): string[] {
+  const opened: string[] = [];
+  for (const url of urls) {
     try {
-      docOpenerWindow.close();
+      const tab = window.open(url, '_blank', 'noopener,noreferrer');
+      if (tab) {
+        opened.push(url);
+        continue;
+      }
     } catch {
-      /* ignore */
+      /* fallback */
+    }
+    try {
+      const link = document.createElement('a');
+      link.href = url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      opened.push(url);
+    } catch {
+      /* blocked */
     }
   }
-  docOpenerWindow = null;
+  return opened;
 }
 
-function openUrlViaForm(url: string, target = '_blank'): void {
-  const form = document.createElement('form');
-  form.method = 'GET';
-  form.action = url;
-  form.target = target;
-  form.style.display = 'none';
-  document.body.appendChild(form);
-  form.submit();
-  document.body.removeChild(form);
-}
-
-function openUrlsViaFormStaggered(urls: string[], delayMs = 350): OpenEmissionResult {
-  urls.forEach((url, index) => {
-    window.setTimeout(() => openUrlViaForm(url), index * delayMs);
-  });
-  return { opened: urls, total: urls.length, blockedCount: 0 };
-}
-
-function postUrlsToOpener(urls: string[]): boolean {
-  if (!docOpenerWindow || docOpenerWindow.closed) return false;
-  try {
-    docOpenerWindow.postMessage(
-      { type: 'OPEN_DOCS', urls },
-      window.location.origin,
-    );
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Abre todos los PDFs. Preferir ventana auxiliar (gesto del usuario); si no, form staggered.
- */
 export function openEmissionPdfs(docs: EmissionPdfDocs): OpenEmissionResult {
   const urls = collectEmissionUrls(docs);
   if (urls.length === 0) {
+    localStorage.removeItem(PAGOS_EMISSION_DOCS_KEY);
     return { opened: [], total: 0, blockedCount: 0 };
   }
 
-  if (docOpenerWindow && !docOpenerWindow.closed) {
-    let attempt = 0;
-    const tryPost = (): void => {
-      postUrlsToOpener(urls);
-      attempt += 1;
-      if (attempt < 20 && docOpenerWindow && !docOpenerWindow.closed) {
-        window.setTimeout(tryPost, 250);
-      } else {
-        docOpenerWindow = null;
-      }
-    };
-    tryPost();
-    return { opened: urls, total: urls.length, blockedCount: 0 };
-  }
+  queueEmissionDocs(urls);
+  const opened = openUrlsLikeLaMundial(urls);
 
-  return openUrlsViaFormStaggered(urls);
+  return {
+    opened,
+    total: urls.length,
+    blockedCount: Math.max(0, urls.length - opened.length),
+  };
 }
 
-/** Mismo clic del usuario: abre todos los formularios de inmediato (sin ventana auxiliar). */
+/** Clic explícito del usuario en pantalla de éxito. */
 export function openEmissionPdfsOnUserClick(docs: EmissionPdfDocs): OpenEmissionResult {
   const urls = collectEmissionUrls(docs);
-  urls.forEach((url) => openUrlViaForm(url));
-  return { opened: urls, total: urls.length, blockedCount: 0 };
+  const opened = openUrlsLikeLaMundial(urls);
+  return { opened, total: urls.length, blockedCount: Math.max(0, urls.length - opened.length) };
 }
 
 export function emissionPdfHint(result: OpenEmissionResult): string {
   if (result.total === 0) return '';
   if (result.blockedCount > 0) {
-    return ' · Algunos PDFs no se abrieron; usa los enlaces en pantalla';
+    return ' · Si faltan PDFs, usa los enlaces en pantalla';
   }
   if (result.total === 1) return ' · Documento abierto en nueva pestaña';
   return ` · ${result.total} documentos abiertos en nuevas pestañas`;
 }
 
-/** Tras emisión async: envía URLs a la ventana auxiliar o abre vía form. */
+/** Tras emisión: encola URLs (doc-opener) + window.open secuencial como La Mundial. */
 export function notifyEmissionSuccessAndOpenPdfs(
   _cnpoliza: string,
   docs: EmissionPdfDocs,
 ): OpenEmissionResult {
-  if (countEmissionDocs(docs) === 0) {
-    closeEmissionDocOpener();
-    return { opened: [], total: 0, blockedCount: 0 };
-  }
   return openEmissionPdfs(docs);
 }

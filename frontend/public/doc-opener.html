@@ -25,9 +25,14 @@
     <p id="status">Esperando confirmación de emisión…</p>
   </div>
   <script>
+    var STORAGE_KEY = 'pagos_emission_docs_pending';
     var docsOpened = false;
+    var pollCount = 0;
+    var maxPolls = 120;
 
     function openUrl(url) {
+      var w = window.open(url, '_blank', 'noopener,noreferrer');
+      if (w) return;
       var form = document.createElement('form');
       form.method = 'GET';
       form.action = url;
@@ -38,29 +43,51 @@
       document.body.removeChild(form);
     }
 
-    window.addEventListener('message', function (event) {
-      if (event.origin !== window.location.origin) return;
-      var data = event.data;
-      if (!data || data.type !== 'OPEN_DOCS' || !Array.isArray(data.urls)) return;
+    function tryOpenFromStorage() {
       if (docsOpened) return;
-
-      var urls = data.urls.filter(Boolean);
-      var status = document.getElementById('status');
-      if (!urls.length) {
-        status.textContent = 'No hay documentos para abrir. Puede cerrar esta pestaña.';
+      pollCount += 1;
+      var raw = null;
+      try {
+        raw = localStorage.getItem(STORAGE_KEY);
+      } catch (e) {
+        return;
+      }
+      if (!raw) {
+        if (pollCount >= maxPolls) {
+          document.getElementById('status').textContent =
+            'Tiempo agotado. Cierra esta pestaña y usa los enlaces en la pantalla de éxito.';
+        }
         return;
       }
 
-      status.textContent = 'Abriendo ' + urls.length + ' documento(s)…';
+      var urls;
+      try {
+        urls = JSON.parse(raw);
+      } catch (e) {
+        localStorage.removeItem(STORAGE_KEY);
+        return;
+      }
+      if (!Array.isArray(urls) || !urls.length) return;
+
+      localStorage.removeItem(STORAGE_KEY);
       docsOpened = true;
+      var status = document.getElementById('status');
+      status.textContent = 'Abriendo ' + urls.length + ' documento(s)…';
+
       urls.forEach(function (url, index) {
-        setTimeout(function () { openUrl(url); }, index * 350);
+        setTimeout(function () { openUrl(url); }, index * 400);
       });
 
       setTimeout(function () {
-        status.textContent = 'Documentos enviados. Puede cerrar esta pestaña.';
-      }, urls.length * 350 + 400);
+        status.textContent = 'Documentos abiertos. Puede cerrar esta pestaña.';
+      }, urls.length * 400 + 500);
+    }
+
+    setInterval(tryOpenFromStorage, 500);
+    window.addEventListener('storage', function (e) {
+      if (e.key === STORAGE_KEY) tryOpenFromStorage();
     });
+    tryOpenFromStorage();
   </script>
 </body>
 </html>
