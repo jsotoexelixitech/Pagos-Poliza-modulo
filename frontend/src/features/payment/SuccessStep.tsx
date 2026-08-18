@@ -1,13 +1,18 @@
+import { useEffect, useState } from 'react';
 import { useWizardStore } from '../../store/wizardStore';
 import { Button } from '../../components/ui/Button';
 import { toast } from '../../store/toastStore';
 import { isGenericCheckoutMode } from '../../lib/checkout';
 import {
   CheckCircle2, Download, RefreshCw, ShieldCheck,
-  Calendar, Copy, ExternalLink,
+  Calendar, Copy, ExternalLink, FileText,
 } from 'lucide-react';
 import { formatUsdShort } from '../../lib/money';
-import { openEmissionPdfs } from '../../lib/openEmissionPdfs';
+import {
+  consumePromptOpenDocsFlag,
+  countEmissionDocs,
+  openEmissionPdfs,
+} from '../../lib/openEmissionPdfs';
 
 /**
  * Reinicio OCR desde cero: sin sid (nueva sesión bridge) + wizardStep=1.
@@ -82,11 +87,40 @@ export function SuccessStep() {
     url_conductor_habitual: conductorUrl,
     url_ingreso_caja: ingresoCajaUrl,
   };
+  const docCount = countEmissionDocs(docsPayload);
+  const [docsPromptOpen, setDocsPromptOpen] = useState(false);
+
+  useEffect(() => {
+    if (!hasDocuments) return;
+    if (consumePromptOpenDocsFlag()) {
+      setDocsPromptOpen(true);
+    }
+  }, [hasDocuments]);
 
   const handleOpenDocuments = () => {
     if (!hasDocuments) return;
-    const opened = openEmissionPdfs(docsPayload);
-    toast.success('Abriendo documentos', `${opened.length} archivo(s) en nuevas pestañas.`);
+    const result = openEmissionPdfs(docsPayload);
+    setDocsPromptOpen(false);
+
+    if (result.opened.length === 0) {
+      toast.warning(
+        'No se pudieron abrir las pestañas',
+        'El navegador bloqueó las ventanas emergentes. Usa los enlaces de abajo o permite popups para este sitio.',
+        8000,
+      );
+      return;
+    }
+
+    if (result.blockedCount > 0) {
+      toast.warning(
+        'Algunos documentos no se abrieron',
+        `Se abrieron ${result.opened.length} de ${result.total}. Usa los enlaces restantes en esta pantalla.`,
+        7000,
+      );
+      return;
+    }
+
+    toast.success('Documentos abiertos', `${result.opened.length} archivo(s) en nuevas pestañas.`);
   };
 
   const copyPolicy = async () => {
@@ -98,9 +132,6 @@ export function SuccessStep() {
     }
   };
 
-  const downloadPdf = () => {
-    handleOpenDocuments();
-  };
 
   /** QA — Emitir otra: OCR desde cero (Paso 01), sin reutilizar sid de la emisión anterior. */
   const emitAnotherPolicy = () => {
@@ -188,7 +219,10 @@ export function SuccessStep() {
           Tu póliza está activa
         </h2>
         <p className="text-slate-500 max-w-md mx-auto leading-relaxed text-sm">
-          La póliza fue emitida correctamente. Los documentos se abrieron en nuevas pestañas.
+          La póliza fue emitida correctamente.
+          {hasDocuments
+            ? ' Pulsa «Abrir documentos» para ver los PDFs en nuevas pestañas.'
+            : ' Contacta soporte si necesitas el certificado digital.'}
         </p>
       </div>
 
@@ -350,13 +384,48 @@ export function SuccessStep() {
         <Button
           variant="primary"
           size="lg"
-          onClick={downloadPdf}
+          onClick={handleOpenDocuments}
           disabled={!hasDocuments}
+          className={docsPromptOpen ? 'ring-4 ring-indigo-300/60 animate-pulse' : ''}
         >
           <Download size={15} />
-          Descargar Documentos
+          {docCount > 1 ? `Abrir ${docCount} documentos` : 'Abrir documento'}
         </Button>
       </div>
+
+      {docsPromptOpen && hasDocuments && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/45 backdrop-blur-[2px]">
+          <div
+            className="w-full max-w-md rounded-2xl bg-white border border-slate-200 shadow-2xl p-6 sm:p-7 animate-fade-in"
+            role="dialog"
+            aria-labelledby="docs-prompt-title"
+          >
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-11 h-11 rounded-xl bg-indigo-50 border border-indigo-100 grid place-items-center shrink-0">
+                <FileText size={20} className="text-indigo-600" />
+              </div>
+              <div>
+                <p id="docs-prompt-title" className="font-display font-bold text-lg text-slate-900">
+                  Documentos listos
+                </p>
+                <p className="text-sm text-slate-500 mt-1 leading-relaxed">
+                  Tu póliza <span className="font-mono font-semibold text-slate-700">{policyNum}</span> fue emitida.
+                  El navegador requiere un clic para abrir {docCount > 1 ? `los ${docCount} PDFs` : 'el PDF'}.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2.5">
+              <Button variant="primary" className="w-full sm:flex-1" onClick={handleOpenDocuments}>
+                <ExternalLink size={15} />
+                Abrir {docCount > 1 ? 'todos los documentos' : 'documento'}
+              </Button>
+              <Button variant="secondary" className="w-full sm:flex-1" onClick={() => setDocsPromptOpen(false)}>
+                Ver en pantalla
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="text-center">
         <button

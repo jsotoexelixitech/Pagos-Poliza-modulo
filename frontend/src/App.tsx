@@ -123,7 +123,7 @@ export default function App() {
       url_ingreso_caja: product === 'generic' ? undefined : result.policy.url_ingreso_caja,
     };
 
-    const opened = notifyEmissionSuccessAndOpenPdfs(result.policy.cnpoliza, docs);
+    const openResult = notifyEmissionSuccessAndOpenPdfs(result.policy.cnpoliza, docs);
 
     setPolicy({
       number: result.policy.number,
@@ -141,7 +141,7 @@ export default function App() {
 
     toast.success(
       '¡Póliza emitida!',
-      `Número ${result.policy.cnpoliza}${emissionPdfHint(opened)}`,
+      `Número ${result.policy.cnpoliza}${emissionPdfHint(openResult)}`,
       6000,
     );
 
