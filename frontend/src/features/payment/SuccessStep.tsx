@@ -10,7 +10,7 @@ import {
 import { formatUsdShort } from '../../lib/money';
 import {
   consumePromptOpenDocsFlag,
-  countEmissionDocs,
+  listEmissionDocs,
   openEmissionPdfs,
 } from '../../lib/openEmissionPdfs';
 
@@ -87,7 +87,8 @@ export function SuccessStep() {
     url_conductor_habitual: conductorUrl,
     url_ingreso_caja: ingresoCajaUrl,
   };
-  const docCount = countEmissionDocs(docsPayload);
+  const docItems = listEmissionDocs(docsPayload);
+  const docCount = docItems.length;
   const [docsPromptOpen, setDocsPromptOpen] = useState(false);
 
   useEffect(() => {
@@ -99,28 +100,16 @@ export function SuccessStep() {
 
   const handleOpenDocuments = () => {
     if (!hasDocuments) return;
-    const result = openEmissionPdfs(docsPayload);
     setDocsPromptOpen(false);
+    openEmissionPdfs(docsPayload);
 
-    if (result.opened.length === 0) {
-      toast.warning(
-        'No se pudieron abrir las pestañas',
-        'El navegador bloqueó las ventanas emergentes. Usa los enlaces de abajo o permite popups para este sitio.',
-        8000,
-      );
-      return;
-    }
-
-    if (result.blockedCount > 0) {
-      toast.warning(
-        'Algunos documentos no se abrieron',
-        `Se abrieron ${result.opened.length} de ${result.total}. Usa los enlaces restantes en esta pantalla.`,
-        7000,
-      );
-      return;
-    }
-
-    toast.success('Documentos abiertos', `${result.opened.length} archivo(s) en nuevas pestañas.`);
+    toast.success(
+      'Abriendo documentos',
+      docCount > 1
+        ? 'Si no se abrieron todos, usa los botones individuales de cada anexo.'
+        : 'Documento abierto en nueva pestaña.',
+      6000,
+    );
   };
 
   const copyPolicy = async () => {
@@ -380,7 +369,7 @@ export function SuccessStep() {
         </div>
       </div>
 
-      <div className="flex justify-center gap-3 flex-wrap mb-8">
+      <div className="flex justify-center gap-3 flex-wrap mb-4">
         <Button
           variant="primary"
           size="lg"
@@ -392,6 +381,23 @@ export function SuccessStep() {
           {docCount > 1 ? `Abrir ${docCount} documentos` : 'Abrir documento'}
         </Button>
       </div>
+
+      {hasDocuments && docCount > 1 && (
+        <div className="max-w-md mx-auto mb-8 grid gap-2">
+          {docItems.map((doc) => (
+            <a
+              key={doc.key}
+              href={doc.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2.5 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 hover:border-indigo-300 hover:bg-indigo-50/60 transition-colors shadow-sm"
+            >
+              <ExternalLink size={14} className="text-indigo-600 shrink-0" />
+              {doc.label}
+            </a>
+          ))}
+        </div>
+      )}
 
       {docsPromptOpen && hasDocuments && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/45 backdrop-blur-[2px]">
@@ -410,10 +416,27 @@ export function SuccessStep() {
                 </p>
                 <p className="text-sm text-slate-500 mt-1 leading-relaxed">
                   Tu póliza <span className="font-mono font-semibold text-slate-700">{policyNum}</span> fue emitida.
-                  El navegador requiere un clic para abrir {docCount > 1 ? `los ${docCount} PDFs` : 'el PDF'}.
+                  Abre cada documento o pulsa «Abrir todos».
                 </p>
               </div>
             </div>
+
+            <div className="space-y-2 mb-4">
+              {docItems.map((doc) => (
+                <a
+                  key={doc.key}
+                  href={doc.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setDocsPromptOpen(false)}
+                  className="flex items-center gap-2.5 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50 transition-colors"
+                >
+                  <ExternalLink size={14} className="shrink-0" />
+                  {doc.label}
+                </a>
+              ))}
+            </div>
+
             <div className="flex flex-col sm:flex-row gap-2.5">
               <Button variant="primary" className="w-full sm:flex-1" onClick={handleOpenDocuments}>
                 <ExternalLink size={15} />
