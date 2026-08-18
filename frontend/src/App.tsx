@@ -21,8 +21,6 @@ import { toast } from './store/toastStore';
 import {
   emissionPdfHint,
   notifyEmissionSuccessAndOpenPdfs,
-  releaseEmissionPopupSlots,
-  reserveEmissionPopupSlots,
 } from './lib/openEmissionPdfs';
 import { Zap, ShieldCheck, Sparkles } from 'lucide-react';
 import type { PaymentEmitContext } from './types';
@@ -205,8 +203,6 @@ export default function App() {
       return;
     }
 
-    if (!paymentCtx) reserveEmissionPopupSlots();
-
     setEmitting(true);
     try {
       const result = await emitExelixiPolicy({ state: buildExelixiEmitState(paymentCtx) });
@@ -228,8 +224,6 @@ export default function App() {
       );
       return;
     }
-
-    if (!paymentCtx) reserveEmissionPopupSlots();
 
     setEmitting(true);
     try {
@@ -369,7 +363,6 @@ export default function App() {
       return;
     }
 
-    reserveEmissionPopupSlots();
     setEmitting(true);
     try {
       const result = await emitFuneral({
@@ -521,7 +514,6 @@ export default function App() {
 }
 
 function handleEmissionError(err: unknown) {
-  releaseEmissionPopupSlots();
   if (err instanceof PolicyEmitError) {
     switch (err.code) {
       case 'LAMUNDIAL_PLATE_ALREADY_INSURED':

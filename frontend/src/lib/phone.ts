@@ -34,9 +34,16 @@ export function formatTelefono(raw: string): string {
   return `(${d.slice(0, 4)}) ${d.slice(4, 7)}-${d.slice(7)}`;
 }
 
+export function phoneDigitsOnly(phone: string): string {
+  return phone.replace(/\D/g, '');
+}
+
 export function isValidPhonePrefix(phone: string): boolean {
   if (!phone) return false;
-  const d = phone.replace(/\D/g, '');
+  const d = phoneDigitsOnly(phone);
   if (d.length !== 11) return false;
   return PREFIX_SET.has(d.slice(0, 4));
 }
+
+/** Longitud máxima del valor formateado: (0412) 123-4567 */
+export const FORMATTED_PHONE_MAX_LENGTH = 16;

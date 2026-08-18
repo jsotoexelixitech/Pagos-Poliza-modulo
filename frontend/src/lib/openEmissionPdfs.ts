@@ -5,11 +5,6 @@ export type EmissionPdfDocs = {
   url_ingreso_caja?: string;
 };
 
-const MAX_EMISSION_DOCS = 4;
-
-/** Pestañas reservadas en el clic del usuario (SysIP payment-admin: window.open() sin URL). */
-let reservedPopupWindows: Window[] = [];
-
 function collectEmissionUrls(docs: EmissionPdfDocs): string[] {
   return [
     docs.urlpoliza,
@@ -19,82 +14,29 @@ function collectEmissionUrls(docs: EmissionPdfDocs): string[] {
   ].filter((url): url is string => Boolean(url && String(url).trim()));
 }
 
-function writePopupLoading(w: Window): void {
+/** Simula clic en enlace oculto — abre el PDF sin pestaña about:blank intermedia. */
+function clickOpenUrl(url: string): boolean {
   try {
-    w.document.open();
-    w.document.write(
-      '<!doctype html><html lang="es"><head><meta charset="utf-8"><title>La Mundial</title></head>'
-      + '<body style="font-family:Poppins,sans-serif;padding:2rem;color:#0F1A5A">'
-      + '<p>Generando documentos…</p></body></html>',
-    );
-    w.document.close();
+    const link = document.createElement('a');
+    link.href = url;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    return true;
   } catch {
-    // cross-origin después de navegar — ignorar
+    const w = window.open(url, '_blank', 'noopener,noreferrer');
+    return Boolean(w);
   }
 }
 
-/** Llamar de forma síncrona en el clic «Verificar pago» / «Confirmar OTP», antes de cualquier await. */
-export function reserveEmissionPopupSlots(count = MAX_EMISSION_DOCS): void {
-  releaseEmissionPopupSlots();
-  const slots = Math.min(Math.max(count, 1), MAX_EMISSION_DOCS);
-  for (let i = 0; i < slots; i += 1) {
-    const w = window.open('about:blank', '_blank');
-    if (w) {
-      writePopupLoading(w);
-      reservedPopupWindows.push(w);
-    }
-  }
-}
-
-export function releaseEmissionPopupSlots(): void {
-  for (const w of reservedPopupWindows) {
-    try {
-      if (w && !w.closed) w.close();
-    } catch {
-      // ignore
-    }
-  }
-  reservedPopupWindows = [];
-}
-
-function navigateReservedPopups(urls: string[]): string[] {
-  const opened: string[] = [];
-  urls.forEach((url, index) => {
-    const w = reservedPopupWindows[index];
-    if (w && !w.closed) {
-      try {
-        w.location.href = url;
-        opened.push(url);
-      } catch {
-        const fallback = window.open(url, '_blank');
-        if (fallback) opened.push(url);
-      }
-    } else {
-      const fallback = window.open(url, '_blank');
-      if (fallback) opened.push(url);
-    }
-  });
-  for (let i = urls.length; i < reservedPopupWindows.length; i += 1) {
-    try {
-      if (!reservedPopupWindows[i].closed) reservedPopupWindows[i].close();
-    } catch {
-      // ignore
-    }
-  }
-  reservedPopupWindows = [];
-  return opened;
-}
-
-/** Fallback si no hubo reserva en el clic (p. ej. reemitir manual). */
 export function openEmissionPdfs(docs: EmissionPdfDocs): string[] {
   const urls = collectEmissionUrls(docs);
-  if (reservedPopupWindows.length > 0) {
-    return navigateReservedPopups(urls);
-  }
   const opened: string[] = [];
   for (const url of urls) {
-    const w = window.open(url, '_blank');
-    if (w) opened.push(url);
+    if (clickOpenUrl(url)) opened.push(url);
   }
   return opened;
 }
@@ -105,11 +47,10 @@ export function emissionPdfHint(opened: string[]): string {
   return ` · ${opened.length} documentos abiertos en nuevas pestañas`;
 }
 
-/** SysIP pay-form: aviso de éxito y abrir documentos (pestañas reservadas o window.open). */
+/** Tras emisión exitosa: abre todos los PDFs disponibles (sin alert ni pestaña en blanco). */
 export function notifyEmissionSuccessAndOpenPdfs(
-  cnpoliza: string,
+  _cnpoliza: string,
   docs: EmissionPdfDocs,
 ): string[] {
-  window.alert(`Se ha generado exitosamente su emisión bajo el número ${cnpoliza}.`);
   return openEmissionPdfs(docs);
 }

@@ -9,7 +9,7 @@ import {
   CheckCircle2, XCircle, RefreshCw, Send, ClipboardCheck,
 } from 'lucide-react';
 import { formatUsdShort, vesAnnual } from '../../lib/money';
-import { formatTelefono } from '../../lib/phone';
+import { formatTelefono, FORMATTED_PHONE_MAX_LENGTH, isValidPhonePrefix, phoneDigitsOnly } from '../../lib/phone';
 import { formatCedulaRif, validateCedulaRif } from '../../lib/cedula-rif';
 import { useProductConfig } from '../../hooks/useProductConfig';
 import { isExelixiCatalogProduct } from '../../lib/product';
@@ -20,10 +20,6 @@ import {
 } from '../../lib/checkout';
 import { notifyClientCheckoutStatus } from '../../lib/checkout-notify';
 import { isPaymentMethodEnabled } from '../../lib/payment-methods';
-import {
-  releaseEmissionPopupSlots,
-  reserveEmissionPopupSlots,
-} from '../../lib/openEmissionPdfs';
 
 const EMPRESA_ID = Number(import.meta.env.VITE_EMPRESA_ID ?? 1);
 
@@ -187,7 +183,6 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       await onPaymentVerified({ paymentVerified: true, paymentCapture: capture });
     } catch {
       autoEmitStarted.current = false;
-      releaseEmissionPopupSlots();
     }
   };
 
@@ -299,17 +294,18 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
   // ── Validaciones pago móvil ───────────────────────────────────────────
   const movErrors = {
     banco    : !bankCode                                          ? 'Selecciona el banco'                : '',
-    telefono : telefonoPago.length > 0 && telefonoPago.length < 11 ? 'Prefijo inválido o incompleto (11 dígitos)' : !telefonoPago ? 'El teléfono es obligatorio' : '',
+    telefono : telefonoPago.length > 0 && !isValidPhonePrefix(telefonoPago)
+                 ? 'Prefijo inválido o incompleto (11 dígitos)'
+                 : !telefonoPago ? 'El teléfono es obligatorio' : '',
     cedula   : validateCedulaRif(cedulaPago),
     monto    : !montoPagoM                                        ? 'El monto es obligatorio'            : isNaN(parseFloat(montoPagoM)) || parseFloat(montoPagoM) <= 0 ? 'Monto inválido' : '',
     fecha    : !fechaPagoM                                        ? 'La fecha es obligatoria'            : fechaPagoM > TODAY_ISO ? 'La fecha no puede ser futura' : '',
   };
-  const pagoMovilListo = Object.values(movErrors).every(e => !e) && telefonoPago.length === 11;
+  const pagoMovilListo = Object.values(movErrors).every(e => !e) && isValidPhonePrefix(telefonoPago);
 
   // ── Función verificar pago móvil ─────────────────────────────────────
   async function handleVerificar() {
     if (!pagoMovilListo) return;
-    if (onPaymentVerified) reserveEmissionPopupSlots();
     setVerifyStatus('loading');
     setVerifyResult(null);
     setVerifyError('');
@@ -340,7 +336,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
         amount: simAmount,
         paidOn,
         bankCode: bankCode || undefined,
-        sourcePhone: telefonoPago || undefined,
+        sourcePhone: phoneDigitsOnly(telefonoPago) || undefined,
         cci_rif: cedulaPago ? cedulaPago.toUpperCase() : undefined,
       };
       setPaymentCapture(capture);
@@ -350,7 +346,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
 
     try {
       const result = await verifyMobilePayment({
-        sourcePhoneNumber : telefonoPago,
+        sourcePhoneNumber : phoneDigitsOnly(telefonoPago),
         bankCode,
         amount            : parseFloat(montoPagoM),
         paidOn,
@@ -366,7 +362,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
           amount: result.verifiedAmount ?? parseFloat(montoPagoM),
           paidOn,
           bankCode: bankCode || undefined,
-          sourcePhone: telefonoPago || undefined,
+          sourcePhone: phoneDigitsOnly(telefonoPago) || undefined,
           cci_rif: cedulaPago ? cedulaPago.toUpperCase() : undefined,
         };
         setPaymentCapture(capture);
@@ -389,7 +385,6 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
           },
         });
       } else {
-        releaseEmissionPopupSlots();
         setPaymentCapture(null);
         void notifyClientCheckoutStatus({
           checkout,
@@ -408,7 +403,6 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
         });
       }
     } catch (err) {
-      releaseEmissionPopupSlots();
       const msg = err instanceof MobilePaymentVerifyError
         ? err.message
         : 'Error inesperado al verificar el pago.';
@@ -454,7 +448,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
 
     bank   : !otpBankCode ? 'Selecciona el banco' : '',
 
-    phone  : otpPhone.length > 0 && otpPhone.length < 11
+    phone  : otpPhone.length > 0 && !isValidPhonePrefix(otpPhone)
                ? 'Prefijo inválido o incompleto (11 dígitos)'
                : !otpPhone ? 'Teléfono obligatorio' : '',
 
@@ -477,7 +471,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
         documentType  : otpDocType,
         documentNumber: otpDocNum,
         debtorBankCode: otpBankCode,
-        debtorPhone   : otpPhone,
+        debtorPhone   : phoneDigitsOnly(otpPhone),
         amount        : parseFloat(otpAmount),
       });
       if (resp && resp.success === false) {
@@ -503,8 +497,6 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
     if (confirmInFlight.current) return;
     confirmInFlight.current = true;
 
-    if (onPaymentVerified) reserveEmissionPopupSlots();
-
     setOtpStep('confirming');
     setOtpError('');
     try {
@@ -512,7 +504,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
         documentType  : otpDocType,
         documentNumber: otpDocNum,
         debtorBankCode: otpBankCode,
-        debtorPhone   : otpPhone,
+        debtorPhone   : phoneDigitsOnly(otpPhone),
         debtorName    : otpName,
         amount        : parseFloat(otpAmount),
         otp           : otpCode.trim(),
@@ -572,7 +564,6 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       });
       // Latch queda activo en 'done' — no se puede volver a confirmar
     } catch (err) {
-      releaseEmissionPopupSlots();
       const msg = err instanceof SypagoError ? err.message : 'Error al confirmar pago.';
       setOtpError(msg);
       setOtpStep('error');
@@ -826,10 +817,10 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
                 <Input
                   value={telefonoPago}
                   onChange={(e) => { setTelPago(formatTelefono(e.target.value)); setVerifyStatus('idle'); setPaymentVerified(false); }}
-                  placeholder="04121234567"
+                  placeholder="(0412) 123-4567"
                   type="tel"
                   inputMode="numeric"
-                  maxLength={11}
+                  maxLength={FORMATTED_PHONE_MAX_LENGTH}
                 />
               </Field>
 
@@ -1052,10 +1043,10 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
                     <Input
                       value={otpPhone}
                       onChange={(e) => setOtpPhone(formatTelefono(e.target.value))}
-                      placeholder="04141234567"
+                      placeholder="(0412) 123-4567"
                       type="tel"
                       inputMode="numeric"
-                      maxLength={11}
+                      maxLength={FORMATTED_PHONE_MAX_LENGTH}
                     />
                   </Field>
 
