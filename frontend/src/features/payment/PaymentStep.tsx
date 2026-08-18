@@ -37,7 +37,6 @@ import {
   SypagoError,
   quotePolicy,
 } from '../../lib/api';
-import { prepareEmissionDocOpener } from '../../lib/openEmissionPdfs';
 
 // ── Lista completa de 26 bancos venezolanos (fuente: sudeban / notilogia 2026)
 // Ordenados alfabéticamente. Etiquetas cortas para que no desborden el <select>.
@@ -307,7 +306,6 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
   // ── Función verificar pago móvil ─────────────────────────────────────
   async function handleVerificar() {
     if (!pagoMovilListo) return;
-    if (onPaymentVerified) prepareEmissionDocOpener();
     setVerifyStatus('loading');
     setVerifyResult(null);
     setVerifyError('');
@@ -498,7 +496,6 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
     // Bloqueo síncrono — impide que dos clicks simultáneos pasen al mismo tiempo
     if (confirmInFlight.current) return;
     confirmInFlight.current = true;
-    if (onPaymentVerified) prepareEmissionDocOpener();
 
     setOtpStep('confirming');
     setOtpError('');

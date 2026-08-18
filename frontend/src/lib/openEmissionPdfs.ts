@@ -17,9 +17,6 @@ export type OpenEmissionResult = {
   blockedCount: number;
 };
 
-/** Cola compartida con doc-opener.html (localStorage — compartido entre pestañas mismo origen). */
-export const PAGOS_EMISSION_DOCS_KEY = 'pagos_emission_docs_pending';
-
 function collectEmissionUrls(docs: EmissionPdfDocs): string[] {
   return listEmissionDocs(docs).map((d) => d.url);
 }
@@ -49,28 +46,9 @@ export function countEmissionDocs(docs: EmissionPdfDocs): number {
   return listEmissionDocs(docs).length;
 }
 
-function docOpenerPageUrl(): string {
-  const base = (import.meta.env.BASE_URL || '/').replace(/\/?$/, '/');
-  return `${window.location.origin}${base}doc-opener.html`;
-}
-
-/** Sincronico al confirmar pago: abre pestaña auxiliar que hara polling a localStorage. */
-export function prepareEmissionDocOpener(): void {
-  localStorage.removeItem(PAGOS_EMISSION_DOCS_KEY);
-  window.open(docOpenerPageUrl(), 'exelixi_emission_docs');
-}
-
-export function queueEmissionDocs(urls: string[]): void {
-  if (urls.length === 0) {
-    localStorage.removeItem(PAGOS_EMISSION_DOCS_KEY);
-    return;
-  }
-  localStorage.setItem(PAGOS_EMISSION_DOCS_KEY, JSON.stringify(urls));
-}
-
 /**
- * Patrón SysIP pay-form.component.ts: window.open(url, '_blank') por cada documento.
- * Tras await de emisión (mismo handler async que inició con clic del usuario).
+ * Patrón SysIP pay-form.component.ts: window.open(url, '_blank') por cada documento
+ * en el mismo handler async que empezó con el clic del usuario.
  */
 function openUrlsLikeLaMundial(urls: string[]): string[] {
   const opened: string[] = [];
@@ -101,16 +79,8 @@ function openUrlsLikeLaMundial(urls: string[]): string[] {
   return opened;
 }
 
-export function openEmissionPdfs(docs: EmissionPdfDocs): OpenEmissionResult {
-  const urls = collectEmissionUrls(docs);
-  if (urls.length === 0) {
-    localStorage.removeItem(PAGOS_EMISSION_DOCS_KEY);
-    return { opened: [], total: 0, blockedCount: 0 };
-  }
-
-  queueEmissionDocs(urls);
+function openAndReport(urls: string[]): OpenEmissionResult {
   const opened = openUrlsLikeLaMundial(urls);
-
   return {
     opened,
     total: urls.length,
@@ -118,11 +88,12 @@ export function openEmissionPdfs(docs: EmissionPdfDocs): OpenEmissionResult {
   };
 }
 
-/** Clic explícito del usuario en pantalla de éxito. */
+export function openEmissionPdfs(docs: EmissionPdfDocs): OpenEmissionResult {
+  return openAndReport(collectEmissionUrls(docs));
+}
+
 export function openEmissionPdfsOnUserClick(docs: EmissionPdfDocs): OpenEmissionResult {
-  const urls = collectEmissionUrls(docs);
-  const opened = openUrlsLikeLaMundial(urls);
-  return { opened, total: urls.length, blockedCount: Math.max(0, urls.length - opened.length) };
+  return openAndReport(collectEmissionUrls(docs));
 }
 
 export function emissionPdfHint(result: OpenEmissionResult): string {
@@ -134,7 +105,6 @@ export function emissionPdfHint(result: OpenEmissionResult): string {
   return ` · ${result.total} documentos abiertos en nuevas pestañas`;
 }
 
-/** Tras emisión: encola URLs (doc-opener) + window.open secuencial como La Mundial. */
 export function notifyEmissionSuccessAndOpenPdfs(
   _cnpoliza: string,
   docs: EmissionPdfDocs,

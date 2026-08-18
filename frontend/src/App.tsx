@@ -21,7 +21,6 @@ import { toast } from './store/toastStore';
 import {
   emissionPdfHint,
   notifyEmissionSuccessAndOpenPdfs,
-  prepareEmissionDocOpener,
 } from './lib/openEmissionPdfs';
 import { Zap, ShieldCheck, Sparkles } from 'lucide-react';
 import type { PaymentEmitContext } from './types';
@@ -304,9 +303,6 @@ export default function App() {
   }
 
   function handlePrimaryAction() {
-    if (!genericCheckout) {
-      prepareEmissionDocOpener();
-    }
     if (genericCheckout) {
       void handleGenericComplete();
       return;
