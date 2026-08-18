@@ -54,26 +54,13 @@ function openUrlsLikeLaMundial(urls: string[]): string[] {
   const opened: string[] = [];
   for (const url of urls) {
     try {
-      const tab = window.open(url, '_blank', 'noopener,noreferrer');
-      if (tab) {
-        opened.push(url);
-        continue;
-      }
-    } catch {
-      /* fallback */
-    }
-    try {
-      const link = document.createElement('a');
-      link.href = url;
-      link.target = '_blank';
-      link.rel = 'noopener noreferrer';
-      link.style.display = 'none';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      // Igual que SysIP: window.open(url, '_blank') sin noopener en features.
+      // Con 'noopener,noreferrer' el navegador abre la pestaña pero devuelve null
+      // y el fallback anterior duplicaba cada documento.
+      window.open(url, '_blank');
       opened.push(url);
     } catch {
-      /* blocked */
+      /* popup bloqueado */
     }
   }
   return opened;
