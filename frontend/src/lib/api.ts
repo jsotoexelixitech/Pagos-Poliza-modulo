@@ -456,25 +456,39 @@ export function isSypagoPending(status?: string, statusInfo?: SypagoStatusInfo):
 export class SypagoError extends Error {
   code       : string;
   sypagoCode?: string | null;
+  rejectCode?: string | null;
   httpStatus?: number;
 
-  constructor(payload: { message: string; code: string; sypagoCode?: string | null; httpStatus?: number }) {
+  constructor(payload: {
+    message: string;
+    code: string;
+    sypagoCode?: string | null;
+    rejectCode?: string | null;
+    httpStatus?: number;
+  }) {
     super(payload.message);
     this.name       = 'SypagoError';
     this.code       = payload.code;
     this.sypagoCode = payload.sypagoCode;
+    this.rejectCode = payload.rejectCode;
     this.httpStatus = payload.httpStatus;
   }
 }
 
 function _throwSypago(err: unknown): never {
-  const axErr = err as AxiosError<{ code?: string; message?: string; sypagoCode?: string | null }>;
+  const axErr = err as AxiosError<{
+    code?: string;
+    message?: string;
+    sypagoCode?: string | null;
+    rejectCode?: string | null;
+  }>;
   const data   = axErr.response?.data;
   const status = axErr.response?.status;
   throw new SypagoError({
     message   : data?.message ?? (axErr as Error).message ?? 'Error con SyPago.',
     code      : data?.code    ?? 'SYPAGO_ERROR',
     sypagoCode: data?.sypagoCode ?? null,
+    rejectCode: data?.rejectCode ?? null,
     httpStatus: status,
   });
 }

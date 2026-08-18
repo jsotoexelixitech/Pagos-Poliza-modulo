@@ -240,10 +240,19 @@ router.post('/otp/request', async (req, res) => {
   if (amount == null)  missing.push('amount');
   if (missing.length) return res.status(400).json({ success: false, code: 'SYPAGO_MISSING_FIELDS', missing, message: `Faltan: ${missing.join(', ')}` });
 
+  const phoneDigits = _normalizeOtpPhone(debtorPhone);
+  if (!/^04\d{9}$/.test(phoneDigits)) {
+    return res.status(400).json({
+      success: false,
+      code   : 'SYPAGO_INVALID_PHONE',
+      message: 'Teléfono inválido. Debe ser un móvil venezolano de 11 dígitos registrado en el banco (ej. 04141234567).',
+    });
+  }
+
   try {
     const result = await sypagoClient.requestOtp({
       documentType, documentNumber: String(documentNumber).trim(),
-      debtorBankCode, debtorPhone: String(debtorPhone).replace(/\s/g, ''),
+      debtorBankCode, debtorPhone: phoneDigits,
       amount: parseFloat(amount),
     });
     return res.status(200).json({ success: true, message: result?.message || 'OTP enviada.' });
@@ -265,10 +274,18 @@ router.post('/otp/confirm', otpConfirmLimiter, async (req, res) => {
   if (missing.length) return res.status(400).json({ success: false, code: 'SYPAGO_MISSING_FIELDS', missing, message: `Faltan: ${missing.join(', ')}` });
 
   const parsedOtp    = String(otp).trim();
-  const parsedPhone  = String(debtorPhone).replace(/\s/g, '');
+  const parsedPhone  = _normalizeOtpPhone(debtorPhone);
   const parsedDoc    = String(documentNumber).trim();
   const parsedAmount = parseFloat(amount);
   const parsedName   = String(debtorName).trim();
+
+  if (!/^04\d{9}$/.test(parsedPhone)) {
+    return res.status(400).json({
+      success: false,
+      code   : 'SYPAGO_INVALID_PHONE',
+      message: 'Teléfono inválido. Debe ser un móvil venezolano de 11 dígitos registrado en el banco (ej. 04141234567).',
+    });
+  }
 
   // Idempotency check — ignora duplicados dentro de 120 s
   const idemKey    = _otpIdemKey({ documentType, documentNumber: parsedDoc, debtorBankCode, debtorPhone: parsedPhone, amount: parsedAmount, otp: parsedOtp });
@@ -393,7 +410,19 @@ function _sendSypagoError(res, err) {
     return res.status(503).json({ success: false, code, message: err.message });
   if (code === 'SYPAGO_AUTH_ERROR')
     return res.status(502).json({ success: false, code, message: err.message });
-  return res.status(err.httpStatus || 422).json({ success: false, code, message: err.message, sypagoCode: err.sypagoCode || null });
+  return res.status(err.httpStatus || 422).json({
+    success    : false,
+    code,
+    message    : err.message,
+    sypagoCode : err.sypagoCode || null,
+    rejectCode : err.rejectCode || null,
+  });
+}
+
+function _normalizeOtpPhone(raw) {
+  let d = String(raw ?? '').replace(/\D/g, '');
+  if (d.length >= 1 && d[0] !== '0' && /^[24589]/.test(d[0])) d = `0${d}`;
+  return d.slice(0, 11);
 }
 
 module.exports = router;

@@ -32,6 +32,7 @@
 
 const axios  = require('axios');
 const crypto = require('crypto');
+const { parseSypagoErrorResponse, refreshRejectCodes } = require('./sypagoErrors');
 
 const DEFAULT_TIMEOUT = 20_000;
 
@@ -171,11 +172,8 @@ function _handleError(err, operation) {
   }
 
   if (err.response) {
-    const status  = err.response.status;
-    const data    = err.response.data || {};
-    // El código de rechazo viene como rejected_code / RejectedCode / rejectedCode según el mensaje.
-    const syCode  = data.code || data.rejected_code || data.RejectedCode || data.rejectedCode || String(status);
-    const syMsg   = data.message || data.description || `Error HTTP ${status} de SyPago`;
+    const status = err.response.status;
+    const data   = err.response.data;
 
     if (status === 401 || status === 403) {
       throw Object.assign(
@@ -184,9 +182,16 @@ function _handleError(err, operation) {
       );
     }
 
+    const parsed = parseSypagoErrorResponse(status, data);
     throw Object.assign(
-      new Error(syMsg),
-      { code: `SYPAGO_${syCode}`, httpStatus: status >= 500 ? 502 : 422, sypagoCode: syCode }
+      new Error(parsed.message),
+      {
+        code         : `SYPAGO_${parsed.sypagoCode}`,
+        httpStatus   : status >= 500 ? 502 : 422,
+        sypagoCode   : parsed.sypagoCode,
+        rejectCode   : parsed.rejectCode,
+        rawMessages  : parsed.rawMessages,
+      }
     );
   }
 
@@ -194,6 +199,37 @@ function _handleError(err, operation) {
     new Error(`[${operation}] ${err.message}`),
     { code: 'SYPAGO_ERROR' }
   );
+}
+
+function _assertOtpSuccess(data, operation) {
+  if (!data || typeof data !== 'object') return;
+  if (data.success === false || data.error === true) {
+    const parsed = parseSypagoErrorResponse(400, data);
+    throw Object.assign(
+      new Error(parsed.message),
+      {
+        code       : `SYPAGO_${parsed.sypagoCode}`,
+        httpStatus : 422,
+        sypagoCode : parsed.sypagoCode,
+        rejectCode : parsed.rejectCode,
+        rawMessages: parsed.rawMessages,
+      }
+    );
+  }
+  const rejectCode = data.rejected_code || data.RejectedCode || data.rejectedCode;
+  if (rejectCode && !['ACCP', 'PEND', 'PROC', 'WAIT'].includes(String(rejectCode).toUpperCase())) {
+    const parsed = parseSypagoErrorResponse(422, data);
+    throw Object.assign(
+      new Error(parsed.message),
+      {
+        code       : `SYPAGO_${parsed.sypagoCode}`,
+        httpStatus : 422,
+        sypagoCode : parsed.sypagoCode,
+        rejectCode : parsed.rejectCode,
+        rawMessages: parsed.rawMessages,
+      }
+    );
+  }
 }
 
 // ── API Pública ───────────────────────────────────────────────────────────────
@@ -244,14 +280,17 @@ async function requestOtp({ documentType, documentNumber, debtorBankCode, debtor
   try {
     console.log(`\n[SyPago] ➡ SOLICITANDO OTP a ${cfg.baseUrl}/api/v1/request/otp`);
     console.log(`[SyPago] Payload:`, JSON.stringify(payload));
-    
+
+    void refreshRejectCodes(cfg.baseUrl, await _authHeaders(cfg), cfg.timeout);
+
     const resp = await axios.post(
       `${cfg.baseUrl}/api/v1/request/otp`,
       payload,
       { headers: await _authHeaders(cfg), timeout: cfg.timeout }
     );
-    
+
     console.log(`[SyPago] ⬅ RESPUESTA OTP (Status: ${resp.status}):`, JSON.stringify(resp.data));
+    _assertOtpSuccess(resp.data, 'requestOtp');
     return resp.data;
   } catch (err) {
     _handleError(err, 'requestOtp');
@@ -335,6 +374,7 @@ async function confirmOtp({ documentType, documentNumber, debtorBankCode, debtor
     );
     
     console.log(`[SyPago] ⬅ RESPUESTA CONFIRMACIÓN (Status: ${resp.status}):`, JSON.stringify(resp.data));
+    _assertOtpSuccess(resp.data, 'confirmOtp');
     return resp.data; // { transaction_id, operation_secret }
   } catch (err) {
     _handleError(err, 'confirmOtp');
