@@ -17,8 +17,8 @@ export type OpenEmissionResult = {
   blockedCount: number;
 };
 
-/** Pestañas reservadas en el clic de pago (antes del await) para evitar bloqueo de popups. */
-let reservedPdfTabs: Window[] = [];
+/** Ventana auxiliar abierta en el clic de pago (conserva gesto del usuario para N pestañas). */
+let docOpenerWindow: Window | null = null;
 
 function collectEmissionUrls(docs: EmissionPdfDocs): string[] {
   return listEmissionDocs(docs).map((d) => d.url);
@@ -49,80 +49,94 @@ export function countEmissionDocs(docs: EmissionPdfDocs): number {
   return listEmissionDocs(docs).length;
 }
 
-/** Llamar de forma síncrona en el handler del clic (Confirmar pago / Verificar) antes de cualquier await. */
-export function reserveEmissionPdfTabs(maxCount = 4): void {
-  discardReservedPdfTabs();
-  for (let i = 0; i < maxCount; i += 1) {
-    const tab = window.open('about:blank', '_blank');
-    if (tab) reservedPdfTabs.push(tab);
-  }
+function docOpenerPageUrl(): string {
+  const base = (import.meta.env.BASE_URL || '/').replace(/\/?$/, '/');
+  return `${window.location.origin}${base}doc-opener.html`;
 }
 
-export function discardReservedPdfTabs(): void {
-  for (const tab of reservedPdfTabs) {
+/**
+ * Llamar de forma síncrona al confirmar pago (antes de cualquier await).
+ * Abre UNA pestaña auxiliar (no about:blank) que luego dispara los PDFs.
+ */
+export function prepareEmissionDocOpener(): void {
+  closeEmissionDocOpener();
+  docOpenerWindow = window.open(docOpenerPageUrl(), 'exelixi_emission_docs');
+}
+
+export function closeEmissionDocOpener(): void {
+  if (docOpenerWindow && !docOpenerWindow.closed) {
     try {
-      if (tab && !tab.closed) tab.close();
+      docOpenerWindow.close();
     } catch {
       /* ignore */
     }
   }
-  reservedPdfTabs = [];
+  docOpenerWindow = null;
 }
 
-/** form GET + target=_blank — fallback si no hay pestaña reservada. */
-function openUrlViaForm(url: string): void {
+function openUrlViaForm(url: string, target = '_blank'): void {
   const form = document.createElement('form');
   form.method = 'GET';
   form.action = url;
-  form.target = '_blank';
+  form.target = target;
   form.style.display = 'none';
   document.body.appendChild(form);
   form.submit();
   document.body.removeChild(form);
 }
 
+function openUrlsViaFormStaggered(urls: string[], delayMs = 350): OpenEmissionResult {
+  urls.forEach((url, index) => {
+    window.setTimeout(() => openUrlViaForm(url), index * delayMs);
+  });
+  return { opened: urls, total: urls.length, blockedCount: 0 };
+}
+
+function postUrlsToOpener(urls: string[]): boolean {
+  if (!docOpenerWindow || docOpenerWindow.closed) return false;
+  try {
+    docOpenerWindow.postMessage(
+      { type: 'OPEN_DOCS', urls },
+      window.location.origin,
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
- * Navega pestañas reservadas o abre vía form. Tras emisión async.
+ * Abre todos los PDFs. Preferir ventana auxiliar (gesto del usuario); si no, form staggered.
  */
 export function openEmissionPdfs(docs: EmissionPdfDocs): OpenEmissionResult {
   const urls = collectEmissionUrls(docs);
-  const opened: string[] = [];
-  let blockedCount = 0;
-  const tabs = reservedPdfTabs;
-  reservedPdfTabs = [];
-
-  urls.forEach((url, index) => {
-    const tab = tabs[index];
-    if (tab && !tab.closed) {
-      try {
-        tab.location.href = url;
-        opened.push(url);
-        return;
-      } catch {
-        /* fallback */
-      }
-    }
-    try {
-      openUrlViaForm(url);
-      opened.push(url);
-    } catch {
-      blockedCount += 1;
-    }
-  });
-
-  for (let i = urls.length; i < tabs.length; i += 1) {
-    try {
-      if (tabs[i] && !tabs[i].closed) tabs[i].close();
-    } catch {
-      /* ignore */
-    }
+  if (urls.length === 0) {
+    return { opened: [], total: 0, blockedCount: 0 };
   }
 
-  return {
-    opened,
-    total: urls.length,
-    blockedCount,
-  };
+  if (docOpenerWindow && !docOpenerWindow.closed) {
+    let attempt = 0;
+    const tryPost = (): void => {
+      postUrlsToOpener(urls);
+      attempt += 1;
+      if (attempt < 20 && docOpenerWindow && !docOpenerWindow.closed) {
+        window.setTimeout(tryPost, 250);
+      } else {
+        docOpenerWindow = null;
+      }
+    };
+    tryPost();
+    return { opened: urls, total: urls.length, blockedCount: 0 };
+  }
+
+  return openUrlsViaFormStaggered(urls);
+}
+
+/** Mismo clic del usuario: abre todos los formularios de inmediato (sin ventana auxiliar). */
+export function openEmissionPdfsOnUserClick(docs: EmissionPdfDocs): OpenEmissionResult {
+  const urls = collectEmissionUrls(docs);
+  urls.forEach((url) => openUrlViaForm(url));
+  return { opened: urls, total: urls.length, blockedCount: 0 };
 }
 
 export function emissionPdfHint(result: OpenEmissionResult): string {
@@ -134,12 +148,13 @@ export function emissionPdfHint(result: OpenEmissionResult): string {
   return ` · ${result.total} documentos abiertos en nuevas pestañas`;
 }
 
-/** Tras emisión: abre PDFs automáticamente (pestañas reservadas en el clic de pago). */
+/** Tras emisión async: envía URLs a la ventana auxiliar o abre vía form. */
 export function notifyEmissionSuccessAndOpenPdfs(
   _cnpoliza: string,
   docs: EmissionPdfDocs,
 ): OpenEmissionResult {
   if (countEmissionDocs(docs) === 0) {
+    closeEmissionDocOpener();
     return { opened: [], total: 0, blockedCount: 0 };
   }
   return openEmissionPdfs(docs);
