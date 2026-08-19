@@ -1,13 +1,11 @@
 import { useWizardStore } from '../../store/wizardStore';
-import { Button } from '../../components/ui/Button';
 import { toast } from '../../store/toastStore';
 import { isGenericCheckoutMode } from '../../lib/checkout';
 import {
-  CheckCircle2, Download, RefreshCw, ShieldCheck,
+  CheckCircle2, RefreshCw, ShieldCheck,
   Calendar, Copy, ExternalLink,
 } from 'lucide-react';
 import { formatUsdShort } from '../../lib/money';
-import { listEmissionDocs, openEmissionPdfsOnUserClick } from '../../lib/openEmissionPdfs';
 
 /**
  * Reinicio OCR desde cero: sin sid (nueva sesión bridge) + wizardStep=1.
@@ -76,28 +74,6 @@ export function SuccessStep() {
   const primaUsd = policy?.quote?.mprimaext;
   const primaVes = policy?.quote?.mprima;
   const ptasa = policy?.quote?.ptasa;
-  const docsPayload = {
-    urlpoliza: pdfUrl,
-    url_club_arys: arysUrl,
-    url_conductor_habitual: conductorUrl,
-    url_ingreso_caja: ingresoCajaUrl,
-  };
-  const docItems = listEmissionDocs(docsPayload);
-  const docCount = docItems.length;
-
-  const handleOpenDocuments = () => {
-    if (!hasDocuments) return;
-    openEmissionPdfsOnUserClick(docsPayload);
-
-    toast.success(
-      'Abriendo documentos',
-      docCount > 1
-        ? 'Si no se abrieron todos, usa los botones individuales de cada anexo.'
-        : 'Documento abierto en nueva pestaña.',
-      6000,
-    );
-  };
-
   const copyPolicy = async () => {
     try {
       await navigator.clipboard.writeText(policyNum);
@@ -355,36 +331,7 @@ export function SuccessStep() {
         </div>
       </div>
 
-      <div className="flex justify-center gap-3 flex-wrap mb-4">
-        <Button
-          variant="primary"
-          size="lg"
-          onClick={handleOpenDocuments}
-          disabled={!hasDocuments}
-        >
-          <Download size={15} />
-          {docCount > 1 ? `Volver a abrir ${docCount} documentos` : 'Volver a abrir documento'}
-        </Button>
-      </div>
-
-      {hasDocuments && docCount > 1 && (
-        <div className="max-w-md mx-auto mb-8 grid gap-2">
-          {docItems.map((doc) => (
-            <a
-              key={doc.key}
-              href={doc.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-2.5 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 hover:border-indigo-300 hover:bg-indigo-50/60 transition-colors shadow-sm"
-            >
-              <ExternalLink size={14} className="text-indigo-600 shrink-0" />
-              {doc.label}
-            </a>
-          ))}
-        </div>
-      )}
-
-      <div className="text-center">
+      <div className="text-center mb-8">
         <button
           type="button"
           onClick={emitAnotherPolicy}
