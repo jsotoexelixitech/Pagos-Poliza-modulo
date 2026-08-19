@@ -6,6 +6,7 @@ import {
   Calendar, Copy, ExternalLink,
 } from 'lucide-react';
 import { formatUsdShort } from '../../lib/money';
+import { diligenciaLabel } from '../../lib/diligencia';
 
 /**
  * Reinicio OCR desde cero: sin sid (nueva sesión bridge) + wizardStep=1.
@@ -54,7 +55,7 @@ function clearClientFlowState() {
 
 export function SuccessStep() {
   const {
-    policy, tomador, selectedPlan, checkout, paymentCapture, reset,
+    policy, tomador, selectedPlan, checkout, paymentCapture, reset, diligencia,
   } = useWizardStore();
 
   const genericCheckout = isGenericCheckoutMode({ checkout });
@@ -175,6 +176,11 @@ export function SuccessStep() {
             ? ' Los documentos se abren automáticamente en nuevas pestañas al emitir.'
             : ' Contacta soporte si necesitas el certificado digital.'}
         </p>
+        {(diligencia || tomador.itipoDiligencia) && (
+          <p className="mt-3 text-xs font-semibold text-indigo-700">
+            {diligenciaLabel(diligencia?.itipoDiligencia ?? tomador.itipoDiligencia ?? 'C')}
+          </p>
+        )}
       </div>
 
       <div className="max-w-2xl mx-auto mb-8">

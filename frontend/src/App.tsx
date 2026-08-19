@@ -86,6 +86,9 @@ export default function App() {
       metadataCanal: snap.metadataCanal,
       checkout: snap.checkout,
       checkoutPayload: snap.checkoutPayload,
+      diligencia: snap.diligencia,
+      documents: snap.documents,
+      quote: snap.quote,
     };
   }
 

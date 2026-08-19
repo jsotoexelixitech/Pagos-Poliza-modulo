@@ -122,6 +122,7 @@ const initialState: WizardState = {
     licencia: defaultDoc(),
     certificado: defaultDoc(),
     rif: defaultDoc(),
+    pasaporte: defaultDoc(),
   },
   ocrDone: false,
   tomador: defaultTomador(),
@@ -151,6 +152,7 @@ const initialState: WizardState = {
   checkoutPayload: null,
   checkoutPayer: null,
   metadataCanal: null,
+  diligencia: null,
 };
 
 export const useWizardStore = create<WizardState & WizardActions>()((set) => ({
