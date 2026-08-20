@@ -119,46 +119,73 @@ def build_prompt(diffs: dict[str, str]) -> str:
     )
 
 
-def resolve_model(client: genai.Client) -> str:
+def get_model_candidates(client: genai.Client) -> list[str]:
     """
-    Detecta automáticamente el mejor modelo disponible para esta API Key
-    iterando sobre la lista de preferencias.
+    Retorna la lista de modelos candidatos en orden de preferencia,
+    filtrando solo los que están realmente disponibles en la API Key.
     """
     try:
         available = {m.name for m in client.models.list()}
-        print(f"[INFO] Modelos disponibles: {sorted(available)}")
+        print(f"[INFO] Modelos disponibles en esta key: {sorted(available)}")
     except Exception as e:
-        print(f"[WARN] No se pudo listar modelos: {e}. Usando preferencia por defecto.")
+        print(f"[WARN] No se pudo listar modelos: {e}.")
         available = set()
 
+    candidates: list[str] = []
+
+    # Primero los de la lista de preferencias que estén disponibles
     for preferred in MODEL_PREFERENCES:
-        # La API retorna nombres como "models/gemini-2.5-flash"
         if f"models/{preferred}" in available or preferred in available:
-            print(f"[INFO] Modelo seleccionado: {preferred}")
-            return preferred
+            candidates.append(preferred)
 
-    # Fallback: usar cualquier modelo que contenga "gemini" y soporte generateContent
+    # Fallback: cualquier gemini disponible (excluye embeddings, audio, tts, imagen)
+    SKIP_KEYWORDS = {"embedding", "audio", "tts", "image", "aqa", "computer-use",
+                     "deep-research", "antigravity", "live"}
     for name in sorted(available):
-        if "gemini" in name and "embedding" not in name:
-            model_id = name.replace("models/", "")
-            print(f"[INFO] Fallback al modelo: {model_id}")
-            return model_id
+        model_id = name.replace("models/", "")
+        if "gemini" in model_id and not any(kw in model_id for kw in SKIP_KEYWORDS):
+            if model_id not in candidates:
+                candidates.append(model_id)
 
-    raise RuntimeError(
-        "No se encontró ningún modelo Gemini disponible para esta API Key. "
-        "Verifica que la key sea válida y tenga permisos."
-    )
+    if not candidates:
+        raise RuntimeError(
+            "No se encontró ningún modelo Gemini compatible. "
+            "Verifica que la API Key sea válida."
+        )
+
+    print(f"[INFO] Candidatos a probar en orden: {candidates}")
+    return candidates
 
 
 def review_with_gemini(prompt: str) -> str:
-    """Envía el prompt a Gemini y retorna la respuesta."""
+    """Envía el prompt a Gemini probando modelos hasta encontrar uno funcional."""
+    from google.genai import errors as genai_errors
+
     client = genai.Client(api_key=GEMINI_API_KEY)
-    model = resolve_model(client)
-    response = client.models.generate_content(
-        model=model,
-        contents=prompt,
+    candidates = get_model_candidates(client)
+
+    last_error: Exception | None = None
+    for model in candidates:
+        try:
+            print(f"[INFO] Intentando con modelo: {model}")
+            response = client.models.generate_content(
+                model=model,
+                contents=prompt,
+            )
+            print(f"[OK] Respuesta recibida de: {model}")
+            return response.text
+        except genai_errors.ClientError as e:
+            status = getattr(e, 'status_code', None) or getattr(e, 'code', 0)
+            if status in (403, 404, 400):
+                print(f"[WARN] Modelo {model} no accesible ({status}), probando siguiente...")
+                last_error = e
+                continue
+            raise  # Otro error inesperado: re-lanzar
+
+    raise RuntimeError(
+        f"Ninguno de los modelos candidatos pudo procesar la solicitud. "
+        f"Último error: {last_error}"
     )
-    return response.text
 
 
 def post_review_comment(pr, review_text: str) -> None:
