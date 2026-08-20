@@ -33,8 +33,9 @@ export {
   hasPlanSelected,
   type WizardNavSnapshot,
 } from './lib/wizard-navigation';
-export {
-  attachNexusTokenAxios,
-  getNexusToken,
-  persistNexusToken,
-} from './lib/nexus-token-client';
+// ya este repo tiene su propia implementacion de nexus-token-client
+// export {
+//   attachNexusTokenAxios,
+//   getNexusToken,
+//   persistNexusToken,
+// } from './lib/nexus-token-client';
