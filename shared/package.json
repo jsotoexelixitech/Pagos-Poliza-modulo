@@ -1,0 +1,24 @@
+{
+  "name": "@exelixi/shared",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".":          "./src/index.ts",
+    "./styles":   "./src/styles/index.css",
+    "./store/*":  "./src/store/*.ts",
+    "./lib/*":    "./src/lib/*.ts",
+    "./theme/*":  "./src/theme/*"
+  },
+  "peerDependencies": {
+    "axios":        "^1.15.2",
+    "lucide-react": "^0.460.0",
+    "react":        "^19.0.0",
+    "react-dom":    "^19.0.0",
+    "react-select": "^5.10.2",
+    "sonner":       "^1.7.4",
+    "zustand":      "^5.0.1"
+  }
+}
