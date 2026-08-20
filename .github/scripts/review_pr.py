@@ -7,7 +7,7 @@ de bugs y vulnerabilidades, y publica los resultados como comentarios en el PR.
 
 import os
 import sys
-from github import Github
+from github import Auth, Github
 from google import genai
 
 # ---------------------------------------------------------------------------
@@ -19,7 +19,7 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 PR_NUMBER = os.environ.get("PR_NUMBER")
 REPO_NAME = os.environ.get("REPO_NAME")
 
-GEMINI_MODEL = "gemini-1.5-pro"
+GEMINI_MODEL = "gemini-2.0-flash"
 
 # Extensiones de archivo a revisar (omite binarios, locks, etc.)
 REVIEWABLE_EXTENSIONS = {
@@ -178,7 +178,8 @@ def main() -> None:
     pr_number = int(PR_NUMBER)
 
     print(f"[INFO] Conectando al repositorio: {REPO_NAME} — PR #{pr_number}")
-    gh = Github(GITHUB_TOKEN)
+    auth = Auth.Token(GITHUB_TOKEN)
+    gh = Github(auth=auth)
     repo = gh.get_repo(REPO_NAME)
 
     print("[INFO] Extrayendo diffs del PR...")
