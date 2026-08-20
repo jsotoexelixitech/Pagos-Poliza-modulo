@@ -56,7 +56,7 @@ function NexusScreen({ type, reason, onRetry }: {
           <>
             <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🔒</div>
             <h1 style={{ fontSize: '1.4rem', fontWeight: 700, color: '#0C133A', margin: '0 0 0.75rem' }}>
-              Acceso no disponible
+              ¡Acceso no disponible!
             </h1>
             <p style={{ fontSize: '0.95rem', color: '#475569', margin: '0 0 0.5rem', lineHeight: 1.5 }}>
               {reason}
