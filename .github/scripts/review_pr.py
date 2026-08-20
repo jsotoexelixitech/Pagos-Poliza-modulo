@@ -19,7 +19,7 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 PR_NUMBER = os.environ.get("PR_NUMBER")
 REPO_NAME = os.environ.get("REPO_NAME")
 
-GEMINI_MODEL = "gemini-3.6-flash"
+GEMINI_MODEL = "gemini-2.5-flash"
 
 # Extensiones de archivo a revisar (omite binarios, locks, etc.)
 REVIEWABLE_EXTENSIONS = {
