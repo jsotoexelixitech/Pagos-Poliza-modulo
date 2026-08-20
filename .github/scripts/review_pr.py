@@ -19,7 +19,20 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 PR_NUMBER = os.environ.get("PR_NUMBER")
 REPO_NAME = os.environ.get("REPO_NAME")
 
-GEMINI_MODEL = "gemini-2.5-flash"
+# Preferencias de modelo en orden. Se usará el primero que esté disponible.
+MODEL_PREFERENCES = [
+    "gemini-3.6-flash-lite",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-flash",
+    "gemini-3.1-flash-lite",
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",
+    "gemini-1.5-flash",
+    "gemini-2.5-pro",
+    "gemini-1.5-pro",
+]
 
 # Extensiones de archivo a revisar (omite binarios, locks, etc.)
 REVIEWABLE_EXTENSIONS = {
@@ -106,11 +119,43 @@ def build_prompt(diffs: dict[str, str]) -> str:
     )
 
 
+def resolve_model(client: genai.Client) -> str:
+    """
+    Detecta automáticamente el mejor modelo disponible para esta API Key
+    iterando sobre la lista de preferencias.
+    """
+    try:
+        available = {m.name for m in client.models.list()}
+        print(f"[INFO] Modelos disponibles: {sorted(available)}")
+    except Exception as e:
+        print(f"[WARN] No se pudo listar modelos: {e}. Usando preferencia por defecto.")
+        available = set()
+
+    for preferred in MODEL_PREFERENCES:
+        # La API retorna nombres como "models/gemini-2.5-flash"
+        if f"models/{preferred}" in available or preferred in available:
+            print(f"[INFO] Modelo seleccionado: {preferred}")
+            return preferred
+
+    # Fallback: usar cualquier modelo que contenga "gemini" y soporte generateContent
+    for name in sorted(available):
+        if "gemini" in name and "embedding" not in name:
+            model_id = name.replace("models/", "")
+            print(f"[INFO] Fallback al modelo: {model_id}")
+            return model_id
+
+    raise RuntimeError(
+        "No se encontró ningún modelo Gemini disponible para esta API Key. "
+        "Verifica que la key sea válida y tenga permisos."
+    )
+
+
 def review_with_gemini(prompt: str) -> str:
     """Envía el prompt a Gemini y retorna la respuesta."""
     client = genai.Client(api_key=GEMINI_API_KEY)
+    model = resolve_model(client)
     response = client.models.generate_content(
-        model=GEMINI_MODEL,
+        model=model,
         contents=prompt,
     )
     return response.text
