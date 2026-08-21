@@ -20,6 +20,7 @@ import {
 } from '../../lib/checkout';
 import { notifyClientCheckoutStatus } from '../../lib/checkout-notify';
 import { isPaymentMethodEnabled } from '../../lib/payment-methods';
+import { FuneralApprovedSummary } from './FuneralApprovedSummary';
 
 const EMPRESA_ID = Number(import.meta.env.VITE_EMPRESA_ID ?? 1);
 
@@ -584,6 +585,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
 
   return (
     <div className="animate-fade-in space-y-6">
+      <FuneralApprovedSummary />
       <p className="text-slate-500 text-sm leading-relaxed -mt-2">
         {genericCheckout
           ? 'Selecciona el método de pago y confirma la operación. La conexión está cifrada de extremo a extremo.'

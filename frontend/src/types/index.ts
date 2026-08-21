@@ -157,6 +157,10 @@ export type CheckoutOnSuccessMode = 'none' | 'redirect' | 'webhook' | 'emit';
 export interface CheckoutRules {
   requirePayment?: boolean;
   methods?: PaymentMethod[];
+  /** Funerario aprobado: no editar datos del wizard */
+  lockFields?: boolean;
+  /** Ocultar stepper / navegación a pasos anteriores */
+  hideNavigation?: boolean;
   onSuccess?: {
     mode?: CheckoutOnSuccessMode;
     redirectUrl?: string;
@@ -322,4 +326,8 @@ export interface WizardState {
   /** Metadata canal SSO (cproductor, cramo, etc.) — igual que emisión. */
   metadataCanal: Record<string, unknown> | null;
   diligencia: import('../lib/diligencia').DiligenciaState | null;
+  /** Link de pago post-aprobación funerario */
+  funeralApprovedCheckout?: boolean;
+  funeralSubmissionId?: string;
+  funeralPaymentExpiresAt?: string;
 }

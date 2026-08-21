@@ -16,6 +16,7 @@ import {
   isGenericCheckoutMode,
   requiresPaymentBeforeContinue,
 } from './lib/checkout';
+import { isFuneralApprovedCheckout } from './lib/funeral-approved-checkout';
 import { useNexusTokenMetadata } from './hooks/useNexusTokenMetadata';
 import { toast } from './store/toastStore';
 import {
@@ -38,6 +39,7 @@ export default function App() {
   const genericCheckout = isGenericCheckoutMode(store);
   const embeddedCheckout = isEmbeddedMetadataCheckout(store);
   const paymentRequired = requiresPaymentBeforeContinue(store, funeralFlow);
+  const funeralApproved = isFuneralApprovedCheckout(store);
 
   /** Funerario legacy: emitir sin bloquear por verificación bancaria. */
   const canEmitFuneral = funeralFlow && !genericCheckout && !emitting;
@@ -404,13 +406,23 @@ export default function App() {
                   <div className="min-w-0">
                     <p className="text-[0.68rem] font-black tracking-[0.22em] gradient-text-indigo uppercase mb-2 inline-flex items-center gap-1.5">
                       <Sparkles size={11} className="text-indigo-500" />
-                      {genericCheckout ? 'Pago' : 'Paso 05 · Checkout'}
+                      {funeralApproved
+                        ? 'Pago autorizado'
+                        : genericCheckout
+                          ? 'Pago'
+                          : 'Paso 05 · Checkout'}
                     </p>
                     <h1 className="font-display text-3xl sm:text-[2.5rem] font-black text-slate-900 tracking-tight leading-tight">
-                      {genericCheckout ? 'Realiza tu pago' : 'Confirma y paga'}
+                      {funeralApproved
+                        ? 'Completa tu pago'
+                        : genericCheckout
+                          ? 'Realiza tu pago'
+                          : 'Confirma y paga'}
                     </h1>
                     <p className="text-slate-500 text-sm mt-2 max-w-xl leading-relaxed">
-                      {embeddedCheckout
+                      {funeralApproved
+                        ? 'Tu póliza funeraria fue aprobada. Los datos están precargados; solo debes verificar el pago.'
+                        : embeddedCheckout
                         ? 'Al verificar el pago, tu sistema recibirá el resultado automáticamente.'
                         : genericCheckout
                           ? 'Revisa el detalle y confirma el método de pago.'

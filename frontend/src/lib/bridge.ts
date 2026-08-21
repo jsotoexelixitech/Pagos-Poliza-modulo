@@ -268,6 +268,13 @@ function makeBridge(): BridgeAPI {
       setQuote(quoteFromCheckout(checkout), 'checkout-session');
       setQuoteState('ready');
     }
+
+    if (data.funeralApprovedCheckout === true) {
+      try {
+        sessionStorage.setItem('exelixi_product', 'funerario');
+      } catch { /* ignore */ }
+      useWizardStore.getState().goTo(5);
+    }
   };
 
   const hydrate = async () => {
