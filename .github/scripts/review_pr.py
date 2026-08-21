@@ -43,7 +43,7 @@ Tu tarea es revisar el siguiente diff de un Pull Request y reportar:
 Formato de respuesta:
 - Usa Markdown con encabezados claros.
 - Para cada hallazgo indica: **archivo**, **línea aproximada**, **descripción** y **sugerencia de corrección**.
-- Si no encuentras problemas en un archivo, indícalo brevemente.
+- Si no encuentras problemas en un archivo, no escribas nada sobre ese archivo.
 - Sé conciso pero preciso. No repitas el código completo, solo las líneas relevantes.
 - Responde siempre en el mismo idioma en que está escrito el código o sus comentarios.
 """
