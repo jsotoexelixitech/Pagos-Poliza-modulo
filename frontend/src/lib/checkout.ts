@@ -163,8 +163,19 @@ export function parseCheckoutRules(raw: unknown): CheckoutRules | null {
 
 /** Redirige al origen tras pago SSO (rompe iframe si aplica). */
 export function redirectCheckoutOnSuccess(rules?: CheckoutRules | null): boolean {
-  const redirectUrl = rules?.onSuccess?.redirectUrl?.trim();
-  if (!redirectUrl || rules?.onSuccess?.mode !== 'redirect') return false;
+  const raw = rules?.onSuccess?.redirectUrl?.trim();
+  if (!raw || rules?.onSuccess?.mode !== 'redirect') return false;
+
+  let redirectUrl = raw;
+  try {
+    const u = new URL(raw);
+    if (!u.searchParams.has('status')) {
+      u.searchParams.set('status', 'ok');
+    }
+    redirectUrl = u.toString();
+  } catch {
+    redirectUrl = raw.includes('?') ? `${raw}&status=ok` : `${raw}?status=ok`;
+  }
 
   const useTop =
     rules.onSuccess.target === '_top' ||
