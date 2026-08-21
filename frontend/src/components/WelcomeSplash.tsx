@@ -21,7 +21,7 @@ function shouldSkipSplash(): boolean {
   try {
     if (isExelixiCatalogFlow()) return true;
     const p = new URLSearchParams(window.location.search);
-    if (p.get('sid') && p.get('nexus_token')) return true;
+    if (p.get('sid')) return true;
     if (p.get('nexus_token')) return true;
     return false;
   } catch { return false; }
