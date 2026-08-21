@@ -14,6 +14,7 @@ import { readStoredBuilderProduct } from './lib/exelixi-catalog';
 import {
   isEmbeddedMetadataCheckout,
   isGenericCheckoutMode,
+  redirectCheckoutOnSuccess,
   requiresPaymentBeforeContinue,
 } from './lib/checkout';
 import { isFuneralApprovedCheckout } from './lib/funeral-approved-checkout';
@@ -299,7 +300,7 @@ export default function App() {
     }
 
     if (mode === 'redirect' && redirectUrl) {
-      window.location.href = redirectUrl;
+      redirectCheckoutOnSuccess(store.checkoutRules);
       return;
     }
 
@@ -443,6 +444,9 @@ export default function App() {
                         : rcvFlow && !genericCheckout
                           ? handleContinuarRcv
                           : undefined
+                    }
+                    onGenericCheckoutComplete={
+                      genericCheckout ? handleGenericComplete : undefined
                     }
                   />
                 )}

@@ -165,6 +165,8 @@ export interface CheckoutRules {
     mode?: CheckoutOnSuccessMode;
     redirectUrl?: string;
     webhookUrl?: string;
+    /** Salir del iframe al redirigir (ej. `_top`). */
+    target?: string;
   };
 }
 

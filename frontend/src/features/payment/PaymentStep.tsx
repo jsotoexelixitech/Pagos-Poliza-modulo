@@ -89,9 +89,14 @@ const TODAY_ISO = new Date().toISOString().split('T')[0];
 type PaymentStepProps = {
   /** RCV: tras verificar pago, emite póliza y activa recibo en Sis2000. */
   onPaymentVerified?: (ctx: PaymentEmitContext) => void | Promise<void>;
+  /** Checkout SSO embebido: continuar tras pago (redirect / webhook). */
+  onGenericCheckoutComplete?: () => void | Promise<void>;
 };
 
-export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
+export function PaymentStep({
+  onPaymentVerified,
+  onGenericCheckoutComplete,
+}: PaymentStepProps = {}) {
   const {
     paymentMethod, setPaymentMethod,
     selectedPlan, quote, quoteState, vehicle,
@@ -182,6 +187,18 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
     autoEmitStarted.current = true;
     try {
       await onPaymentVerified({ paymentVerified: true, paymentCapture: capture });
+    } catch {
+      autoEmitStarted.current = false;
+    }
+  };
+
+  const finishGenericCheckout = async () => {
+    if (!genericCheckout || !onGenericCheckoutComplete || autoEmitStarted.current) {
+      return;
+    }
+    autoEmitStarted.current = true;
+    try {
+      await onGenericCheckoutComplete();
     } catch {
       autoEmitStarted.current = false;
     }
@@ -368,7 +385,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
         };
         setPaymentCapture(capture);
         await triggerAutoEmit(capture);
-        void notifyClientCheckoutStatus({
+        await notifyClientCheckoutStatus({
           checkout,
           checkoutRules,
           checkoutPayload,
@@ -385,6 +402,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
             message: result.message,
           },
         });
+        await finishGenericCheckout();
       } else {
         setPaymentCapture(null);
         void notifyClientCheckoutStatus({
@@ -548,7 +566,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       };
       setPaymentCapture(capture);
       await triggerAutoEmit(capture);
-      void notifyClientCheckoutStatus({
+      await notifyClientCheckoutStatus({
         checkout,
         checkoutRules,
         checkoutPayload,
@@ -563,6 +581,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
           reference: final.ref_ibp || final.transaction_id,
         },
       });
+      await finishGenericCheckout();
       // Latch queda activo en 'done' — no se puede volver a confirmar
     } catch (err) {
       const msg = err instanceof SypagoError ? err.message : 'Error al confirmar pago.';

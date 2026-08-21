@@ -161,6 +161,28 @@ export function parseCheckoutRules(raw: unknown): CheckoutRules | null {
   return raw as CheckoutRules;
 }
 
+/** Redirige al origen tras pago SSO (rompe iframe si aplica). */
+export function redirectCheckoutOnSuccess(rules?: CheckoutRules | null): boolean {
+  const redirectUrl = rules?.onSuccess?.redirectUrl?.trim();
+  if (!redirectUrl || rules?.onSuccess?.mode !== 'redirect') return false;
+
+  const useTop =
+    rules.onSuccess.target === '_top' ||
+    (typeof window !== 'undefined' && window.self !== window.top);
+
+  try {
+    if (useTop && window.top) {
+      window.top.location.href = redirectUrl;
+    } else {
+      window.location.href = redirectUrl;
+    }
+    return true;
+  } catch {
+    window.location.href = redirectUrl;
+    return true;
+  }
+}
+
 /** ¿Exige pago verificado antes de continuar? */
 export function requiresPaymentBeforeContinue(
   state: Pick<WizardState, 'checkout' | 'checkoutRules'>,
