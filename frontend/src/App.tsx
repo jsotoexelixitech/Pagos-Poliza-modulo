@@ -14,7 +14,7 @@ import { readStoredBuilderProduct } from './lib/exelixi-catalog';
 import {
   isEmbeddedMetadataCheckout,
   isGenericCheckoutMode,
-  redirectCheckoutOnSuccess,
+  completeCheckoutOnSuccess,
   requiresPaymentBeforeContinue,
 } from './lib/checkout';
 import { isFuneralApprovedCheckout } from './lib/funeral-approved-checkout';
@@ -251,14 +251,17 @@ export default function App() {
   }
 
   async function handleGenericComplete() {
-    if (paymentRequired && !store.paymentVerified) {
+    const snap = useWizardStore.getState();
+    const required = requiresPaymentBeforeContinue(snap, funeralFlow);
+
+    if (required && !snap.paymentVerified) {
       toast.warning('Pago pendiente', 'Confirma el pago antes de continuar.');
       return;
     }
 
-    const mode = store.checkoutRules?.onSuccess?.mode ?? 'none';
-    const redirectUrl = store.checkoutRules?.onSuccess?.redirectUrl;
-    const webhookUrl = store.checkoutRules?.onSuccess?.webhookUrl;
+    const mode = snap.checkoutRules?.onSuccess?.mode ?? 'none';
+    const redirectUrl = snap.checkoutRules?.onSuccess?.redirectUrl;
+    const webhookUrl = snap.checkoutRules?.onSuccess?.webhookUrl;
 
     if (mode === 'emit') {
       if (funeralFlow) {
@@ -300,7 +303,14 @@ export default function App() {
     }
 
     if (mode === 'redirect' && redirectUrl) {
-      redirectCheckoutOnSuccess(store.checkoutRules);
+      completeCheckoutOnSuccess({
+        rules: snap.checkoutRules,
+        payload: snap.checkoutPayload,
+        payment: snap.paymentCapture
+          ? { ...snap.paymentCapture, method: snap.paymentMethod }
+          : null,
+        code: 'ACCP',
+      });
       return;
     }
 

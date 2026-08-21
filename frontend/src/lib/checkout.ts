@@ -183,6 +183,44 @@ export function redirectCheckoutOnSuccess(rules?: CheckoutRules | null): boolean
   }
 }
 
+/**
+ * Avisa al padre (iframe cross-origin) y redirige si aplica.
+ * Auto Casa / portales escuchan postMessage con paymentVerified + idOperacion.
+ */
+export function completeCheckoutOnSuccess(opts: {
+  rules?: CheckoutRules | null;
+  payload?: Record<string, unknown> | null;
+  payment?: Record<string, unknown> | null;
+  code?: string;
+}): void {
+  if (typeof window === 'undefined') return;
+
+  const redirectUrl = opts.rules?.onSuccess?.redirectUrl?.trim() || null;
+  const idOperacion =
+    (opts.payload?.idOperacion as string | undefined) ??
+    (opts.payload?.id_operacion as string | undefined) ??
+    null;
+
+  if (window.parent !== window) {
+    window.parent.postMessage(
+      {
+        type: 'payment.success',
+        event: 'payment.success',
+        paymentVerified: true,
+        status: 'ok',
+        code: opts.code ?? 'ACCP',
+        idOperacion,
+        referenceId: idOperacion,
+        redirectUrl,
+        payment: opts.payment ?? null,
+      },
+      '*',
+    );
+  }
+
+  redirectCheckoutOnSuccess(opts.rules);
+}
+
 /** ¿Exige pago verificado antes de continuar? */
 export function requiresPaymentBeforeContinue(
   state: Pick<WizardState, 'checkout' | 'checkoutRules'>,

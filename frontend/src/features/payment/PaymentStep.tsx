@@ -181,6 +181,7 @@ export function PaymentStep({
   const [verifyError,  setVerifyError]  = useState<string>('');
   const autoEmitStarted = useRef(false);
   const autoVerifyStarted = useRef(false);
+  const genericCheckoutCompleteStarted = useRef(false);
 
   const triggerAutoEmit = async (capture: PaymentCapture) => {
     if (!onPaymentVerified || autoEmitStarted.current) return;
@@ -193,14 +194,13 @@ export function PaymentStep({
   };
 
   const finishGenericCheckout = async () => {
-    if (!genericCheckout || !onGenericCheckoutComplete || autoEmitStarted.current) {
-      return;
-    }
-    autoEmitStarted.current = true;
+    if (!genericCheckout || !onGenericCheckoutComplete) return;
+    if (genericCheckoutCompleteStarted.current) return;
+    genericCheckoutCompleteStarted.current = true;
     try {
       await onGenericCheckoutComplete();
     } catch {
-      autoEmitStarted.current = false;
+      genericCheckoutCompleteStarted.current = false;
     }
   };
 
