@@ -4,7 +4,7 @@ import './index.css'
 import App from './App.tsx'
 import './lib/bridge'
 import { hydrateCheckoutFromAccessToken } from './lib/checkout'
-import { NexusGuard } from './nexus/NexusGuard'
+// import { NexusGuard } from './nexus/NexusGuard'
 import { applyExelixiWizardHandoff } from './lib/exelixi-catalog'
 import { applyExelixiBranding } from './lib/exelixi-branding'
 import { useWizardStore } from './store/wizardStore'
@@ -35,11 +35,11 @@ createRoot(document.getElementById('root')!).render(
     {isConfigRoute ? (
       <PagosConfigPanel />
     ) : (
-      <NexusGuard recheckInterval={30}>
+      /* <NexusGuard recheckInterval={30}> */
         <ExelixiHandoffBootstrap>
           <App />
         </ExelixiHandoffBootstrap>
-      </NexusGuard>
+      /* </NexusGuard> */
     )}
   </StrictMode>,
 )
