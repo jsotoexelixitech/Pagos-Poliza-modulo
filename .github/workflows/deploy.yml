@@ -1,0 +1,78 @@
+name: 🚀 Deploy Pagos-Poliza
+
+on:
+  push:
+    branches:
+      - develop
+      - qa
+
+jobs:
+  # ──────────────────────────────────────────
+  # Deploy a servidor de DESARROLLO
+  # Se dispara con push a la rama "develop"
+  # ──────────────────────────────────────────
+  deploy-dev:
+    name: Deploy → DEV
+    if: github.ref == 'refs/heads/develop'
+    runs-on: [self-hosted, pagos-dev]
+
+    steps:
+      - name: 📥 Pull cambios
+        run: |
+          cd /opt/services/Pagos-Poliza-modulo
+          git pull origin develop
+
+      - name: 📦 Instalar dependencias
+        run: |
+          cd /opt/services/Pagos-Poliza-modulo
+          npm run install:all
+
+      - name: 🔨 Build frontend
+        run: |
+          cd /opt/services/Pagos-Poliza-modulo
+          npm run build --prefix frontend
+
+      - name: 📋 Copiar dist a Nginx
+        run: |
+          cp -r /opt/services/Pagos-Poliza-modulo/frontend/dist/* /var/www/html/pagos/
+
+      - name: ♻️ Recargar API con PM2
+        run: pm2 reload pagos-api
+
+      - name: ✅ Deploy DEV completado
+        run: echo "Deploy a DEV finalizado correctamente — $(date)"
+
+  # ──────────────────────────────────────────
+  # Deploy a servidor de QA
+  # Se dispara con push a la rama "qa"
+  # ──────────────────────────────────────────
+  deploy-qa:
+    name: Deploy → QA
+    if: github.ref == 'refs/heads/qa'
+    runs-on: [self-hosted, pagos-qa]
+
+    steps:
+      - name: 📥 Pull cambios
+        run: |
+          cd /opt/services/Pagos-Poliza-modulo
+          git pull origin qa
+
+      - name: 📦 Instalar dependencias
+        run: |
+          cd /opt/services/Pagos-Poliza-modulo
+          npm run install:all
+
+      - name: 🔨 Build frontend
+        run: |
+          cd /opt/services/Pagos-Poliza-modulo
+          npm run build --prefix frontend
+
+      - name: 📋 Copiar dist a Nginx
+        run: |
+          cp -r /opt/services/Pagos-Poliza-modulo/frontend/dist/* /var/www/html/pagos/
+
+      - name: ♻️ Recargar API con PM2
+        run: pm2 reload pagos-api
+
+      - name: ✅ Deploy QA completado
+        run: echo "Deploy a QA finalizado correctamente — $(date)"
