@@ -68,13 +68,19 @@ const EMISION_URL = (process.env.EMISION_API_URL ?? 'http://localhost:4004').rep
 
 async function _proxyToEmision(req, res) {
   try {
+    const authHeader = req.nexusToken
+      ? `Bearer ${req.nexusToken}`
+      : req.headers.authorization;
     const upstream = await axios({
       method: req.method,
       url: `${EMISION_URL}${req.originalUrl}`,
       data: req.body,
       headers: {
         'Content-Type': 'application/json',
-        ...(req.headers.authorization ? { Authorization: req.headers.authorization } : {}),
+        ...(authHeader ? { Authorization: authHeader } : {}),
+        ...(req.headers['x-nexus-token']
+          ? { 'x-nexus-token': req.headers['x-nexus-token'] }
+          : {}),
       },
       timeout: 90_000,
       validateStatus: () => true,

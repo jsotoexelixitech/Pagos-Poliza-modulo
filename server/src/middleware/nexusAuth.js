@@ -74,6 +74,16 @@ async function nexusAuth(req, res, next) {
   if (isBypass) {
     req.empresa = { id: 1 };
     req.submoduloId = EXPECTED_SUBMODS.length > 0 ? EXPECTED_SUBMODS[0] : 17;
+
+    if (token) {
+      try {
+        const decoded = jwt.decode(token);
+        if (decoded && typeof decoded === 'object') {
+          req.nexusMetadata = decoded.metadata || {};
+        }
+      } catch { /* ignorar token malformado en bypass */ }
+    }
+
     return next();
   }
   // -----------------------------------
