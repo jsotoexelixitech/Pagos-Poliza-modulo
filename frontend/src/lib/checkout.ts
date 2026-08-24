@@ -5,27 +5,13 @@ import type {
   WizardState,
 } from '../types';
 import { useWizardStore } from '../store/wizardStore';
+import { decodeNexusTokenMetadata, getNexusToken } from './nexus-token-client';
 
-function decodeTokenPayload(token: string): Record<string, unknown> | null {
-  try {
-    const payloadBase64 = token.split('.')[1];
-    if (!payloadBase64) return null;
-    const payloadStr = atob(
-      payloadBase64.replace(/-/g, '+').replace(/_/g, '/'),
-    );
-    return JSON.parse(payloadStr) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-}
+const NEXUS_TOKEN_KEY = 'nexus_access_token_pagos';
 
 function getAccessTokenFromBrowser(): string | null {
   if (typeof window === 'undefined') return null;
-  return (
-    sessionStorage.getItem('nexus_access_token_pagos') ||
-    sessionStorage.getItem('nexus_access_token') ||
-    new URLSearchParams(window.location.search).get('nexus_token')
-  );
+  return getNexusToken(NEXUS_TOKEN_KEY);
 }
 
 /** Metadata SSO del token en URL/storage (sin bridge ?sid=). */
@@ -36,11 +22,7 @@ export function getSsoMetadataFromBrowser(): Record<string, unknown> | null {
   const token = getAccessTokenFromBrowser();
   if (!token) return null;
 
-  const payload = decodeTokenPayload(token);
-  const meta = payload?.metadata;
-  return meta && typeof meta === 'object'
-    ? (meta as Record<string, unknown>)
-    : null;
+  return decodeNexusTokenMetadata(token);
 }
 
 /** Sesión Pagos standalone con checkout en metadata (antes de hidratar el store). */
