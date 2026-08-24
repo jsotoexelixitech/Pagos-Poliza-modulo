@@ -12,7 +12,12 @@ import { formatUsdShort, vesAnnual } from '../../lib/money';
 import { formatTelefono, FORMATTED_PHONE_MAX_LENGTH, isValidPhonePrefix, phoneDigitsOnly } from '../../lib/phone';
 import { formatCedulaRif, validateCedulaRif } from '../../lib/cedula-rif';
 import { useProductConfig } from '../../hooks/useProductConfig';
-import { isExelixiCatalogProduct } from '../../lib/product';
+import { isExelixiCatalogProduct, getProductConfig } from '../../lib/product';
+import {
+  resolveFrecuenciaAmounts,
+  resolveWizardFrecuenciaCode,
+  resolveRcvQuoteBasis,
+} from '../../lib/frecuencia';
 import {
   getCheckoutPaymentConcept,
   isGenericCheckoutMode,
@@ -99,13 +104,17 @@ export function PaymentStep({
 }: PaymentStepProps = {}) {
   const {
     paymentMethod, setPaymentMethod,
-    selectedPlan, quote, quoteState, vehicle,
+    selectedPlan, quote, quoteState, vehicle, rcv, funeral,
     checkout, checkoutRules, checkoutPayer, checkoutPayload,
     tomador,
     setQuote, setQuoteState,
     setPaymentVerified,
     setPaymentCapture,
   } = useWizardStore();
+
+  const product = getProductConfig();
+  const frecuenciaCode = resolveWizardFrecuenciaCode(product.hasVehicle, rcv?.frecuencia, funeral?.frecuencia);
+  const quoteBasis = resolveRcvQuoteBasis(vehicle?.tipoPlaca, rcv?.frecuencia);
 
   const genericCheckout = isGenericCheckoutMode({ checkout });
   const qaMobileBypass = isPaymentBypassEnabled();
@@ -262,15 +271,16 @@ export function PaymentStep({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Sincroniza el monto en Bs con la cotización oficial cada vez que cambia.
-  // No es editable por el usuario: es el monto exacto a pagar (prima anual a tasa BCV).
-  // Esto evita que el cliente coloque un monto menor al cotizado.
+  // Sincroniza el monto en Bs con el 1er recibo según frecuencia de pago.
+  // No es editable: evita que el cliente coloque un monto distinto al cotizado.
   useEffect(() => {
+    if (genericCheckout) return;
     if (quoteState !== 'ready' || !quote) return;
-    const vesStr = vesAnnual(quote).toFixed(2);
+    const amounts = resolveFrecuenciaAmounts(quote, frecuenciaCode, { quoteBasis });
+    const vesStr = amounts.installmentVes.toFixed(2);
     setMontoM(vesStr);
     setOtpAmount(vesStr);
-  }, [quoteState, quote]);
+  }, [quoteState, quote, frecuenciaCode, quoteBasis, genericCheckout]);
 
   // Countdown para reenvío de OTP
   useEffect(() => {
@@ -303,6 +313,13 @@ export function PaymentStep({
     : hasRealQuote
       ? vesAnnual(quote)
       : 0;
+
+  const freqAmounts = resolveFrecuenciaAmounts(hasRealQuote ? quote : null, frecuenciaCode, {
+    quoteBasis,
+  });
+  const installmentHint = hasRealQuote && freqAmounts.cuotas > 1
+    ? `Monto del 1er recibo (${frecuenciaCode}) · no editable`
+    : 'Monto exacto según cotización oficial · no editable';
 
   const displayTitle = genericCheckout
     ? checkout!.title
@@ -820,7 +837,7 @@ export function PaymentStep({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* fila 1: banco · teléfono */}
-              <Field label="Banco de origen" error={movErrors.banco}>
+              <Field label="Banco de origen *" error={movErrors.banco}>
                 <BankSearchSelect
                   options={BANCOS_MOVIL}
                   value={bankCode}
@@ -834,7 +851,7 @@ export function PaymentStep({
                 />
               </Field>
 
-              <Field label="Teléfono de origen" hint="Número que realizó el pago" error={movErrors.telefono}>
+              <Field label="Teléfono de origen *" hint="Número que realizó el pago" error={movErrors.telefono}>
                 <Input
                   value={telefonoPago}
                   onChange={(e) => { setTelPago(formatTelefono(e.target.value)); setVerifyStatus('idle'); setPaymentVerified(false); }}
@@ -846,7 +863,7 @@ export function PaymentStep({
               </Field>
 
               {/* fila 2: fecha */}
-              <Field label="Fecha del pago" error={movErrors.fecha}>
+              <Field label="Fecha del pago *" error={movErrors.fecha}>
                 <Input
                   type="date"
                   value={fechaPagoM}
@@ -855,7 +872,7 @@ export function PaymentStep({
                 />
               </Field>
 
-              <Field label="Cédula/RIF del titular" hint="Ej: V-12345678 (máx. 8 dígitos)" error={movErrors.cedula}>
+              <Field label="Cédula/RIF del titular *" hint="Ej: V-12345678 (máx. 8 dígitos)" error={movErrors.cedula}>
                 <Input
                   value={cedulaPago}
                   onChange={(e) => {
@@ -875,7 +892,7 @@ export function PaymentStep({
                   genericCheckout
                     ? 'Monto exacto del checkout · no editable'
                     : hasRealQuote
-                    ? 'Monto exacto según cotización oficial · no editable'
+                    ? installmentHint
                     : isLoadingQuote
                     ? 'Calculando monto en bolívares desde la cotización...'
                     : 'Esperando cotización para calcular el monto'
@@ -1078,7 +1095,7 @@ export function PaymentStep({
                       genericCheckout
                         ? 'Monto exacto del checkout · no editable'
                         : hasRealQuote
-                        ? 'Monto exacto según cotización oficial · no editable'
+                        ? installmentHint
                         : isLoadingQuote
                         ? 'Calculando monto en bolívares desde la cotización...'
                         : 'Esperando cotización para calcular el monto'
