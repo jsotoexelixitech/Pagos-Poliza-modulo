@@ -1,0 +1,289 @@
+import axios, { AxiosError } from 'axios';
+import { moduleApiBase } from './app-base';
+import { attachNexusTokenAxios } from './nexus-token-client';
+import type { CheckoutData, PaymentCapture } from '../types';
+
+const api = axios.create({ baseURL: `${moduleApiBase()}/domiciliacion` });
+attachNexusTokenAxios(api, 'nexus_access_token_pagos');
+
+export const NUMERO_CUENTA_DIGITOS = 20;
+
+const LETRAS_DOC_SYPAGO = new Set(['V', 'J', 'E', 'G', 'P']);
+
+/**
+ * Misma normalización que el módulo original de domiciliación:
+ * `L-########` con V, J, E, G, P y hasta 9 dígitos.
+ */
+export function formatearCedulaRifDomiciliacion(raw: string, prev = ''): string {
+  const stripped = raw.toUpperCase().replace(/[^VJEGP0-9]/g, '');
+  if (!stripped) return '';
+
+  const letra = LETRAS_DOC_SYPAGO.has(stripped[0]) ? stripped[0] : '';
+  if (!letra) return '';
+
+  const numeros = stripped.slice(1).replace(/\D/g, '').slice(0, 9);
+
+  if (
+    !numeros &&
+    prev === `${letra}-` &&
+    raw.toUpperCase().replace(/[^VJEGP]/g, '') === letra
+  ) {
+    return '';
+  }
+
+  return `${letra}-${numeros}`;
+}
+
+export function esNumeroCuentaValido(valor: string): boolean {
+  return new RegExp(`^\\d{${NUMERO_CUENTA_DIGITOS}}$`).test(valor.trim());
+}
+
+/** Recibos cobrables: misma regla que RegistroDomiciliacion (prima Bs y $ > 0). */
+export function filtrarRecibosCobrables<T extends { monto: number; montoExt: number }>(
+  recibos: T[],
+): T[] {
+  return recibos.filter((r) => r.monto > 0 && r.montoExt > 0);
+}
+
+export const MSG_POLIZA_CANCELADA =
+  'está cancelada. No se pueden consultar recibos ni registrar domiciliación.';
+
+export const MSG_SIN_RECIBOS_COBRABLES =
+  'No se puede domiciliar la póliza porque no tiene recibos pendientes cobrables (liquidados, anulados o sin prima en dólares).';
+
+export type TipoCuentaDomiciliacion = 'AHORROS' | 'CORRIENTE';
+export type EstadoDomiciliacion = 'PENDIENTE' | 'ACTIVA' | 'RECHAZADA' | 'CANCELADA';
+
+export interface BancoSypago {
+  code: string;
+  name: string;
+  active: boolean;
+  isDebitOtp?: boolean;
+}
+
+export interface PolizaDomiciliacion {
+  id: string;
+  numeroPoliza: string;
+  asegurado: string;
+  ramo: string;
+  estado: string;
+  ifrecuencia?: string;
+}
+
+export interface ReciboPendiente {
+  id: string;
+  polizaId: string;
+  numeroRecibo: string;
+  monto: number;
+  montoExt: number;
+  qcuotas: number;
+  fechaVencimiento: string;
+  estado: string;
+}
+
+export interface DomiciliacionResult {
+  id: string;
+  polizaId: string;
+  banco: string;
+  tipoCuenta: TipoCuentaDomiciliacion;
+  numeroCuenta: string;
+  titularCuenta: string;
+  cedulaTitular: string;
+  estado: EstadoDomiciliacion;
+  sypagoAfiliacionId: string | null;
+  sypagoMensaje: string | null;
+}
+
+export interface RegistrarDomiciliacionInput {
+  numeroPoliza: string;
+  polizaId: string;
+  banco: string;
+  tipoCuenta: TipoCuentaDomiciliacion;
+  numeroCuenta: string;
+  titularCuenta: string;
+  cedulaTitular: string;
+  aceptaAutorizacion: boolean;
+}
+
+export class DomiciliacionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'DomiciliacionError';
+  }
+}
+
+function messageFromAxios(err: unknown, fallback: string): string {
+  const ax = err as AxiosError<{ message?: string; error?: string }>;
+  const data = ax.response?.data;
+  return data?.message || data?.error || ax.message || fallback;
+}
+
+export async function getSypagoBanks(soloActivos = true): Promise<BancoSypago[]> {
+  try {
+    const { data } = await api.get<BancoSypago[]>(
+      `/sypago/banks?solo_activos=${soloActivos ? 'true' : 'false'}`,
+    );
+    return Array.isArray(data) ? data : [];
+  } catch (err) {
+    throw new DomiciliacionError(messageFromAxios(err, 'Error al consultar los bancos SyPago.'));
+  }
+}
+
+export async function buscarPolizaDomiciliacion(numeroPoliza: string): Promise<PolizaDomiciliacion> {
+  try {
+    const { data } = await api.get<PolizaDomiciliacion[]>(
+      `/polizas?numeroPoliza=${encodeURIComponent(numeroPoliza)}`,
+    );
+    const resultados = Array.isArray(data) ? data : [];
+    const exactas = resultados.filter(
+      (p) => p.numeroPoliza.toLowerCase() === numeroPoliza.trim().toLowerCase(),
+    );
+    if (exactas.length === 0) {
+      throw new DomiciliacionError(`No se encontró la póliza ${numeroPoliza}.`);
+    }
+    const encontrada = exactas.find((p) => p.estado === 'ACTIVA');
+    if (!encontrada) {
+      throw new DomiciliacionError(
+        `La póliza ${numeroPoliza} ${MSG_POLIZA_CANCELADA}`,
+      );
+    }
+    return encontrada;
+  } catch (err) {
+    if (err instanceof DomiciliacionError) throw err;
+    throw new DomiciliacionError(messageFromAxios(err, 'Error al consultar la póliza.'));
+  }
+}
+
+export async function getRecibosPendientes(polizaId: string): Promise<ReciboPendiente[]> {
+  try {
+    const { data } = await api.get<ReciboPendiente[]>(`/polizas/${polizaId}/recibos-pendientes`);
+    return Array.isArray(data) ? data : [];
+  } catch (err) {
+    throw new DomiciliacionError(messageFromAxios(err, 'Error al consultar los recibos pendientes.'));
+  }
+}
+
+export async function registrarDomiciliacion(
+  input: RegistrarDomiciliacionInput,
+): Promise<DomiciliacionResult> {
+  if (!input.aceptaAutorizacion) {
+    throw new DomiciliacionError('El cliente debe aceptar la autorización de domiciliación.');
+  }
+  try {
+    const { data } = await api.post<DomiciliacionResult>('/domiciliaciones', input);
+    return data;
+  } catch (err) {
+    throw new DomiciliacionError(
+      messageFromAxios(err, 'Error al registrar la domiciliación en el backend.'),
+    );
+  }
+}
+
+function asNonEmptyString(value: unknown): string | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value);
+  }
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+/**
+ * Extrae número/id de póliza ya existente en checkout SSO.
+ * Solo usa campos explícitos de póliza — no `checkout.referenceId`,
+ * que suele ser un id de cobro y no un número de póliza.
+ */
+export function getCheckoutPolicyRef(
+  checkout: CheckoutData | null | undefined,
+  payload: Record<string, unknown> | null | undefined,
+): { numeroPoliza?: string; polizaId?: string } {
+  const p = payload ?? {};
+  const nested =
+    p.poliza && typeof p.poliza === 'object'
+      ? (p.poliza as Record<string, unknown>)
+      : {};
+  const checkoutObj =
+    checkout && typeof checkout === 'object'
+      ? (checkout as unknown as Record<string, unknown>)
+      : {};
+
+  const numeroPoliza =
+    asNonEmptyString(p.numeroPoliza) ||
+    asNonEmptyString(p.cnpoliza) ||
+    asNonEmptyString(p.policyNumber) ||
+    asNonEmptyString(nested.numeroPoliza) ||
+    asNonEmptyString(nested.cnpoliza) ||
+    asNonEmptyString(checkoutObj.numeroPoliza) ||
+    asNonEmptyString(checkoutObj.cnpoliza);
+
+  const polizaId =
+    asNonEmptyString(p.polizaId) ||
+    asNonEmptyString(p.cpoliza) ||
+    asNonEmptyString(p.internalPolicyId) ||
+    asNonEmptyString(nested.polizaId) ||
+    asNonEmptyString(nested.cpoliza) ||
+    asNonEmptyString(nested.id);
+
+  return { numeroPoliza, polizaId };
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+/**
+ * Afilia la póliza recién emitida (o una ya existente) en el backend Nest.
+ * Reintenta la consulta de póliza porque Sis2000 puede tardar en indexarla.
+ */
+export async function registrarDomiciliacionForPolicy(params: {
+  numeroPoliza: string;
+  polizaId?: string | null;
+  capture: PaymentCapture;
+}): Promise<DomiciliacionResult> {
+  const { numeroPoliza, capture } = params;
+  if (!capture.bankCode || !capture.numeroCuenta || !capture.cci_rif || !capture.titularCuenta) {
+    throw new DomiciliacionError('Faltan datos bancarios para registrar la domiciliación.');
+  }
+
+  let polizaId = '';
+  let lastError = 'No se encontró la póliza para domiciliar.';
+  for (let i = 0; i < 4; i++) {
+    try {
+      const poliza = await buscarPolizaDomiciliacion(numeroPoliza);
+      polizaId = String(poliza.id);
+      break;
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : lastError;
+      if (i < 3) await sleep(1500 * (i + 1));
+    }
+  }
+  if (!polizaId) {
+    polizaId = params.polizaId?.trim() || '';
+  }
+  if (!polizaId) throw new DomiciliacionError(lastError);
+
+  let cobrables: ReciboPendiente[] = [];
+  for (let i = 0; i < 4; i++) {
+    try {
+      cobrables = filtrarRecibosCobrables(await getRecibosPendientes(polizaId));
+      if (cobrables.length > 0) break;
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : lastError;
+    }
+    if (i < 3) await sleep(1500 * (i + 1));
+  }
+  if (cobrables.length === 0) {
+    throw new DomiciliacionError(MSG_SIN_RECIBOS_COBRABLES);
+  }
+
+  return registrarDomiciliacion({
+    numeroPoliza,
+    polizaId,
+    banco: capture.bankCode,
+    tipoCuenta: capture.tipoCuenta === 'CORRIENTE' ? 'CORRIENTE' : 'AHORROS',
+    numeroCuenta: capture.numeroCuenta.trim(),
+    titularCuenta: capture.titularCuenta.trim(),
+    cedulaTitular: capture.cci_rif.trim(),
+    aceptaAutorizacion: true,
+  });
+}

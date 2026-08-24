@@ -47,6 +47,7 @@ export function SidebarNav() {
     transfer: 'Transferencia',
     mobile: 'Pago móvil',
     otp: 'Débito SyPago',
+    domiciliacion: 'Domiciliación',
   };
 
   // Progreso relativo al rango de este módulo (pasos 5-6)

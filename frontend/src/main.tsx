@@ -30,16 +30,20 @@ function ExelixiHandoffBootstrap({ children }: { children: ReactNode }) {
 // /config (dev) o /pagos/config (prod con prefijo Apache)
 const isConfigRoute = /\/config\/?$/.test(window.location.pathname);
 
+const appTree = (
+  <ExelixiHandoffBootstrap>
+    <App />
+  </ExelixiHandoffBootstrap>
+);
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     {isConfigRoute ? (
       <PagosConfigPanel />
+    ) : import.meta.env.DEV ? (
+      appTree
     ) : (
-      <NexusGuard recheckInterval={30}>
-        <ExelixiHandoffBootstrap>
-          <App />
-        </ExelixiHandoffBootstrap>
-      </NexusGuard>
+      <NexusGuard recheckInterval={30}>{appTree}</NexusGuard>
     )}
   </StrictMode>,
 )
