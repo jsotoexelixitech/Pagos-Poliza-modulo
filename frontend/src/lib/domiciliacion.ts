@@ -34,8 +34,72 @@ export function formatearCedulaRifDomiciliacion(raw: string, prev = ''): string 
   return `${letra}-${numeros}`;
 }
 
+/** Solo letras, tildes, ñ y espacios (nombre del titular). */
+export function soloLetrasNombre(valor: string): string {
+  return valor.replace(/[^a-zA-ZáéíóúüñÁÉÍÓÚÜÑ\s]/g, '');
+}
+
 export function esNumeroCuentaValido(valor: string): boolean {
   return new RegExp(`^\\d{${NUMERO_CUENTA_DIGITOS}}$`).test(valor.trim());
+}
+
+/** En Venezuela el N° de cuenta inicia con el código SUDEBAN del banco (4 dígitos). */
+export function cuentaCoincideConBanco(numeroCuenta: string, bancoCode: string): boolean {
+  const code = String(bancoCode ?? '').trim();
+  const cuenta = numeroCuenta.trim();
+  if (!/^\d{4}$/.test(code) || cuenta.length < 4) return false;
+  return cuenta.startsWith(code);
+}
+
+export function esCuentaBancariaValida(numeroCuenta: string, bancoCode: string): boolean {
+  return esNumeroCuentaValido(numeroCuenta) && cuentaCoincideConBanco(numeroCuenta, bancoCode);
+}
+
+/** Dígitos de la cuenta sin el prefijo SUDEBAN (máx. 16). */
+export function colaCuentaSinPrefijo(numeroCuenta: string, bancoCode?: string): string {
+  const digits = numeroCuenta.replace(/\D/g, '');
+  const code = String(bancoCode ?? '').trim();
+  if (/^\d{4}$/.test(code) && digits.startsWith(code)) {
+    return digits.slice(4, NUMERO_CUENTA_DIGITOS);
+  }
+  return digits.length > 4 ? digits.slice(4, NUMERO_CUENTA_DIGITOS) : '';
+}
+
+/** Prefija el código del banco y conserva el resto de la cuenta (hasta 20 dígitos). */
+export function aplicarPrefijoBanco(numeroCuenta: string, bancoCode: string): string {
+  const code = String(bancoCode ?? '').trim();
+  if (!/^\d{4}$/.test(code)) return '';
+  return (code + colaCuentaSinPrefijo(numeroCuenta, code)).slice(0, NUMERO_CUENTA_DIGITOS);
+}
+
+/** Sanitiza la entrada del usuario manteniendo el prefijo del banco bloqueado. */
+export function sanitizarCuentaConBanco(raw: string, bancoCode: string): string {
+  const code = String(bancoCode ?? '').trim();
+  if (!/^\d{4}$/.test(code)) return '';
+  let digits = raw.replace(/\D/g, '');
+  if (digits.startsWith(code)) {
+    digits = digits.slice(4);
+  } else if (digits.length === NUMERO_CUENTA_DIGITOS) {
+    // Pegó una cuenta completa: se conserva el cuerpo y se fuerza el banco seleccionado.
+    digits = digits.slice(4);
+  }
+  return (code + digits).slice(0, NUMERO_CUENTA_DIGITOS);
+}
+
+export function mensajeErrorCuentaBanco(numeroCuenta: string, bancoCode: string): string {
+  const cuenta = numeroCuenta.trim();
+  if (!cuenta) return '';
+  const code = String(bancoCode ?? '').trim();
+  if (code && cuenta.length >= 4 && !cuentaCoincideConBanco(cuenta, code)) {
+    return `Los primeros 4 dígitos deben ser el código del banco seleccionado (${code}).`;
+  }
+  if (!esNumeroCuentaValido(cuenta)) {
+    return `Faltan ${NUMERO_CUENTA_DIGITOS - cuenta.length} dígito(s).`;
+  }
+  if (!code) {
+    return 'Selecciona el banco para validar el número de cuenta.';
+  }
+  return '';
 }
 
 /** Recibos cobrables: misma regla que RegistroDomiciliacion (prima Bs y $ > 0). */
@@ -252,6 +316,12 @@ export async function registrarDomiciliacionForPolicy(params: {
   const { numeroPoliza, capture } = params;
   if (!capture.bankCode || !capture.numeroCuenta || !capture.cci_rif || !capture.titularCuenta) {
     throw new DomiciliacionError('Faltan datos bancarios para registrar la domiciliación.');
+  }
+  if (!esCuentaBancariaValida(capture.numeroCuenta, capture.bankCode)) {
+    throw new DomiciliacionError(
+      mensajeErrorCuentaBanco(capture.numeroCuenta, capture.bankCode)
+        || `El número de cuenta debe tener ${NUMERO_CUENTA_DIGITOS} dígitos y comenzar con el código del banco.`,
+    );
   }
   if (!capture.correo || !esCorreoDomiciliacionValido(capture.correo)) {
     throw new DomiciliacionError(

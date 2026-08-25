@@ -9,10 +9,15 @@ import { useBancosSypago } from '../../hooks/useBancosSypago';
 import {
   NUMERO_CUENTA_DIGITOS,
   MSG_SIN_RECIBOS_COBRABLES,
+  aplicarPrefijoBanco,
+  colaCuentaSinPrefijo,
   esCorreoDomiciliacionValido,
-  esNumeroCuentaValido,
+  esCuentaBancariaValida,
+  mensajeErrorCuentaBanco,
+  sanitizarCuentaConBanco,
   filtrarRecibosCobrables,
   formatearCedulaRifDomiciliacion,
+  soloLetrasNombre,
   buscarPolizaDomiciliacion,
   getRecibosPendientes,
   registrarDomiciliacionForPolicy,
@@ -55,9 +60,10 @@ export function DomiciliacionForm({ existingPolicy, onAuthorized }: Props) {
   const { tomador, pagador, differentPayer, checkoutPayer } = useWizardStore();
 
   const persona = differentPayer ? pagador : tomador;
-  const titularDefault =
+  const titularDefault = soloLetrasNombre(
     checkoutPayer?.name?.trim() ||
-    [persona.nombre, persona.apellido].filter(Boolean).join(' ').trim();
+    [persona.nombre, persona.apellido].filter(Boolean).join(' ').trim(),
+  );
   const cedulaDefault = checkoutPayer?.documentType && checkoutPayer.documentNumber
     ? formatearCedulaRifDomiciliacion(`${checkoutPayer.documentType}${checkoutPayer.documentNumber}`)
     : persona.identificacion
@@ -108,7 +114,7 @@ export function DomiciliacionForm({ existingPolicy, onAuthorized }: Props) {
         }
         setPoliza(encontrada);
         setRecibos(pendientes);
-        setTitularCuenta((prev) => prev.trim() || encontrada.asegurado);
+        setTitularCuenta((prev) => prev.trim() || soloLetrasNombre(encontrada.asegurado));
       } catch (err) {
         if (!cancelado) {
           setPoliza(null);
@@ -127,16 +133,14 @@ export function DomiciliacionForm({ existingPolicy, onAuthorized }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [existingPolicy?.numeroPoliza]);
 
-  const cuentaValida = esNumeroCuentaValido(numeroCuenta);
-  const cuentaError = numeroCuenta && !cuentaValida
-    ? `Faltan ${NUMERO_CUENTA_DIGITOS - numeroCuenta.length} dígito(s).`
-    : '';
+  const cuentaValida = esCuentaBancariaValida(numeroCuenta, banco);
+  const cuentaError = mensajeErrorCuentaBanco(numeroCuenta, banco);
   const correoValido = esCorreoDomiciliacionValido(correo);
   const correoError = correo.trim() && !correoValido
     ? 'Indica un correo electrónico válido.'
     : '';
 
-  // Mismas reglas que RegistroDomiciliacion: cuenta 20 dígitos + cédula + titular + correo.
+  // Mismas reglas que RegistroDomiciliacion: cuenta 20 dígitos + código de banco + cédula + titular + correo.
   const formularioCompleto =
     cuentaValida &&
     Boolean(cedulaTitular.trim()) &&
@@ -164,8 +168,11 @@ export function DomiciliacionForm({ existingPolicy, onAuthorized }: Props) {
       setErrorEnvio(errorPoliza || MSG_SIN_RECIBOS_COBRABLES);
       return;
     }
-    if (!esNumeroCuentaValido(numeroCuenta)) {
-      setErrorEnvio(`El número de cuenta debe tener exactamente ${NUMERO_CUENTA_DIGITOS} dígitos.`);
+    if (!esCuentaBancariaValida(numeroCuenta, banco)) {
+      setErrorEnvio(
+        mensajeErrorCuentaBanco(numeroCuenta, banco)
+          || `El número de cuenta debe tener exactamente ${NUMERO_CUENTA_DIGITOS} dígitos y comenzar con el código del banco (${banco}).`,
+      );
       return;
     }
     if (!esCorreoDomiciliacionValido(correo)) {
@@ -339,7 +346,10 @@ export function DomiciliacionForm({ existingPolicy, onAuthorized }: Props) {
           <BankSearchSelect
             options={bancos}
             value={banco}
-            onChange={setBanco}
+            onChange={(code) => {
+              setBanco(code);
+              setNumeroCuenta((prev) => (code ? aplicarPrefijoBanco(prev, code) : ''));
+            }}
           />
         </Field>
 
@@ -355,17 +365,34 @@ export function DomiciliacionForm({ existingPolicy, onAuthorized }: Props) {
 
         <Field
           label="Número de cuenta"
-          hint={`Exactamente ${NUMERO_CUENTA_DIGITOS} dígitos (formato SyPago)`}
+          hint={
+            banco
+              ? `Código ${banco} fijo · completa los ${NUMERO_CUENTA_DIGITOS - 4} dígitos restantes`
+              : 'Selecciona primero el banco; su código se fijará al inicio de la cuenta'
+          }
           error={cuentaError}
         >
-          <Input
-            value={numeroCuenta}
-            onChange={(e) => setNumeroCuenta(e.target.value.replace(/\D/g, '').slice(0, NUMERO_CUENTA_DIGITOS))}
-            inputMode="numeric"
-            maxLength={NUMERO_CUENTA_DIGITOS}
-            placeholder="00000000000000000000"
-            className="font-mono tracking-wide"
-          />
+          <div className="flex items-stretch gap-0">
+            <span
+              aria-hidden={!banco}
+              className="shrink-0 inline-flex items-center justify-center px-3 rounded-l-xl border border-r-0 border-slate-200 bg-slate-50 font-mono text-sm tracking-wide text-slate-600 select-none"
+            >
+              {banco || '----'}
+            </span>
+            <Input
+              value={banco ? colaCuentaSinPrefijo(numeroCuenta, banco) : ''}
+              onChange={(e) => {
+                if (!banco) return;
+                setNumeroCuenta(sanitizarCuentaConBanco(e.target.value, banco));
+              }}
+              disabled={!banco}
+              inputMode="numeric"
+              maxLength={NUMERO_CUENTA_DIGITOS - 4}
+              placeholder="0000000000000000"
+              className="font-mono tracking-wide rounded-l-none disabled:bg-slate-50 disabled:cursor-not-allowed"
+              aria-label={`Resto del número de cuenta (${NUMERO_CUENTA_DIGITOS - 4} dígitos)`}
+            />
+          </div>
         </Field>
 
         <Field label="Cédula / RIF del titular">
@@ -381,8 +408,9 @@ export function DomiciliacionForm({ existingPolicy, onAuthorized }: Props) {
         <Field label="Titular de la cuenta" full>
           <Input
             value={titularCuenta}
-            onChange={(e) => setTitularCuenta(e.target.value)}
+            onChange={(e) => setTitularCuenta(soloLetrasNombre(e.target.value))}
             placeholder="Nombre y apellido"
+            autoComplete="name"
           />
         </Field>
 
