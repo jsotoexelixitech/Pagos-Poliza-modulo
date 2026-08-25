@@ -26,6 +26,7 @@ import {
 import { notifyClientCheckoutStatus } from '../../lib/checkout-notify';
 import { isPaymentMethodEnabled } from '../../lib/payment-methods';
 import { FuneralApprovedSummary } from './FuneralApprovedSummary';
+import { isFuneralApprovedCheckout } from '../../lib/funeral-approved-checkout';
 
 const EMPRESA_ID = Number(import.meta.env.VITE_EMPRESA_ID ?? 1);
 
@@ -106,7 +107,7 @@ export function PaymentStep({
     paymentMethod, setPaymentMethod,
     selectedPlan, quote, quoteState, vehicle, rcv, funeral,
     checkout, checkoutRules, checkoutPayer, checkoutPayload,
-    tomador,
+    tomador, product: wizardProduct, funeralApprovedCheckout,
     setQuote, setQuoteState,
     setPaymentVerified,
     setPaymentCapture,
@@ -117,6 +118,11 @@ export function PaymentStep({
   const quoteBasis = resolveRcvQuoteBasis(vehicle?.tipoPlaca, rcv?.frecuencia);
 
   const genericCheckout = isGenericCheckoutMode({ checkout });
+  const funeralApproved = isFuneralApprovedCheckout({
+    funeralApprovedCheckout,
+    checkoutRules,
+    product: wizardProduct,
+  });
   const qaMobileBypass = isPaymentBypassEnabled();
   // Piloto Exélixi o QA RCV: el pago móvil se simula (sin conexión bancaria real).
   const mobilePaymentSimulated = !genericCheckout && (isExelixiCatalogProduct() || qaMobileBypass);
@@ -271,16 +277,44 @@ export function PaymentStep({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Sincroniza el monto en Bs con el 1er recibo según frecuencia de pago.
-  // No es editable: evita que el cliente coloque un monto distinto al cotizado.
+  // Sincroniza el monto en Bs (checkout SSO o cotización legacy).
   useEffect(() => {
-    if (genericCheckout) return;
+    if (genericCheckout && checkout?.totalVes) {
+      const vesStr = formatQuoteVesPaymentInput(checkout.totalVes);
+      setMontoM(vesStr);
+      setOtpAmount(vesStr);
+      return;
+    }
     if (quoteState !== 'ready' || !quote) return;
     const amounts = resolveFrecuenciaAmounts(quote, frecuenciaCode, { quoteBasis });
     const vesStr = formatQuoteVesPaymentInput(amounts.installmentVes);
     setMontoM(vesStr);
     setOtpAmount(vesStr);
-  }, [quoteState, quote, frecuenciaCode, quoteBasis, genericCheckout]);
+  }, [genericCheckout, checkout, quoteState, quote, frecuenciaCode, quoteBasis]);
+
+  // Funerario aprobado: precargar pagador desde tomador del snapshot (BD Exélixi).
+  useEffect(() => {
+    if (!funeralApproved) return;
+    if (tomador.tipoDoc) {
+      setOtpDocType((prev) => prev || tomador.tipoDoc || 'V');
+    }
+    if (tomador.identificacion) {
+      const digits = String(tomador.identificacion).replace(/\D/g, '');
+      setOtpDocNum((prev) => prev || digits);
+    }
+    const fullName = [tomador.nombre, tomador.apellido].filter(Boolean).join(' ');
+    if (fullName) setOtpName((prev) => prev || fullName);
+    if (tomador.telefono) {
+      setOtpPhone((prev) => prev || formatTelefono(tomador.telefono));
+    }
+  }, [
+    funeralApproved,
+    tomador.tipoDoc,
+    tomador.identificacion,
+    tomador.nombre,
+    tomador.apellido,
+    tomador.telefono,
+  ]);
 
   // Countdown para reenvío de OTP
   useEffect(() => {

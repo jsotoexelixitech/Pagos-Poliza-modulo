@@ -115,6 +115,8 @@ export default function App() {
       metadataCanal: snap.metadataCanal,
       checkout: snap.checkout,
       checkoutPayload: snap.checkoutPayload,
+      quote: snap.quote,
+      funeralSubmissionId: snap.funeralSubmissionId,
     };
   }
 
@@ -263,7 +265,7 @@ export default function App() {
     const redirectUrl = snap.checkoutRules?.onSuccess?.redirectUrl;
     const webhookUrl = snap.checkoutRules?.onSuccess?.webhookUrl;
 
-    if (mode === 'emit') {
+    if (mode === 'emit' || funeralApproved) {
       if (funeralFlow) {
         await handleEmitir();
         return;
@@ -357,14 +359,14 @@ export default function App() {
   async function handleEmitir() {
     if (!funeralFlow) return;
 
-    if (!store.funeral?.healthQuestionnaireDone) {
+    if (!funeralApproved && !store.funeral?.healthQuestionnaireDone) {
       toast.warning(
         'Cuestionario pendiente',
         'Completa el cuestionario de salud al confirmar el plan antes de emitir.',
       );
       return;
     }
-    if (!store.funeral?.aceptaTerminos) {
+    if (!funeralApproved && !store.funeral?.aceptaTerminos) {
       toast.warning(
         'Términos pendientes',
         'Debes aceptar los términos en el cuestionario de salud.',
