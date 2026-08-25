@@ -2,13 +2,13 @@
  * Frecuencia de pago La Mundial (ifrecuencia).
  *
  * Cotización nacional: mprimaext anual; el código divide USD por cuotas.
- * Bs del recibo = ROUND((cuota USD × ptasa), 2) — paridad Sis2000.
+ * Bs del recibo = ROUND((ROUND(mprimaext,2)/cuotas)×ptasa, 2) — paridad Sis2000.
  * Binacional con ndias: la API recotiza con vigencia corta (paridad SysIP selectFrecuencia → searchPrice).
  * Emisión: prima cotizada + ifrecuencia (Sis2000 genera los recibos).
  * UI: PaymentStep usa esta utilidad para mostrar el monto del 1er recibo.
  */
 import type { PolicyQuote } from '../types';
-import { computeQuoteVes, roundQuoteAmount } from './money';
+import { computeQuoteVes, normalizeQuoteUsd, resolveQuotePtasa, roundQuoteAmount } from './money';
 
 /** Cuotas por vigencia anual — paridad adrecibos / sp_genera_coberturas_recibos_auto_rcv_nexus */
 const CUOTAS_BY_FREC: Record<string, number> = {
@@ -101,7 +101,7 @@ export function resolveFrecuenciaAmounts(
   const basis = options?.quoteBasis ?? 'annual-total';
   const rawUsd = quote?.mprimaext ?? 0;
   const rawVes = quote?.mprima ?? 0;
-  const ptasa = quote?.ptasa ?? 0;
+  const ptasa = resolveQuotePtasa(quote?.ptasa);
 
   let annualUsd: number;
   let annualVes: number;
@@ -109,16 +109,20 @@ export function resolveFrecuenciaAmounts(
   let installmentVes: number;
 
   if (basis === 'per-installment') {
-    installmentUsd = rawUsd;
+    installmentUsd = normalizeQuoteUsd(rawUsd);
     installmentVes = roundInstallmentVes(
-      ptasa > 0 ? computeQuoteVes(rawUsd, ptasa) : rawVes,
+      ptasa > 0 ? computeQuoteVes(installmentUsd, ptasa) : rawVes,
     );
-    annualUsd = rawUsd * cuotas;
-    annualVes = ptasa > 0 ? computeQuoteVes(annualUsd, ptasa) : rawVes * cuotas;
+    annualUsd = roundQuoteAmount(installmentUsd * cuotas, 2);
+    annualVes = ptasa > 0
+      ? roundQuoteAmount(computeQuoteVes(annualUsd, ptasa), 2)
+      : rawVes * cuotas;
   } else {
-    annualUsd = rawUsd;
-    annualVes = ptasa > 0 ? computeQuoteVes(rawUsd, ptasa) : rawVes;
-    installmentUsd = divideByCuotas(rawUsd, cuotas);
+    annualUsd = normalizeQuoteUsd(rawUsd);
+    annualVes = ptasa > 0
+      ? roundQuoteAmount(computeQuoteVes(annualUsd, ptasa), 2)
+      : rawVes;
+    installmentUsd = divideByCuotas(annualUsd, cuotas);
     installmentVes = roundInstallmentVes(
       ptasa > 0
         ? computeQuoteVes(installmentUsd, ptasa)
