@@ -626,6 +626,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
         numeroCuenta: capture.numeroCuenta,
         titularCuenta: capture.titularCuenta,
         cci_rif: capture.cci_rif,
+        correo: capture.correo,
         paidOn: capture.paidOn,
       },
     });

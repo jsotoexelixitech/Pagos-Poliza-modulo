@@ -89,6 +89,7 @@ export interface DomiciliacionResult {
   numeroCuenta: string;
   titularCuenta: string;
   cedulaTitular: string;
+  correo?: string;
   estado: EstadoDomiciliacion;
   sypagoAfiliacionId: string | null;
   sypagoMensaje: string | null;
@@ -102,7 +103,15 @@ export interface RegistrarDomiciliacionInput {
   numeroCuenta: string;
   titularCuenta: string;
   cedulaTitular: string;
+  /** Obligatorio en el servicio Nest (notificaciones de cobro/rechazo). */
+  correo: string;
   aceptaAutorizacion: boolean;
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export function esCorreoDomiciliacionValido(valor: string): boolean {
+  return EMAIL_RE.test(valor.trim());
 }
 
 export class DomiciliacionError extends Error {
@@ -244,6 +253,11 @@ export async function registrarDomiciliacionForPolicy(params: {
   if (!capture.bankCode || !capture.numeroCuenta || !capture.cci_rif || !capture.titularCuenta) {
     throw new DomiciliacionError('Faltan datos bancarios para registrar la domiciliación.');
   }
+  if (!capture.correo || !esCorreoDomiciliacionValido(capture.correo)) {
+    throw new DomiciliacionError(
+      'Debe indicar un correo electrónico válido para las notificaciones de cobro.',
+    );
+  }
 
   let polizaId = '';
   let lastError = 'No se encontró la póliza para domiciliar.';
@@ -284,6 +298,7 @@ export async function registrarDomiciliacionForPolicy(params: {
     numeroCuenta: capture.numeroCuenta.trim(),
     titularCuenta: capture.titularCuenta.trim(),
     cedulaTitular: capture.cci_rif.trim(),
+    correo: capture.correo.trim(),
     aceptaAutorizacion: true,
   });
 }

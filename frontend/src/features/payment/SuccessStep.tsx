@@ -353,6 +353,7 @@ export function SuccessStep() {
                 <p className="text-xs text-slate-500 mt-0.5">
                   Cuenta ····{paymentCapture.numeroCuenta.slice(-4)}
                   {paymentCapture.titularCuenta ? ` · ${paymentCapture.titularCuenta}` : ''}
+                  {paymentCapture.correo ? ` · ${paymentCapture.correo}` : ''}
                 </p>
               </div>
             ) : null}

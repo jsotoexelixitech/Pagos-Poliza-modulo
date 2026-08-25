@@ -125,6 +125,8 @@ export interface PaymentCapture {
   numeroCuenta?: string;
   /** Domiciliación SyPago: titular de la cuenta. */
   titularCuenta?: string;
+  /** Domiciliación: correo para notificaciones de cobro/rechazo (obligatorio en el servicio). */
+  correo?: string;
   /** ID de afiliación SyPago tras registrar la domiciliación. */
   sypagoAfiliacionId?: string;
 }

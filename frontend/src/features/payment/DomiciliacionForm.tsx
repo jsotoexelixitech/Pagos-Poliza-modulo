@@ -9,6 +9,7 @@ import { useBancosSypago } from '../../hooks/useBancosSypago';
 import {
   NUMERO_CUENTA_DIGITOS,
   MSG_SIN_RECIBOS_COBRABLES,
+  esCorreoDomiciliacionValido,
   esNumeroCuentaValido,
   filtrarRecibosCobrables,
   formatearCedulaRifDomiciliacion,
@@ -34,6 +35,7 @@ function buildCapture(params: {
   numeroCuenta: string;
   titularCuenta: string;
   cedulaTitular: string;
+  correo: string;
   afiliacionId?: string | null;
 }): PaymentCapture {
   return {
@@ -42,6 +44,7 @@ function buildCapture(params: {
     numeroCuenta: params.numeroCuenta.trim(),
     titularCuenta: params.titularCuenta.trim(),
     cci_rif: params.cedulaTitular.trim().toUpperCase(),
+    correo: params.correo.trim(),
     paidOn: new Date().toISOString().split('T')[0],
     reference: params.afiliacionId ?? undefined,
     sypagoAfiliacionId: params.afiliacionId ?? undefined,
@@ -60,12 +63,14 @@ export function DomiciliacionForm({ existingPolicy, onAuthorized }: Props) {
     : persona.identificacion
       ? formatearCedulaRifDomiciliacion(`${persona.tipoDoc || 'V'}${persona.identificacion}`)
       : '';
+  const correoDefault = (persona.email ?? '').trim();
 
   const [banco, setBanco] = useState('');
   const [tipoCuenta, setTipoCuenta] = useState<TipoCuentaDomiciliacion>('AHORROS');
   const [numeroCuenta, setNumeroCuenta] = useState('');
   const [titularCuenta, setTitularCuenta] = useState(titularDefault);
   const [cedulaTitular, setCedulaTitular] = useState(cedulaDefault);
+  const [correo, setCorreo] = useState(correoDefault);
   const [aceptaAutorizacion, setAceptaAutorizacion] = useState(false);
   const bancos = useBancosSypago();
 
@@ -126,10 +131,18 @@ export function DomiciliacionForm({ existingPolicy, onAuthorized }: Props) {
   const cuentaError = numeroCuenta && !cuentaValida
     ? `Faltan ${NUMERO_CUENTA_DIGITOS - numeroCuenta.length} dígito(s).`
     : '';
+  const correoValido = esCorreoDomiciliacionValido(correo);
+  const correoError = correo.trim() && !correoValido
+    ? 'Indica un correo electrónico válido.'
+    : '';
 
-  // Mismas reglas que RegistroDomiciliacion: cuenta 20 dígitos + cédula + titular.
+  // Mismas reglas que RegistroDomiciliacion: cuenta 20 dígitos + cédula + titular + correo.
   const formularioCompleto =
-    cuentaValida && Boolean(cedulaTitular.trim()) && Boolean(titularCuenta.trim()) && Boolean(banco);
+    cuentaValida &&
+    Boolean(cedulaTitular.trim()) &&
+    Boolean(titularCuenta.trim()) &&
+    Boolean(banco) &&
+    correoValido;
 
   const requierePolizaExistente = Boolean(existingPolicy?.numeroPoliza?.trim());
   const polizaListaParaDomiciliar = Boolean(poliza && recibos.length > 0);
@@ -155,6 +168,10 @@ export function DomiciliacionForm({ existingPolicy, onAuthorized }: Props) {
       setErrorEnvio(`El número de cuenta debe tener exactamente ${NUMERO_CUENTA_DIGITOS} dígitos.`);
       return;
     }
+    if (!esCorreoDomiciliacionValido(correo)) {
+      setErrorEnvio('Debe indicar un correo electrónico válido para las notificaciones de cobro.');
+      return;
+    }
 
     setEnviando(true);
     setErrorEnvio('');
@@ -165,6 +182,7 @@ export function DomiciliacionForm({ existingPolicy, onAuthorized }: Props) {
       numeroCuenta,
       titularCuenta,
       cedulaTitular,
+      correo,
     });
 
     const numeroPoliza = poliza?.numeroPoliza || existingPolicy?.numeroPoliza?.trim();
@@ -183,6 +201,7 @@ export function DomiciliacionForm({ existingPolicy, onAuthorized }: Props) {
           numeroCuenta,
           titularCuenta,
           cedulaTitular,
+          correo,
           afiliacionId: res.sypagoAfiliacionId,
         });
         setAfiliacionId(res.sypagoAfiliacionId);
@@ -238,6 +257,8 @@ export function DomiciliacionForm({ existingPolicy, onAuthorized }: Props) {
               <dd className="font-mono text-slate-700">····{numeroCuenta.slice(-4)}</dd>
               <dt className="text-slate-500 font-semibold">Titular</dt>
               <dd className="text-slate-700 truncate">{titularCuenta}</dd>
+              <dt className="text-slate-500 font-semibold">Correo</dt>
+              <dd className="text-slate-700 truncate">{correo}</dd>
             </dl>
             {mensajeSypago && (
               <p className="text-[0.65rem] text-emerald-600/80 mt-2">{mensajeSypago}</p>
@@ -362,6 +383,22 @@ export function DomiciliacionForm({ existingPolicy, onAuthorized }: Props) {
             value={titularCuenta}
             onChange={(e) => setTitularCuenta(e.target.value)}
             placeholder="Nombre y apellido"
+          />
+        </Field>
+
+        <Field
+          label="Correo electrónico"
+          hint="Notificaciones de pagos aceptados o rechazados"
+          error={correoError}
+          full
+        >
+          <Input
+            type="email"
+            inputMode="email"
+            autoComplete="email"
+            value={correo}
+            onChange={(e) => setCorreo(e.target.value)}
+            placeholder="cliente@correo.com"
           />
         </Field>
       </div>
