@@ -1,31 +1,25 @@
 /**
  * Helpers de formato monetario para mostrar la prima real de La Mundial.
  *
- * La Mundial cotiza la prima ANUAL:
- *   - mprima    -> en Bs (VES)
- *   - mprimaext -> en USD
- *   - ptasa     -> tasa Bs/USD usada en la cotizacion
- *
- * Para el toggle "Mensual/Anual" del wizard convertimos USD anual en
- * USD/mes simplemente dividiendo entre 12 (no aplicamos descuentos
- * inventados sobre datos reales).
+ * Regla RCV: calcular con todos los decimales (ej. 222.795 × 785.0693);
+ * mostrar solo 2 decimales truncados con coma (locale es-VE).
  */
 import type { PolicyQuote } from '../types';
 
-const USD = new Intl.NumberFormat('en-US', {
+const LOCALE = 'es-VE';
+
+const USD = new Intl.NumberFormat(LOCALE, {
   style: 'currency',
   currency: 'USD',
   maximumFractionDigits: 2,
 });
 
-const VES = new Intl.NumberFormat('es-VE', {
+const VES = new Intl.NumberFormat(LOCALE, {
   style: 'decimal',
   maximumFractionDigits: 2,
 });
 
-/** Decimales visibles en pantalla (truncar, no redondear). */
-const QUOTE_USD_DISPLAY = 3;
-const QUOTE_VES_DISPLAY = 2;
+const QUOTE_DISPLAY = 2;
 const QUOTE_TASA_DISPLAY = 4;
 const QUOTE_VES_PAYMENT = 2;
 
@@ -36,16 +30,32 @@ export function truncateQuoteAmount(n: number, decimals: number): number {
   return Math.trunc((n + adj) * factor) / factor;
 }
 
-function formatQuoteDecimal(n: number, locale: string, displayDecimals: number): string {
+export function computeQuoteVes(usd: number, ptasa: number): number {
+  if (!Number.isFinite(usd) || !Number.isFinite(ptasa) || ptasa <= 0) return 0;
+  return usd * ptasa;
+}
+
+export function resolveQuoteVesAmount(
+  usd: number | undefined | null,
+  ptasa: number | undefined | null,
+  fallbackMprima?: number | null,
+): number {
+  if (usd != null && Number.isFinite(usd) && ptasa != null && ptasa > 0) {
+    return computeQuoteVes(usd, ptasa);
+  }
+  return fallbackMprima ?? 0;
+}
+
+function formatQuoteDecimal(n: number, displayDecimals: number): string {
   const truncated = truncateQuoteAmount(n, displayDecimals);
-  return truncated.toLocaleString(locale, {
-    minimumFractionDigits: 0,
+  return truncated.toLocaleString(LOCALE, {
+    minimumFractionDigits: displayDecimals,
     maximumFractionDigits: displayDecimals,
   });
 }
 
 export function formatQuoteUsd(n: number): string {
-  return formatQuoteDecimal(n, 'en-US', QUOTE_USD_DISPLAY);
+  return formatQuoteDecimal(n, QUOTE_DISPLAY);
 }
 
 export function formatQuoteUsdMoney(n: number): string {
@@ -53,7 +63,7 @@ export function formatQuoteUsdMoney(n: number): string {
 }
 
 export function formatQuoteVes(n: number): string {
-  return formatQuoteDecimal(n, 'es-VE', QUOTE_VES_DISPLAY);
+  return formatQuoteDecimal(n, QUOTE_DISPLAY);
 }
 
 export function formatQuoteVesLabel(n: number): string {
@@ -61,17 +71,21 @@ export function formatQuoteVesLabel(n: number): string {
 }
 
 export function formatQuoteTasa(n: number): string {
-  return `${formatQuoteDecimal(n, 'es-VE', QUOTE_TASA_DISPLAY)} Bs/$`;
+  return `${formatQuoteTasaValue(n)} Bs/$`;
+}
+
+export function formatQuoteTasaValue(n: number): string {
+  const truncated = truncateQuoteAmount(n, QUOTE_TASA_DISPLAY);
+  return truncated.toLocaleString(LOCALE, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: QUOTE_TASA_DISPLAY,
+  });
 }
 
 export function formatQuoteVesPaymentInput(n: number): string {
   if (!Number.isFinite(n)) return '';
   const truncated = truncateQuoteAmount(n, QUOTE_VES_PAYMENT);
-  return truncated.toLocaleString('en-US', {
-    minimumFractionDigits: QUOTE_VES_PAYMENT,
-    maximumFractionDigits: QUOTE_VES_PAYMENT,
-    useGrouping: false,
-  });
+  return truncated.toFixed(QUOTE_VES_PAYMENT);
 }
 
 export type Billing = 'monthly' | 'annual';
@@ -84,10 +98,15 @@ export function usdMonthly(quote: PolicyQuote | null): number {
 }
 
 export function vesAnnual(quote: PolicyQuote | null): number {
-  return quote?.mprima ?? 0;
+  if (!quote) return 0;
+  const ptasa = quote.ptasa ?? 0;
+  if (ptasa > 0 && quote.mprimaext != null) {
+    return computeQuoteVes(quote.mprimaext, ptasa);
+  }
+  return quote.mprima ?? 0;
 }
 export function vesMonthly(quote: PolicyQuote | null): number {
-  return quote ? quote.mprima / 12 : 0;
+  return quote ? vesAnnual(quote) / 12 : 0;
 }
 
 export function formatUsd(n: number): string {
@@ -99,14 +118,9 @@ export function formatVes(n: number): string {
 }
 
 export function formatUsdShort(n: number): string {
-  // ej. "$408.29"  -> usado en bloques compactos
-  return `$${n.toFixed(2)}`;
+  return formatQuoteUsdMoney(n);
 }
 
-/**
- * Devuelve el monto a mostrar segun toggle billing y la quote actual.
- * Si no hay quote, retorna `fallback` (para no romper UIs durante carga).
- */
 export function pickDisplayAmount(
   quote: PolicyQuote | null,
   billing: Billing,
@@ -118,11 +132,6 @@ export function pickDisplayAmount(
     : { usd: usdAnnual(quote), ves: vesAnnual(quote) };
 }
 
-/**
- * Firma del vehiculo usada para invalidar la quote en el store cuando cambian
- * datos relevantes para la cotizacion. Debe coincidir con lo que se mira en
- * setVehicle del store.
- */
 export function vehicleSignature(v: {
   placa: string;
   marca: string;

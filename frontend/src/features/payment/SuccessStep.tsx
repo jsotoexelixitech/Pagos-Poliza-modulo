@@ -5,7 +5,7 @@ import {
   CheckCircle2, RefreshCw, ShieldCheck,
   Calendar, Copy, ExternalLink,
 } from 'lucide-react';
-import { formatUsdShort } from '../../lib/money';
+import { formatQuoteUsdMoney, formatQuoteVesLabel, formatQuoteTasaValue, resolveQuoteVesAmount } from '../../lib/money';
 import { diligenciaLabel } from '../../lib/diligencia';
 
 /**
@@ -73,8 +73,8 @@ export function SuccessStep() {
     : new Date().toLocaleDateString('es-VE', { day: '2-digit', month: 'short', year: 'numeric' });
 
   const primaUsd = policy?.quote?.mprimaext;
-  const primaVes = policy?.quote?.mprima;
   const ptasa = policy?.quote?.ptasa;
+  const primaVes = resolveQuoteVesAmount(primaUsd, ptasa, policy?.quote?.mprima);
   const copyPolicy = async () => {
     try {
       await navigator.clipboard.writeText(policyNum);
@@ -137,7 +137,7 @@ export function SuccessStep() {
                 </div>
                 {paidUsd > 0 && (
                   <p className="font-display font-bold text-xl text-slate-700 tabular-nums">
-                    {formatUsdShort(paidUsd)}
+                    {formatQuoteUsdMoney(paidUsd)}
                   </p>
                 )}
               </div>
@@ -224,20 +224,16 @@ export function SuccessStep() {
                     Prima anual emitida
                   </p>
                   <p className="font-display font-bold text-xl sm:text-2xl text-slate-900 leading-none tabular-nums">
-                    {formatUsdShort(primaUsd)}
+                    {formatQuoteUsdMoney(primaUsd)}
                   </p>
-                  {primaVes ? (
+                  {primaVes > 0 ? (
                     <p className="text-[0.65rem] font-semibold text-slate-600 mt-1 tabular-nums">
-                      Bs{' '}
-                      {primaVes.toLocaleString('es-VE', {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
+                      {formatQuoteVesLabel(primaVes)}
                     </p>
                   ) : null}
                   {ptasa ? (
                     <p className="text-[0.58rem] text-slate-500 mt-0.5 tabular-nums">
-                      Tasa BCV: {ptasa.toFixed(4)}
+                      Tasa BCV: {formatQuoteTasaValue(ptasa)}
                     </p>
                   ) : null}
                 </div>
