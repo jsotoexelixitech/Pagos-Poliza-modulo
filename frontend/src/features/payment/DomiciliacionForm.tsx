@@ -388,7 +388,7 @@ export function DomiciliacionForm({ existingPolicy, onAuthorized }: Props) {
               disabled={!banco}
               inputMode="numeric"
               maxLength={NUMERO_CUENTA_DIGITOS - 4}
-              placeholder="0000000000000000"
+              placeholder="Completa los 16 dígitos"
               className="font-mono tracking-wide rounded-l-none disabled:bg-slate-50 disabled:cursor-not-allowed"
               aria-label={`Resto del número de cuenta (${NUMERO_CUENTA_DIGITOS - 4} dígitos)`}
             />

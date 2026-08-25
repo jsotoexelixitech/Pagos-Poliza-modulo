@@ -51,8 +51,39 @@ export function cuentaCoincideConBanco(numeroCuenta: string, bancoCode: string):
   return cuenta.startsWith(code);
 }
 
+/** Secuencia ascendente o descendente continua (ej. 123456…, 987654…). */
+function esSecuenciaDigitosObvia(digits: string): boolean {
+  if (digits.length < 6) return false;
+  let asc = true;
+  let desc = true;
+  for (let i = 1; i < digits.length; i++) {
+    const prev = digits.charCodeAt(i - 1) - 48;
+    const curr = digits.charCodeAt(i) - 48;
+    if (curr !== prev + 1) asc = false;
+    if (curr !== prev - 1) desc = false;
+  }
+  return asc || desc;
+}
+
+/**
+ * Heurística sobre los 16 dígitos tras el código del banco.
+ * Rechaza ceros, dígito repetido y secuencias obvias; no verifica existencia real.
+ */
+export function esCuentaPlausible(numeroCuenta: string, bancoCode: string): boolean {
+  const cola = colaCuentaSinPrefijo(numeroCuenta.trim(), bancoCode);
+  if (cola.length < NUMERO_CUENTA_DIGITOS - 4) return true;
+  if (/^0+$/.test(cola)) return false;
+  if (/^(\d)\1+$/.test(cola)) return false;
+  if (esSecuenciaDigitosObvia(cola)) return false;
+  return true;
+}
+
 export function esCuentaBancariaValida(numeroCuenta: string, bancoCode: string): boolean {
-  return esNumeroCuentaValido(numeroCuenta) && cuentaCoincideConBanco(numeroCuenta, bancoCode);
+  return (
+    esNumeroCuentaValido(numeroCuenta) &&
+    cuentaCoincideConBanco(numeroCuenta, bancoCode) &&
+    esCuentaPlausible(numeroCuenta, bancoCode)
+  );
 }
 
 /** Dígitos de la cuenta sin el prefijo SUDEBAN (máx. 16). */
@@ -98,6 +129,9 @@ export function mensajeErrorCuentaBanco(numeroCuenta: string, bancoCode: string)
   }
   if (!code) {
     return 'Selecciona el banco para validar el número de cuenta.';
+  }
+  if (!esCuentaPlausible(cuenta, code)) {
+    return 'El número de cuenta no parece válido. Verifica que sea una cuenta real.';
   }
   return '';
 }
