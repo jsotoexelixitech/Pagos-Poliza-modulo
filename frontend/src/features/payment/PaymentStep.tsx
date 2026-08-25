@@ -8,7 +8,7 @@ import {
   Check, Receipt, Sparkles, Loader2, BadgeCheck, AlertTriangle,
   CheckCircle2, XCircle, RefreshCw, Send, ClipboardCheck,
 } from 'lucide-react';
-import { formatUsdShort, vesAnnual } from '../../lib/money';
+import { formatUsdShort, vesAnnual, formatQuoteUsdMoney, formatQuoteVesLabel, formatQuoteVesPaymentInput, formatQuoteTasa } from '../../lib/money';
 import { formatTelefono, FORMATTED_PHONE_MAX_LENGTH, isValidPhonePrefix, phoneDigitsOnly } from '../../lib/phone';
 import { formatCedulaRif, validateCedulaRif } from '../../lib/cedula-rif';
 import { useProductConfig } from '../../hooks/useProductConfig';
@@ -277,7 +277,7 @@ export function PaymentStep({
     if (genericCheckout) return;
     if (quoteState !== 'ready' || !quote) return;
     const amounts = resolveFrecuenciaAmounts(quote, frecuenciaCode, { quoteBasis });
-    const vesStr = amounts.installmentVes.toFixed(2);
+    const vesStr = formatQuoteVesPaymentInput(amounts.installmentVes);
     setMontoM(vesStr);
     setOtpAmount(vesStr);
   }, [quoteState, quote, frecuenciaCode, quoteBasis, genericCheckout]);
@@ -679,7 +679,7 @@ export function PaymentStep({
               </span>
             ) : (
               <span className="text-3xl sm:text-4xl font-display font-black gradient-text-indigo leading-none tabular-nums">
-                {formatUsdShort(annualUsd)}
+                {genericCheckout ? formatUsdShort(annualUsd) : formatQuoteUsdMoney(annualUsd)}
               </span>
             )}
             {!genericCheckout && (
@@ -688,12 +688,14 @@ export function PaymentStep({
           </div>
           {(hasRealQuote || genericCheckout) && annualVes > 0 && (
             <p className="text-sm font-display font-black text-indigo-700 mt-1 tabular-nums">
-              Bs {annualVes.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              {genericCheckout
+                ? `Bs ${annualVes.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                : formatQuoteVesLabel(annualVes)}
             </p>
           )}
           {!genericCheckout && hasRealQuote && quote?.ptasa && quote.ptasa > 0 && (
             <p className="text-[0.6rem] text-slate-500 mt-0.5 tabular-nums">
-              Tasa BCV: {quote.ptasa.toFixed(4)}
+              Tasa BCV: {formatQuoteTasa(quote.ptasa)}
             </p>
           )}
         </div>
