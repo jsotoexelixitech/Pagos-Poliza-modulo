@@ -17,7 +17,6 @@ import {
   resolveFrecuenciaAmounts,
   resolveWizardFrecuenciaCode,
   resolveRcvQuoteBasis,
-  resolveQuoteDisplayAmounts,
 } from '../../lib/frecuencia';
 import {
   getCheckoutPaymentConcept,
@@ -341,18 +340,19 @@ export function PaymentStep({
   const freqAmounts = resolveFrecuenciaAmounts(hasRealQuote ? quote : null, frecuenciaCode, {
     quoteBasis,
   });
-  const displayAmounts = resolveQuoteDisplayAmounts(freqAmounts, quoteBasis);
+  const isShortPeriodQuote = quoteBasis === 'per-installment';
 
   const annualUsd = genericCheckout
     ? (checkout!.totalUsd ?? checkout!.totalVes)
     : hasRealQuote
-      ? displayAmounts.heroUsd
+      ? (isShortPeriodQuote ? freqAmounts.installmentUsd : freqAmounts.annualUsd)
       : (selectedPlan?.priceNum ?? 0) * 12;
   const annualVes = genericCheckout
     ? checkout!.totalVes
     : hasRealQuote
-      ? displayAmounts.heroVes
+      ? (isShortPeriodQuote ? freqAmounts.installmentVes : freqAmounts.annualVes)
       : 0;
+  const headerSuffix = isShortPeriodQuote ? (freqAmounts.periodSuffix || '/ cuota') : '/ año';
   const installmentHint = hasRealQuote && freqAmounts.cuotas > 1
     ? `Monto del 1er recibo (${frecuenciaCode}) · no editable`
     : 'Monto exacto según cotización oficial · no editable';
@@ -719,19 +719,19 @@ export function PaymentStep({
               </span>
             )}
             {!genericCheckout && (
-              <span className="text-xs text-slate-500 font-semibold pb-1">{displayAmounts.heroUsdSuffix}</span>
+              <span className="text-xs text-slate-500 font-semibold pb-1">{headerSuffix}</span>
             )}
           </div>
           {(hasRealQuote || genericCheckout) && annualVes > 0 && (
             <p className="text-sm font-display font-black text-indigo-700 mt-1 tabular-nums">
               {genericCheckout
                 ? `Bs ${annualVes.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                : `${formatQuoteVesLabel(annualVes)}${displayAmounts.heroVesSuffix ? ` ${displayAmounts.heroVesSuffix}` : ''}`}
+                : `${formatQuoteVesLabel(annualVes)}${headerSuffix ? ` ${headerSuffix}` : ''}`}
             </p>
           )}
-          {!genericCheckout && hasRealQuote && freqAmounts.cuotas > 1 && (
+          {!genericCheckout && hasRealQuote && !isShortPeriodQuote && freqAmounts.cuotas > 1 && (
             <p className="text-[0.6rem] text-slate-500 mt-0.5 tabular-nums">
-              Total anual: {formatQuoteUsdMoney(freqAmounts.annualUsd)}
+              1er recibo: {formatQuoteUsdMoney(freqAmounts.installmentUsd)} ({freqAmounts.periodSuffix.trim()})
             </p>
           )}
           {!genericCheckout && hasRealQuote && quote?.ptasa && quote.ptasa > 0 && (
