@@ -1,8 +1,8 @@
 /**
  * Helpers de formato monetario para mostrar la prima real de La Mundial.
  *
- * Regla RCV: calcular con todos los decimales (ej. 222.795 × 785.0693);
- * mostrar solo 2 decimales truncados con coma (locale es-VE).
+ * Regla RCV cuota por frecuencia: ROUND((mprimaext/cuotas)×ptasa, 2).
+ * Prima anual en pantalla: 2 decimales truncados (locale es-VE).
  */
 import type { PolicyQuote } from '../types';
 
@@ -28,6 +28,13 @@ export function truncateQuoteAmount(n: number, decimals: number): number {
   const factor = 10 ** decimals;
   const adj = n >= 0 ? 1e-9 : -1e-9;
   return Math.trunc((n + adj) * factor) / factor;
+}
+
+/** Redondeo aritmético — ROUND(x, n) paridad La Mundial / Sis2000. */
+export function roundQuoteAmount(n: number, decimals: number): number {
+  if (!Number.isFinite(n)) return 0;
+  const factor = 10 ** decimals;
+  return Math.round((n + Number.EPSILON) * factor) / factor;
 }
 
 export function computeQuoteVes(usd: number, ptasa: number): number {
@@ -84,8 +91,8 @@ export function formatQuoteTasaValue(n: number): string {
 
 export function formatQuoteVesPaymentInput(n: number): string {
   if (!Number.isFinite(n)) return '';
-  const truncated = truncateQuoteAmount(n, QUOTE_VES_PAYMENT);
-  return truncated.toFixed(QUOTE_VES_PAYMENT);
+  const rounded = roundQuoteAmount(n, QUOTE_VES_PAYMENT);
+  return rounded.toFixed(QUOTE_VES_PAYMENT);
 }
 
 export type Billing = 'monthly' | 'annual';
