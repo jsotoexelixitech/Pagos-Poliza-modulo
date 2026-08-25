@@ -8,7 +8,7 @@
  * UI: PaymentStep usa esta utilidad para mostrar el monto del 1er recibo.
  */
 import type { PolicyQuote } from '../types';
-import { computeQuoteVes, normalizeQuoteUsd, resolveQuotePtasa, roundQuoteAmount } from './money';
+import { computeQuoteVes, formatQuoteUsdMoney, normalizeQuoteUsd, resolveQuotePtasa, roundQuoteAmount } from './money';
 
 /** Cuotas por vigencia anual — paridad adrecibos / sp_genera_coberturas_recibos_auto_rcv_nexus */
 const CUOTAS_BY_FREC: Record<string, number> = {
@@ -154,16 +154,83 @@ export function resolveWizardFrecuenciaCode(
 export function rcvQuoteUsesPeriodPremium(
   tipoPlaca?: string | null,
   frecuenciaCode?: string | null,
+  tipoCarnet?: string | null,
 ): boolean {
-  if (tipoPlaca === 'binacional') return true;
+  if (tipoPlaca === 'binacional' || tipoCarnet === 'binacional') return true;
   return normalizeFrecuenciaCode(frecuenciaCode) === 'D';
 }
 
 export function resolveRcvQuoteBasis(
   tipoPlaca?: string | null,
   frecuenciaCode?: string | null,
+  tipoCarnet?: string | null,
 ): 'annual-total' | 'per-installment' {
-  return rcvQuoteUsesPeriodPremium(tipoPlaca, frecuenciaCode)
+  return rcvQuoteUsesPeriodPremium(tipoPlaca, frecuenciaCode, tipoCarnet)
     ? 'per-installment'
     : 'annual-total';
+}
+
+/** Texto aclaratorio según tipo de cotización. */
+export function getFrecuenciaQuoteNote(
+  amounts: FrecuenciaAmounts,
+  quoteBasis: 'annual-total' | 'per-installment' = 'annual-total',
+): string | null {
+  if (quoteBasis === 'per-installment') {
+    if (amounts.installmentUsd <= 0) return null;
+    return `Prima cotizada ${formatQuoteUsdMoney(amounts.installmentUsd)}${amounts.periodSuffix}`;
+  }
+  if (amounts.cuotas <= 1 || amounts.annualUsd <= 0) return null;
+  return `Prima anual cotizada ${formatQuoteUsdMoney(amounts.annualUsd)} ÷ ${amounts.cuotas} cuotas`;
+}
+
+/** Montos coherentes para hero (planes/pagos) y 1er recibo. */
+export function resolveQuoteDisplayAmounts(
+  amounts: FrecuenciaAmounts,
+  quoteBasis: 'annual-total' | 'per-installment' = 'annual-total',
+): {
+  heroUsd: number;
+  heroVes: number;
+  heroUsdSuffix: string;
+  heroVesSuffix: string;
+  paymentUsd: number;
+  paymentVes: number;
+  totalLabel: string;
+} {
+  const periodQuote = quoteBasis === 'per-installment';
+  const multiReceipt = amounts.cuotas > 1;
+
+  if (periodQuote && !multiReceipt) {
+    const suffix = amounts.periodSuffix || '';
+    return {
+      heroUsd: amounts.installmentUsd,
+      heroVes: amounts.installmentVes,
+      heroUsdSuffix: suffix,
+      heroVesSuffix: suffix,
+      paymentUsd: amounts.installmentUsd,
+      paymentVes: amounts.installmentVes,
+      totalLabel: `Total a pagar${suffix ? ` (${suffix.trim()})` : ''}`,
+    };
+  }
+
+  if (multiReceipt) {
+    return {
+      heroUsd: amounts.annualUsd,
+      heroVes: amounts.annualVes,
+      heroUsdSuffix: '/ año',
+      heroVesSuffix: '/ año',
+      paymentUsd: amounts.installmentUsd,
+      paymentVes: amounts.installmentVes,
+      totalLabel: 'Total a pagar (1er recibo)',
+    };
+  }
+
+  return {
+    heroUsd: amounts.annualUsd,
+    heroVes: amounts.annualVes,
+    heroUsdSuffix: '/ año',
+    heroVesSuffix: '/ año',
+    paymentUsd: amounts.installmentUsd,
+    paymentVes: amounts.installmentVes,
+    totalLabel: 'Total a pagar (prima anual)',
+  };
 }

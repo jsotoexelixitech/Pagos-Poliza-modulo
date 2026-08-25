@@ -8,7 +8,7 @@ import {
   Check, Receipt, Sparkles, Loader2, BadgeCheck, AlertTriangle,
   CheckCircle2, XCircle, RefreshCw, Send, ClipboardCheck,
 } from 'lucide-react';
-import { formatUsdShort, vesAnnual, formatQuoteUsdMoney, formatQuoteVesLabel, formatQuoteVesPaymentInput, formatQuoteTasa } from '../../lib/money';
+import { formatUsdShort, formatQuoteUsdMoney, formatQuoteVesLabel, formatQuoteVesPaymentInput, formatQuoteTasa } from '../../lib/money';
 import { formatTelefono, FORMATTED_PHONE_MAX_LENGTH, isValidPhonePrefix, phoneDigitsOnly } from '../../lib/phone';
 import { formatCedulaRif, validateCedulaRif } from '../../lib/cedula-rif';
 import { useProductConfig } from '../../hooks/useProductConfig';
@@ -17,6 +17,7 @@ import {
   resolveFrecuenciaAmounts,
   resolveWizardFrecuenciaCode,
   resolveRcvQuoteBasis,
+  resolveQuoteDisplayAmounts,
 } from '../../lib/frecuencia';
 import {
   getCheckoutPaymentConcept,
@@ -115,7 +116,7 @@ export function PaymentStep({
 
   const product = getProductConfig();
   const frecuenciaCode = resolveWizardFrecuenciaCode(product.hasVehicle, rcv?.frecuencia, funeral?.frecuencia);
-  const quoteBasis = resolveRcvQuoteBasis(vehicle?.tipoPlaca, rcv?.frecuencia);
+  const quoteBasis = resolveRcvQuoteBasis(vehicle?.tipoPlaca, rcv?.frecuencia, vehicle?.tipoCarnet);
 
   const genericCheckout = isGenericCheckoutMode({ checkout });
   const funeralApproved = isFuneralApprovedCheckout({
@@ -337,20 +338,21 @@ export function PaymentStep({
   const isQuoteError   = !genericCheckout && quoteState === 'error';
   const hasLockedAmount = genericCheckout || hasRealQuote;
 
+  const freqAmounts = resolveFrecuenciaAmounts(hasRealQuote ? quote : null, frecuenciaCode, {
+    quoteBasis,
+  });
+  const displayAmounts = resolveQuoteDisplayAmounts(freqAmounts, quoteBasis);
+
   const annualUsd = genericCheckout
     ? (checkout!.totalUsd ?? checkout!.totalVes)
     : hasRealQuote
-      ? quote!.mprimaext
+      ? displayAmounts.heroUsd
       : (selectedPlan?.priceNum ?? 0) * 12;
   const annualVes = genericCheckout
     ? checkout!.totalVes
     : hasRealQuote
-      ? vesAnnual(quote)
+      ? displayAmounts.heroVes
       : 0;
-
-  const freqAmounts = resolveFrecuenciaAmounts(hasRealQuote ? quote : null, frecuenciaCode, {
-    quoteBasis,
-  });
   const installmentHint = hasRealQuote && freqAmounts.cuotas > 1
     ? `Monto del 1er recibo (${frecuenciaCode}) · no editable`
     : 'Monto exacto según cotización oficial · no editable';
@@ -717,14 +719,19 @@ export function PaymentStep({
               </span>
             )}
             {!genericCheckout && (
-              <span className="text-xs text-slate-500 font-semibold pb-1">/ año</span>
+              <span className="text-xs text-slate-500 font-semibold pb-1">{displayAmounts.heroUsdSuffix}</span>
             )}
           </div>
           {(hasRealQuote || genericCheckout) && annualVes > 0 && (
             <p className="text-sm font-display font-black text-indigo-700 mt-1 tabular-nums">
               {genericCheckout
                 ? `Bs ${annualVes.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                : formatQuoteVesLabel(annualVes)}
+                : `${formatQuoteVesLabel(annualVes)}${displayAmounts.heroVesSuffix ? ` ${displayAmounts.heroVesSuffix}` : ''}`}
+            </p>
+          )}
+          {!genericCheckout && hasRealQuote && freqAmounts.cuotas > 1 && (
+            <p className="text-[0.6rem] text-slate-500 mt-0.5 tabular-nums">
+              Total anual: {formatQuoteUsdMoney(freqAmounts.annualUsd)}
             </p>
           )}
           {!genericCheckout && hasRealQuote && quote?.ptasa && quote.ptasa > 0 && (
