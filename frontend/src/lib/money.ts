@@ -23,20 +23,29 @@ const VES = new Intl.NumberFormat('es-VE', {
   maximumFractionDigits: 2,
 });
 
-const QUOTE_USD_MAX = 6;
-const QUOTE_VES_MAX = 10;
-const QUOTE_TASA_MAX = 4;
+/** Decimales visibles en pantalla (truncar, no redondear). */
+const QUOTE_USD_DISPLAY = 3;
+const QUOTE_VES_DISPLAY = 2;
+const QUOTE_TASA_DISPLAY = 4;
+const QUOTE_VES_PAYMENT = 2;
 
-function formatQuoteDecimal(n: number, locale: string, maxFrac: number): string {
-  if (!Number.isFinite(n)) return '0';
-  return n.toLocaleString(locale, {
+export function truncateQuoteAmount(n: number, decimals: number): number {
+  if (!Number.isFinite(n)) return 0;
+  const factor = 10 ** decimals;
+  const adj = n >= 0 ? 1e-9 : -1e-9;
+  return Math.trunc((n + adj) * factor) / factor;
+}
+
+function formatQuoteDecimal(n: number, locale: string, displayDecimals: number): string {
+  const truncated = truncateQuoteAmount(n, displayDecimals);
+  return truncated.toLocaleString(locale, {
     minimumFractionDigits: 0,
-    maximumFractionDigits: maxFrac,
+    maximumFractionDigits: displayDecimals,
   });
 }
 
 export function formatQuoteUsd(n: number): string {
-  return formatQuoteDecimal(n, 'en-US', QUOTE_USD_MAX);
+  return formatQuoteDecimal(n, 'en-US', QUOTE_USD_DISPLAY);
 }
 
 export function formatQuoteUsdMoney(n: number): string {
@@ -44,7 +53,7 @@ export function formatQuoteUsdMoney(n: number): string {
 }
 
 export function formatQuoteVes(n: number): string {
-  return formatQuoteDecimal(n, 'es-VE', QUOTE_VES_MAX);
+  return formatQuoteDecimal(n, 'es-VE', QUOTE_VES_DISPLAY);
 }
 
 export function formatQuoteVesLabel(n: number): string {
@@ -52,13 +61,17 @@ export function formatQuoteVesLabel(n: number): string {
 }
 
 export function formatQuoteTasa(n: number): string {
-  return `${formatQuoteDecimal(n, 'es-VE', QUOTE_TASA_MAX)} Bs/$`;
+  return `${formatQuoteDecimal(n, 'es-VE', QUOTE_TASA_DISPLAY)} Bs/$`;
 }
 
 export function formatQuoteVesPaymentInput(n: number): string {
   if (!Number.isFinite(n)) return '';
-  const s = n.toFixed(QUOTE_VES_MAX);
-  return s.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
+  const truncated = truncateQuoteAmount(n, QUOTE_VES_PAYMENT);
+  return truncated.toLocaleString('en-US', {
+    minimumFractionDigits: QUOTE_VES_PAYMENT,
+    maximumFractionDigits: QUOTE_VES_PAYMENT,
+    useGrouping: false,
+  });
 }
 
 export type Billing = 'monthly' | 'annual';
