@@ -1,11 +1,11 @@
-/** Alineado con policyValidator.js (emision-api): rif 6–10 dígitos. */
+/** Alineado con policyValidator.js (emision-api): rif 1–8 dígitos. */
 
 export function countIdentificacionDigits(value?: string): number {
   return (value ?? '').replace(/\D/g, '').length;
 }
 
-const MIN_DIGITS = 6;
-const MAX_DIGITS = 10;
+const MIN_DIGITS = 1;
+const MAX_DIGITS = 8;
 
 export function validateSecondaryPersonIdentificacion(
   identificacion?: string,
@@ -16,7 +16,7 @@ export function validateSecondaryPersonIdentificacion(
     return `${label}: es obligatoria`;
   }
   if (digits < MIN_DIGITS) {
-    return `${label}: debe tener al menos ${MIN_DIGITS} dígitos`;
+    return `${label}: debe tener al menos ${MIN_DIGITS} dígito`;
   }
   if (digits > MAX_DIGITS) {
     return `${label}: no puede tener más de ${MAX_DIGITS} dígitos`;
@@ -45,9 +45,7 @@ export function validateRcvEmitPersonas(state: {
       state.asegurado?.identificacion,
       'Cédula del asegurado (titular)',
     );
-    if (err) {
-      return `${err}. Si el tomador es quien asegura, activa «El tomador es el asegurado».`;
-    }
+    if (err) return err;
   }
   if (state.hasBeneficiary) {
     const err = validateSecondaryPersonIdentificacion(

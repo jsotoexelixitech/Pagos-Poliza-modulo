@@ -582,14 +582,9 @@ function handleEmissionError(err: unknown) {
           9000,
         );
         return;
-      case 'INVALID_PAYLOAD': {
-        const detail = err.details?.[0] ?? err.message ?? '';
-        const msg = /rif_titular/i.test(detail)
-          ? 'La cédula del titular (tomador o asegurado) debe tener entre 6 y 10 dígitos. Vuelve al formulario y corrígela.'
-          : detail || err.message;
-        toast.error('Datos incompletos', msg, 8000);
+      case 'INVALID_PAYLOAD':
+        toast.error('Datos incompletos', err.details?.[0] ?? err.message, 7000);
         return;
-      }
       case 'LAMUNDIAL_SP_OUTDATED':
         toast.error(
           'Servicio temporalmente no disponible',
