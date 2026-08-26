@@ -69,7 +69,7 @@ export function DomiciliacionForm({ existingPolicy, onAuthorized }: Props) {
     : persona.identificacion
       ? formatearCedulaRifDomiciliacion(`${persona.tipoDoc || 'V'}${persona.identificacion}`)
       : '';
-  const correoDefault = (checkoutPayer?.email?.trim() || persona.email ?? '').trim();
+  const correoDefault = (checkoutPayer?.email?.trim() || (persona.email ?? '')).trim();
 
   const [banco, setBanco] = useState('');
   const [tipoCuenta, setTipoCuenta] = useState<TipoCuentaDomiciliacion>('AHORROS');
