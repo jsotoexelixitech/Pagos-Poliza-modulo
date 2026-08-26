@@ -1,0 +1,31 @@
+/** Catálogo SUDEBAN local: pago móvil y respaldo si SyPago no responde. */
+export type BancoVeOption = { code: string; label: string };
+
+export const BANCOS_VE: BancoVeOption[] = [
+  { code: '0156', label: '100% Banco' },
+  { code: '0171', label: 'Banco Activo' },
+  { code: '0166', label: 'Banco Agrícola de Venezuela' },
+  { code: '0175', label: 'Banco Bicentenario del Pueblo' },
+  { code: '0128', label: 'Banco Caroní' },
+  { code: '0114', label: 'Bancaribe' },
+  { code: '0163', label: 'Banco del Tesoro' },
+  { code: '0102', label: 'Banco de Venezuela (BDV)' },
+  { code: '0115', label: 'Banco Exterior' },
+  { code: '0177', label: 'BANFANB' },
+  { code: '0146', label: 'BANGENTE' },
+  { code: '0173', label: 'Banco Internacional de Des.' },
+  { code: '0105', label: 'Banco Mercantil' },
+  { code: '0138', label: 'Banco Plaza' },
+  { code: '0108', label: 'Banco Provincial (BBVA)' },
+  { code: '0104', label: 'Venezolano de Crédito (BVC)' },
+  { code: '0172', label: 'Bancamiga' },
+  { code: '0168', label: 'Bancrecer' },
+  { code: '0134', label: 'Banesco' },
+  { code: '0174', label: 'Banplus' },
+  { code: '0191', label: 'BNC' },
+  { code: '0157', label: 'DelSur' },
+  { code: '0151', label: 'Fondo Común' },
+  { code: '0601', label: 'IMCP' },
+  { code: '0169', label: 'Mi Banco' },
+  { code: '0137', label: 'Sofitasa' },
+];

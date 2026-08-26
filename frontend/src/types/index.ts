@@ -99,7 +99,7 @@ export interface Plan {
   sumaAseguradaUnit?: string;
 }
 
-export type PaymentMethod = 'card' | 'transfer' | 'mobile' | 'otp';
+export type PaymentMethod = 'card' | 'transfer' | 'mobile' | 'otp' | 'domiciliacion';
 
 /** Datos del pago verificado para activar recibo en Sis2000 al emitir. */
 export interface PaymentCapture {
@@ -119,6 +119,16 @@ export interface PaymentCapture {
   cbanco_dest_ref?: string;
   cbanco?: number;
   cbanco_destino?: number;
+  /** Domiciliación SyPago: tipo de cuenta. */
+  tipoCuenta?: 'AHORROS' | 'CORRIENTE';
+  /** Domiciliación SyPago: número de cuenta (20 dígitos). */
+  numeroCuenta?: string;
+  /** Domiciliación SyPago: titular de la cuenta. */
+  titularCuenta?: string;
+  /** Domiciliación: correo para notificaciones de cobro/rechazo (obligatorio en el servicio). */
+  correo?: string;
+  /** ID de afiliación SyPago tras registrar la domiciliación. */
+  sypagoAfiliacionId?: string;
 }
 
 /** Snapshot de pago pasado al auto-emit (evita race con re-render de React). */
@@ -150,6 +160,11 @@ export type CheckoutOnSuccessMode = 'none' | 'redirect' | 'webhook' | 'emit';
 export interface CheckoutRules {
   requirePayment?: boolean;
   methods?: PaymentMethod[];
+  /** Prima en cuotas (M/T/S): el checkout solo ofrece domiciliación. */
+  fraccionado?: boolean;
+  /** Tras verificar/autorizar, redirige a payload.successUrl (SSO Hogar/Condominio). */
+  autoRedirect?: boolean;
+  redirectDelayMs?: number;
   onSuccess?: {
     mode?: CheckoutOnSuccessMode;
     redirectUrl?: string;
@@ -162,6 +177,7 @@ export interface CheckoutPayer {
   documentNumber?: string;
   name?: string;
   phone?: string;
+  email?: string;
 }
 
 /**

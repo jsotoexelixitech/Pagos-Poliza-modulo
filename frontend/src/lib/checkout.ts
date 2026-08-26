@@ -113,6 +113,12 @@ export function getCheckoutPaymentConcept(
   return 'Pago en línea';
 }
 
+function asHttpUrl(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return /^https?:\/\//i.test(trimmed) ? trimmed : null;
+}
+
 /** URL/API del cliente para notificar estado del pago (payload o rules.onSuccess). */
 export function getCheckoutNotifyUrl(
   payload: Record<string, unknown> | null | undefined,
@@ -127,13 +133,52 @@ export function getCheckoutNotifyUrl(
   const keys = ['notifyUrl', 'callbackUrl', 'statusUrl', 'webhookUrl'] as const;
   for (const source of sources) {
     for (const key of keys) {
-      const value = source[key];
-      if (typeof value === 'string' && /^https?:\/\//i.test(value.trim())) {
-        return value.trim();
-      }
+      const url = asHttpUrl(source[key]);
+      if (url) return url;
     }
   }
   return null;
+}
+
+/** URL a la que volver tras pagar (Hogar/Condominio SSO: payload.successUrl). */
+export function getGenericCheckoutReturnUrl(
+  payload: Record<string, unknown> | null | undefined,
+  rules?: CheckoutRules | null,
+  status: 'success' | 'failed' = 'success',
+): string | null {
+  const p = payload && typeof payload === 'object' ? payload : {};
+  if (status === 'failed') {
+    return asHttpUrl(p.cancelUrl) || asHttpUrl(p.failureUrl) || asHttpUrl(p.returnUrl);
+  }
+  return (
+    asHttpUrl(p.successUrl) ||
+    asHttpUrl(rules?.onSuccess?.redirectUrl) ||
+    asHttpUrl(p.returnUrl)
+  );
+}
+
+/**
+ * Checkout embebido (Hogar/Condominio): no hay botón Continuar.
+ * Tras autorizar pago o domiciliación, vuelve al portal origen.
+ */
+export function scheduleGenericCheckoutReturn(params: {
+  checkoutPayload: Record<string, unknown> | null;
+  checkoutRules: CheckoutRules | null;
+  status?: 'success' | 'failed';
+}): boolean {
+  if (params.checkoutRules?.autoRedirect === false) return false;
+  const url = getGenericCheckoutReturnUrl(
+    params.checkoutPayload,
+    params.checkoutRules,
+    params.status ?? 'success',
+  );
+  if (!url) return false;
+  const delayRaw = Number(params.checkoutRules?.redirectDelayMs);
+  const delay = Number.isFinite(delayRaw) ? Math.max(0, delayRaw) : 2000;
+  window.setTimeout(() => {
+    window.location.href = url;
+  }, delay);
+  return true;
 }
 
 /** Convierte checkout → quote para reutilizar lógica de montos en Bs. */
