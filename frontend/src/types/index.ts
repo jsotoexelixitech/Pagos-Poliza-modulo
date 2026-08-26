@@ -177,6 +177,7 @@ export interface CheckoutPayer {
   documentNumber?: string;
   name?: string;
   phone?: string;
+  email?: string;
 }
 
 /**
