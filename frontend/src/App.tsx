@@ -420,21 +420,21 @@ export default function App() {
                     <p className="text-[0.68rem] font-black tracking-[0.22em] gradient-text-indigo uppercase mb-2 inline-flex items-center gap-1.5">
                       <Sparkles size={11} className="text-indigo-500" />
                       {funeralApproved
-                        ? 'Pago autorizado'
+                        ? 'Paso 05 · Checkout'
                         : genericCheckout
                           ? 'Pago'
                           : 'Paso 05 · Checkout'}
                     </p>
                     <h1 className="font-display text-3xl sm:text-[2.5rem] font-black text-slate-900 tracking-tight leading-tight">
                       {funeralApproved
-                        ? 'Completa tu pago'
+                        ? 'Confirma y paga'
                         : genericCheckout
                           ? 'Realiza tu pago'
                           : 'Confirma y paga'}
                     </h1>
                     <p className="text-slate-500 text-sm mt-2 max-w-xl leading-relaxed">
                       {funeralApproved
-                        ? 'Tu póliza funeraria fue aprobada. Los datos están precargados; solo debes verificar el pago.'
+                        ? 'Una conexión cifrada protege la operación de extremo a extremo.'
                         : embeddedCheckout
                         ? 'Al verificar el pago, tu sistema recibirá el resultado automáticamente.'
                         : genericCheckout
@@ -551,6 +551,20 @@ function handleEmissionError(err: unknown) {
         toast.warning(
           'Vehículo con póliza vigente',
           'La Mundial detectó que la placa o el serial de carrocería ya tienen una póliza activa.',
+          8000,
+        );
+        return;
+      case 'PERSONAS_DUPLICATE':
+        toast.warning(
+          'Póliza vigente',
+          err.message || 'Ya existe una póliza funeraria activa para este asegurado.',
+          8000,
+        );
+        return;
+      case 'PERSONAS_VALIDATION_ERROR':
+        toast.warning(
+          'Emisión no disponible',
+          err.message,
           8000,
         );
         return;

@@ -246,6 +246,37 @@ export async function emitFuneral(payload: EmitPolicyPayload): Promise<EmitPolic
   }
 }
 
+/** Valida titular/plan antes de pagar (speeValidatePersonGeneral vía nest-api). */
+export async function validateFuneralEmission(payload: {
+  state: unknown;
+  plan?: string;
+}): Promise<{ success: boolean; validation?: unknown }> {
+  try {
+    const response = await api.post<{ success: boolean; validation?: unknown }>(
+      '/personas/validacion',
+      payload,
+    );
+    return response.data;
+  } catch (err) {
+    const axErr = err as AxiosError<{
+      success?: boolean;
+      code?: string;
+      message?: string;
+      stage?: string;
+    }>;
+    const data = axErr.response?.data;
+    if (data && (data.code || data.message)) {
+      throw new PolicyEmitError({
+        code: data.code ?? 'PERSONAS_VALIDATION_ERROR',
+        message: data.message ?? 'No se pudo validar la emisión funeraria.',
+        httpStatus: axErr.response?.status,
+        stage: data.stage ?? 'validate',
+      });
+    }
+    throw err;
+  }
+}
+
 export interface QuotePolicyPayload {
   state: unknown;
   plan?: string;

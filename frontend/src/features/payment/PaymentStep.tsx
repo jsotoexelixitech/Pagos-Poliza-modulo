@@ -25,8 +25,7 @@ import {
 } from '../../lib/checkout';
 import { notifyClientCheckoutStatus } from '../../lib/checkout-notify';
 import { isPaymentMethodEnabled } from '../../lib/payment-methods';
-import { FuneralApprovedSummary } from './FuneralApprovedSummary';
-import { isFuneralApprovedCheckout } from '../../lib/funeral-approved-checkout';
+import { isFuneralApprovedCheckout, isFuneralPaymentLinkExpired } from '../../lib/funeral-approved-checkout';
 
 const EMPRESA_ID = Number(import.meta.env.VITE_EMPRESA_ID ?? 1);
 
@@ -43,6 +42,8 @@ import {
   type SypagoOtpConfirmResponse,
   SypagoError,
   quotePolicy,
+  validateFuneralEmission,
+  PolicyEmitError,
 } from '../../lib/api';
 
 // ── Lista completa de 26 bancos venezolanos (fuente: sudeban / notilogia 2026)
@@ -107,7 +108,8 @@ export function PaymentStep({
     paymentMethod, setPaymentMethod,
     selectedPlan, quote, quoteState, vehicle, rcv, funeral,
     checkout, checkoutRules, checkoutPayer, checkoutPayload,
-    tomador, product: wizardProduct, funeralApprovedCheckout,
+    tomador, product: wizardProduct, funeralApprovedCheckout, funeralPaymentExpiresAt,
+    sameInsured, asegurado, hasBeneficiary, beneficiario,
     setQuote, setQuoteState,
     setPaymentVerified,
     setPaymentCapture,
@@ -238,6 +240,57 @@ export function PaymentStep({
   // useRef garantiza que el bloqueo ocurre ANTES del siguiente render,
   // a diferencia de setState que necesita un ciclo para propagarse.
   const confirmInFlight = useRef(false);
+  const [funeralValidation, setFuneralValidation] = useState<'idle' | 'loading' | 'ok' | 'blocked'>('idle');
+  const [funeralValidationMsg, setFuneralValidationMsg] = useState('');
+
+  // Funerario link de pago: validar póliza vigente antes de cobrar (paridad RCV / validateEmissionAuto).
+  useEffect(() => {
+    if (!funeralApproved || !selectedPlan?.cplan) return;
+    let cancelled = false;
+    setFuneralValidation('loading');
+    setFuneralValidationMsg('');
+    validateFuneralEmission({
+      state: {
+        tomador,
+        funeral,
+        selectedPlan,
+        sameInsured,
+        asegurado,
+        hasBeneficiary,
+        beneficiario,
+        quote,
+      },
+      plan: selectedPlan.cplan,
+    })
+      .then(() => {
+        if (!cancelled) setFuneralValidation('ok');
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        const msg = err instanceof PolicyEmitError
+          ? err.message
+          : 'No se pudo validar la emisión funeraria.';
+        setFuneralValidationMsg(msg);
+        setFuneralValidation('blocked');
+      });
+    return () => { cancelled = true; };
+  }, [
+    funeralApproved,
+    selectedPlan?.cplan,
+    tomador,
+    funeral,
+    sameInsured,
+    asegurado,
+    hasBeneficiary,
+    beneficiario,
+    quote,
+  ]);
+
+  const paymentBlocked = funeralApproved && funeralValidation === 'blocked';
+  const funeralLinkExpired = funeralApproved && isFuneralPaymentLinkExpired(funeralPaymentExpiresAt);
+  const funeralPayDisabled =
+    funeralApproved &&
+    (funeralLinkExpired || paymentBlocked || funeralValidation === 'loading' || funeralValidation === 'idle');
 
   // Resetear estados al cambiar método de pago
   useEffect(() => {
@@ -279,6 +332,15 @@ export function PaymentStep({
 
   // Sincroniza el monto en Bs (checkout SSO o cotización legacy).
   useEffect(() => {
+    if (funeralApproved && quote) {
+      const amounts = resolveFrecuenciaAmounts(quote, frecuenciaCode, {
+        quoteBasis: 'annual-total',
+      });
+      const vesStr = formatQuoteVesPaymentInput(amounts.installmentVes);
+      setMontoM(vesStr);
+      setOtpAmount(vesStr);
+      return;
+    }
     if (genericCheckout && checkout?.totalVes) {
       const vesStr = formatQuoteVesPaymentInput(checkout.totalVes);
       setMontoM(vesStr);
@@ -290,7 +352,7 @@ export function PaymentStep({
     const vesStr = formatQuoteVesPaymentInput(amounts.installmentVes);
     setMontoM(vesStr);
     setOtpAmount(vesStr);
-  }, [genericCheckout, checkout, quoteState, quote, frecuenciaCode, quoteBasis]);
+  }, [genericCheckout, checkout, quoteState, quote, frecuenciaCode, quoteBasis, funeralApproved]);
 
   // Funerario aprobado: precargar pagador desde tomador del snapshot (BD Exélixi).
   useEffect(() => {
@@ -332,35 +394,38 @@ export function PaymentStep({
     }
   }, [paymentMethod, setPaymentMethod, availableMethods]);
 
-  const isLoadingQuote = !genericCheckout && quoteState === 'loading';
-  const hasRealQuote   = !genericCheckout && quoteState === 'ready' && Boolean(quote);
-  const isQuoteError   = !genericCheckout && quoteState === 'error';
+  const funeralProductUi = funeralApproved && quoteState === 'ready' && Boolean(quote);
+  const isLoadingQuote = !genericCheckout && !funeralProductUi && quoteState === 'loading';
+  const hasRealQuote = funeralProductUi || (!genericCheckout && quoteState === 'ready' && Boolean(quote));
+  const isQuoteError   = !genericCheckout && !funeralProductUi && quoteState === 'error';
   const hasLockedAmount = genericCheckout || hasRealQuote;
+  const productQuoteBasis = product.hasVehicle ? quoteBasis : 'annual-total';
 
   const freqAmounts = resolveFrecuenciaAmounts(hasRealQuote ? quote : null, frecuenciaCode, {
-    quoteBasis,
+    quoteBasis: productQuoteBasis,
   });
-  const isShortPeriodQuote = quoteBasis === 'per-installment';
+  const isShortPeriodQuote = productQuoteBasis === 'per-installment';
 
-  const annualUsd = genericCheckout
-    ? (checkout!.totalUsd ?? checkout!.totalVes)
-    : hasRealQuote
-      ? (isShortPeriodQuote ? freqAmounts.installmentUsd : freqAmounts.annualUsd)
+  const annualUsd = funeralProductUi || !genericCheckout
+    ? (isShortPeriodQuote ? freqAmounts.installmentUsd : freqAmounts.annualUsd)
+    : genericCheckout
+      ? (checkout!.totalUsd ?? checkout!.totalVes)
       : (selectedPlan?.priceNum ?? 0) * 12;
-  const annualVes = genericCheckout
-    ? checkout!.totalVes
-    : hasRealQuote
-      ? (isShortPeriodQuote ? freqAmounts.installmentVes : freqAmounts.annualVes)
+  const annualVes = funeralProductUi || !genericCheckout
+    ? (isShortPeriodQuote ? freqAmounts.installmentVes : freqAmounts.annualVes)
+    : genericCheckout
+      ? checkout!.totalVes
       : 0;
   const headerSuffix = isShortPeriodQuote ? (freqAmounts.periodSuffix || '/ cuota') : '/ año';
   const installmentHint = hasRealQuote && freqAmounts.cuotas > 1
     ? `Monto del 1er recibo (${frecuenciaCode}) · no editable`
     : 'Monto exacto según cotización oficial · no editable';
 
-  const displayTitle = genericCheckout
-    ? checkout!.title
-    : (selectedPlan?.name ?? 'Plan no seleccionado');
-  const displaySubtitle = genericCheckout ? checkout!.subtitle : null;
+  const displayTitle = funeralProductUi || !genericCheckout
+    ? (selectedPlan?.name ?? 'Plan no seleccionado')
+    : (checkout!.title ?? selectedPlan?.name ?? 'Pago en línea');
+  const displaySubtitle = genericCheckout && !funeralProductUi ? checkout!.subtitle : null;
+  const showProductQuoteBar = funeralProductUi || !genericCheckout;
 
   // ── Validaciones pago móvil ───────────────────────────────────────────
   const movErrors = {
@@ -657,11 +722,26 @@ export function PaymentStep({
 
   return (
     <div className="animate-fade-in space-y-6">
-      <FuneralApprovedSummary />
+      {funeralLinkExpired && (
+        <div className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+          <AlertTriangle size={18} className="shrink-0 mt-0.5" />
+          <span>Este enlace de pago expiró. Solicita un nuevo correo con el enlace de pago.</span>
+        </div>
+      )}
+      {paymentBlocked && (
+        <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <AlertTriangle size={18} className="shrink-0 mt-0.5" />
+          <span>{funeralValidationMsg || 'No es posible emitir la póliza con los datos actuales.'}</span>
+        </div>
+      )}
+      {funeralApproved && funeralValidation === 'loading' && (
+        <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+          <Loader2 size={16} className="animate-spin shrink-0" />
+          <span>Verificando datos de la póliza…</span>
+        </div>
+      )}
       <p className="text-slate-500 text-sm leading-relaxed -mt-2">
-        {genericCheckout
-          ? 'Selecciona el método de pago y confirma la operación. La conexión está cifrada de extremo a extremo.'
-          : 'Confirma el método de pago y emite la póliza. La operación está cifrada de extremo a extremo.'}
+        Confirma el método de pago y emite la póliza. La operación está cifrada de extremo a extremo.
       </p>
 
       {/* Total bar */}
@@ -673,7 +753,9 @@ export function PaymentStep({
           </div>
           <div className="min-w-0">
             <p className="text-[0.62rem] font-black tracking-widest text-indigo-600 uppercase mb-0.5">
-              {genericCheckout ? 'Total a pagar' : 'Total a pagar (prima anual)'}
+              {showProductQuoteBar
+                ? (freqAmounts.cuotas > 1 ? 'Total a pagar (1er recibo)' : 'Total a pagar (prima anual)')
+                : 'Total a pagar'}
             </p>
             <p className="font-display font-bold text-slate-900 text-sm truncate">
               {displayTitle}
@@ -682,23 +764,18 @@ export function PaymentStep({
               <p className="text-xs text-slate-500 mt-0.5 truncate">{displaySubtitle}</p>
             )}
             <div className="mt-1 flex flex-wrap items-center gap-1.5">
-              {genericCheckout && (
-                <span className="inline-flex items-center gap-1 text-[0.55rem] font-black text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded-md border border-indigo-100 uppercase tracking-wider">
-                  <BadgeCheck size={9} strokeWidth={2.4} /> Checkout
-                </span>
-              )}
-              {!genericCheckout && hasRealQuote && !quote?.vehicleFallback && (
+              {showProductQuoteBar && hasRealQuote && !quote?.vehicleFallback && (
                 <span className="inline-flex items-center gap-1 text-[0.55rem] font-black text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-md border border-emerald-100 uppercase tracking-wider">
                   <BadgeCheck size={9} strokeWidth={2.4} />
                   {isExelixiCatalogProduct() ? 'Tarifa Exélixi' : 'Tarifa La Mundial'}
                 </span>
               )}
-              {!genericCheckout && hasRealQuote && quote?.vehicleFallback && (
+              {showProductQuoteBar && hasRealQuote && quote?.vehicleFallback && (
                 <span className="inline-flex items-center gap-1 text-[0.55rem] font-black text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-md border border-amber-200 uppercase tracking-wider">
                   <AlertTriangle size={9} strokeWidth={2.4} /> Tarifa estimada
                 </span>
               )}
-              {!genericCheckout && isQuoteError && (
+              {showProductQuoteBar && isQuoteError && (
                 <span className="inline-flex items-center gap-1 text-[0.55rem] font-black text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded-md border border-rose-200 uppercase tracking-wider">
                   <AlertTriangle size={9} strokeWidth={2.4} /> Cotización pendiente
                 </span>
@@ -715,26 +792,31 @@ export function PaymentStep({
               </span>
             ) : (
               <span className="text-3xl sm:text-4xl font-display font-black gradient-text-indigo leading-none tabular-nums">
-                {genericCheckout ? formatUsdShort(annualUsd) : formatQuoteUsdMoney(annualUsd)}
+                {showProductQuoteBar ? formatQuoteUsdMoney(annualUsd) : formatUsdShort(annualUsd)}
               </span>
             )}
-            {!genericCheckout && (
+            {showProductQuoteBar && (
               <span className="text-xs text-slate-500 font-semibold pb-1">{headerSuffix}</span>
             )}
           </div>
-          {(hasRealQuote || genericCheckout) && annualVes > 0 && (
+          {(hasRealQuote || (genericCheckout && !funeralProductUi)) && annualVes > 0 && (
             <p className="text-sm font-display font-black text-indigo-700 mt-1 tabular-nums">
-              {genericCheckout
-                ? `Bs ${annualVes.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                : `${formatQuoteVesLabel(annualVes)}${headerSuffix ? ` ${headerSuffix}` : ''}`}
+              {showProductQuoteBar
+                ? `${formatQuoteVesLabel(annualVes)}${headerSuffix ? ` ${headerSuffix}` : ''}`
+                : `Bs ${annualVes.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
             </p>
           )}
-          {!genericCheckout && hasRealQuote && !isShortPeriodQuote && freqAmounts.cuotas > 1 && (
+          {showProductQuoteBar && hasRealQuote && !isShortPeriodQuote && freqAmounts.cuotas > 1 && (
             <p className="text-[0.6rem] text-slate-500 mt-0.5 tabular-nums">
               1er recibo: {formatQuoteUsdMoney(freqAmounts.installmentUsd)} ({freqAmounts.periodSuffix.trim()})
             </p>
           )}
-          {!genericCheckout && hasRealQuote && quote?.ptasa && quote.ptasa > 0 && (
+          {!showProductQuoteBar && hasRealQuote && quote?.ptasa && quote.ptasa > 0 && (
+            <p className="text-[0.6rem] text-slate-500 mt-0.5 tabular-nums">
+              Tasa BCV: {formatQuoteTasa(quote.ptasa)}
+            </p>
+          )}
+          {showProductQuoteBar && hasRealQuote && quote?.ptasa && quote.ptasa > 0 && (
             <p className="text-[0.6rem] text-slate-500 mt-0.5 tabular-nums">
               Tasa BCV: {formatQuoteTasa(quote.ptasa)}
             </p>
@@ -742,7 +824,7 @@ export function PaymentStep({
         </div>
       </div>
 
-      {genericCheckout && checkout!.lines && checkout!.lines.length > 0 && (
+      {genericCheckout && !funeralProductUi && checkout!.lines && checkout!.lines.length > 0 && (
         <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-2">
           <p className="text-[0.65rem] font-bold uppercase tracking-wider text-slate-400">Detalle</p>
           {checkout!.lines!.map((line, idx) => (
@@ -963,9 +1045,10 @@ export function PaymentStep({
             <button
               type="button"
               disabled={
-                mobilePaymentSimulated
+                funeralPayDisabled ||
+                (mobilePaymentSimulated
                   ? true
-                  : !pagoMovilListo || verifyStatus === 'loading' || verifyStatus === 'success'
+                  : !pagoMovilListo || verifyStatus === 'loading' || verifyStatus === 'success')
               }
               onClick={handleVerificar}
               className={`
@@ -1176,7 +1259,7 @@ export function PaymentStep({
 
                 <button
                   type="button"
-                  disabled={otpStep === 'requesting'}
+                  disabled={funeralPayDisabled || otpStep === 'requesting'}
                   onClick={handleOtpRequest}
                   className="w-full flex items-center justify-center gap-2 py-3 px-5 rounded-xl font-bold text-sm bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-[0_8px_20px_rgba(79,70,229,0.35)] hover:shadow-[0_12px_28px_rgba(79,70,229,0.45)] hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
                 >
@@ -1255,7 +1338,7 @@ export function PaymentStep({
                   </button>
                   <button
                     type="button"
-                    disabled={otpCode.length < 6 || otpStep === 'confirming' || otpStep === 'polling' || confirmInFlight.current}
+                    disabled={funeralPayDisabled || otpCode.length < 6 || otpStep === 'confirming' || otpStep === 'polling' || confirmInFlight.current}
                     onClick={handleOtpConfirm}
                     className="flex-1 flex items-center justify-center gap-2 py-3 px-5 rounded-xl font-bold text-sm bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-[0_8px_20px_rgba(16,185,129,0.35)] hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
                   >
