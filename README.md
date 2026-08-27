@@ -27,6 +27,7 @@ El módulo Pagos es el **paso final** del flujo de contratación RCV. Permite al
 |:-------|:----------|:------:|
 | Pago Móvil | Meritop / Banco Activo | 🟡 QA |
 | Débito OTP  | SyPago               | 🟡 Pendiente prod |
+| Domiciliación | SyPago (débito de recibos) | 🟢 Checkout SSO |
 
 ### Características principales
 

@@ -12,9 +12,9 @@ export async function notifyClientCheckoutStatus(params: {
   code?: string | null;
   message?: string | null;
   payment?: Record<string, unknown> | null;
-}): Promise<void> {
-  if (!hasGenericCheckout({ checkout: params.checkout })) return;
-  if (!getCheckoutNotifyUrl(params.checkoutPayload, params.checkoutRules)) return;
+}): Promise<boolean> {
+  if (!hasGenericCheckout({ checkout: params.checkout })) return false;
+  if (!getCheckoutNotifyUrl(params.checkoutPayload, params.checkoutRules)) return true;
 
   try {
     const res = await notifyCheckoutStatus({
@@ -32,17 +32,20 @@ export async function notifyClientCheckoutStatus(params: {
     }
 
     if (params.paymentVerified) {
+      const domiciliacion = params.payment?.method === 'domiciliacion';
       toast.success(
-        'Pago verificado',
-        'Tu sistema recibió la confirmación del pago.',
+        domiciliacion ? 'Domiciliación autorizada' : 'Pago verificado',
+        'Tu sistema recibió la confirmación. Regresando al portal…',
         5000,
       );
     }
+    return true;
   } catch {
     toast.error(
       'Aviso al sistema',
       'No se pudo notificar a tu sistema. Contacta soporte.',
       6000,
     );
+    return false;
   }
 }

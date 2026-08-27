@@ -4,7 +4,7 @@ import { Field, Input } from '../../components/ui/FormField';
 import { BankSearchSelect } from '../../components/ui/BankSearchSelect';
 import type { PaymentMethod, PaymentCapture, PaymentEmitContext } from '../../types';
 import {
-  Smartphone, Lock, ShieldCheck, KeyRound,
+  Smartphone, Lock, ShieldCheck, KeyRound, Landmark,
   Check, Receipt, Sparkles, Loader2, BadgeCheck, AlertTriangle,
   CheckCircle2, XCircle, RefreshCw, Send, ClipboardCheck,
 } from 'lucide-react';
@@ -17,13 +17,18 @@ import {
   getCheckoutPaymentConcept,
   isGenericCheckoutMode,
   isPaymentBypassEnabled,
+  scheduleGenericCheckoutReturn,
 } from '../../lib/checkout';
 import { notifyClientCheckoutStatus } from '../../lib/checkout-notify';
-import { isPaymentMethodEnabled } from '../../lib/payment-methods';
+import { isPaymentMethodEnabled, isPagoFraccionado } from '../../lib/payment-methods';
 import {
   releaseEmissionPopupSlots,
   reserveEmissionPopupSlots,
 } from '../../lib/openEmissionPdfs';
+import { BANCOS_VE } from '../../lib/bancos-ve';
+import { useBancosSypago } from '../../hooks/useBancosSypago';
+import { getCheckoutPolicyRef } from '../../lib/domiciliacion';
+import { DomiciliacionForm } from './DomiciliacionForm';
 
 const EMPRESA_ID = Number(import.meta.env.VITE_EMPRESA_ID ?? 1);
 
@@ -42,36 +47,8 @@ import {
   quotePolicy,
 } from '../../lib/api';
 
-// ── Lista completa de 26 bancos venezolanos (fuente: sudeban / notilogia 2026)
-// Ordenados alfabéticamente. Etiquetas cortas para que no desborden el <select>.
-const BANCOS_MOVIL: { code: string; label: string }[] = [
-  { code: '0156', label: '100% Banco'                    },
-  { code: '0171', label: 'Banco Activo'                  },
-  { code: '0166', label: 'Banco Agrícola de Venezuela'   },
-  { code: '0175', label: 'Banco Bicentenario del Pueblo' },
-  { code: '0128', label: 'Banco Caroní'                  },
-  { code: '0114', label: 'Bancaribe'                     },
-  { code: '0163', label: 'Banco del Tesoro'              },
-  { code: '0102', label: 'Banco de Venezuela (BDV)'      },
-  { code: '0115', label: 'Banco Exterior'                },
-  { code: '0177', label: 'BANFANB'                       },
-  { code: '0146', label: 'BANGENTE'                      },
-  { code: '0173', label: 'Banco Internacional de Des.'   },
-  { code: '0105', label: 'Banco Mercantil'               },
-  { code: '0138', label: 'Banco Plaza'                   },
-  { code: '0108', label: 'Banco Provincial (BBVA)'       },
-  { code: '0104', label: 'Venezolano de Crédito (BVC)'   },
-  { code: '0172', label: 'Bancamiga'                     },
-  { code: '0168', label: 'Bancrecer'                     },
-  { code: '0134', label: 'Banesco'                       },
-  { code: '0174', label: 'Banplus'                       },
-  { code: '0191', label: 'BNC'                           },
-  { code: '0157', label: 'DelSur'                        },
-  { code: '0151', label: 'Fondo Común'                   },
-  { code: '0601', label: 'IMCP'                          },
-  { code: '0169', label: 'Mi Banco'                      },
-  { code: '0137', label: 'Sofitasa'                      },
-];
+/** Pago móvil usa SUDEBAN local (Meritop / Banco Activo), no la red SyPago. */
+const BANCOS_MOVIL = BANCOS_VE;
 
 const PAYMENT_OPTIONS: {
   method: PaymentMethod;
@@ -80,8 +57,9 @@ const PAYMENT_OPTIONS: {
   Icon: React.ElementType;
 }[] = [
   // { method: 'transfer', label: 'Transferencia',  sub: 'Referencia bancaria',     Icon: Building2  },
-  { method: 'mobile',   label: 'Pago móvil',     sub: 'Banco Activo · Verificación automática', Icon: Smartphone },
-  { method: 'otp',      label: 'Débito OTP',     sub: 'SyPago · Débito directo', Icon: KeyRound   },
+  { method: 'mobile',        label: 'Pago móvil',      sub: 'Banco Activo · Verificación automática', Icon: Smartphone },
+  { method: 'otp',           label: 'Débito OTP',      sub: 'SyPago · Débito directo', Icon: KeyRound   },
+  { method: 'domiciliacion', label: 'Domiciliación',   sub: 'SyPago · Débito automático de recibos', Icon: Landmark },
 ];
 
 type VerifyStatus = 'idle' | 'loading' | 'success' | 'failed' | 'error';
@@ -95,11 +73,12 @@ type PaymentStepProps = {
 };
 
 export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
+  const bancosSypago = useBancosSypago();
   const {
     paymentMethod, setPaymentMethod,
     selectedPlan, quote, quoteState, vehicle,
     checkout, checkoutRules, checkoutPayer, checkoutPayload,
-    tomador,
+    tomador, rcv, funeral, metadataCanal,
     setQuote, setQuoteState,
     setPaymentVerified,
     setPaymentCapture,
@@ -113,15 +92,42 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
   const producto = new URLSearchParams(window.location.search).get('product') as 'rcv' | 'funerario' ?? 'rcv';
   const { config } = useProductConfig(EMPRESA_ID, producto, 'pagos');
 
-  const availableMethods = PAYMENT_OPTIONS.filter(opt => {
-    // QA / piloto: solo pago móvil simulado; OTP/SyPago es de La Mundial.
-    if (mobilePaymentSimulated) return opt.method === 'mobile';
-    if (genericCheckout && checkoutRules?.methods?.length) {
-      if (!checkoutRules.methods.includes(opt.method)) return false;
-      return isPaymentMethodEnabled(opt.method, config?.metodos);
-    }
-    return isPaymentMethodEnabled(opt.method, config?.metodos);
+  const pagoFraccionado = isPagoFraccionado({
+    fraccionado:
+      checkoutRules?.fraccionado ??
+      checkoutPayload?.fraccionado ??
+      metadataCanal?.fraccionado,
+    formaPago:
+      checkoutPayload?.forma_pago ??
+      checkoutPayload?.formaPago ??
+      metadataCanal?.forma_pago,
+    frecuencia:
+      checkoutPayload?.ifrecuencia ??
+      checkoutPayload?.frecuencia ??
+      metadataCanal?.ifrecuencia ??
+      metadataCanal?.frecuencia ??
+      (producto === 'funerario' ? funeral?.frecuencia : rcv?.frecuencia),
   });
+
+  const availableMethods = PAYMENT_OPTIONS.filter(opt => {
+    if (pagoFraccionado) return opt.method === 'domiciliacion';
+    // QA / piloto: pago móvil simulado. OTP queda oculto; domiciliación sí se ofrece.
+    if (mobilePaymentSimulated) {
+      return opt.method === 'mobile' || opt.method === 'domiciliacion';
+    }
+    if (!isPaymentMethodEnabled(opt.method, config?.metodos)) return false;
+    if (opt.method === 'domiciliacion') return true;
+    if (genericCheckout && checkoutRules?.methods?.length) {
+      return checkoutRules.methods.includes(opt.method);
+    }
+    return true;
+  });
+
+  useEffect(() => {
+    if (pagoFraccionado && paymentMethod !== 'domiciliacion') {
+      setPaymentMethod('domiciliacion');
+    }
+  }, [pagoFraccionado, paymentMethod, setPaymentMethod]);
 
   // Si el bridge hidró `quote` pero excluyó `quoteState` (está en HYDRATE_EXCLUDE),
   // el store tiene un quote válido pero quoteState='idle'. Lo corregimos aquí.
@@ -371,7 +377,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
         };
         setPaymentCapture(capture);
         await triggerAutoEmit(capture);
-        void notifyClientCheckoutStatus({
+        await notifyClientCheckoutStatus({
           checkout,
           checkoutRules,
           checkoutPayload,
@@ -388,6 +394,9 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
             message: result.message,
           },
         });
+        if (genericCheckout) {
+          scheduleGenericCheckoutReturn({ checkoutPayload, checkoutRules });
+        }
       } else {
         releaseEmissionPopupSlots();
         setPaymentCapture(null);
@@ -555,7 +564,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       };
       setPaymentCapture(capture);
       await triggerAutoEmit(capture);
-      void notifyClientCheckoutStatus({
+      await notifyClientCheckoutStatus({
         checkout,
         checkoutRules,
         checkoutPayload,
@@ -570,6 +579,9 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
           reference: final.ref_ibp || final.transaction_id,
         },
       });
+      if (genericCheckout) {
+        scheduleGenericCheckoutReturn({ checkoutPayload, checkoutRules });
+      }
       // Latch queda activo en 'done' — no se puede volver a confirmar
     } catch (err) {
       releaseEmissionPopupSlots();
@@ -588,6 +600,38 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       });
       // Liberar latch solo en error para permitir reintentar
       confirmInFlight.current = false;
+    }
+  }
+
+  async function handleDomiciliacionAuthorized(capture: PaymentCapture) {
+    if (onPaymentVerified) reserveEmissionPopupSlots();
+    setPaymentVerified(true);
+    setPaymentCapture(capture);
+    await triggerAutoEmit(capture);
+    await notifyClientCheckoutStatus({
+      checkout,
+      checkoutRules,
+      checkoutPayload,
+      paymentVerified: true,
+      code: capture.sypagoAfiliacionId ? 'DOMICILIACION_ACTIVA' : 'DOMICILIACION_AUTORIZADA',
+      message: capture.sypagoAfiliacionId
+        ? 'Domiciliación activada en SyPago'
+        : 'Domiciliación autorizada. Se afiliará al emitir la póliza.',
+      payment: {
+        method: 'domiciliacion',
+        reference: capture.sypagoAfiliacionId || capture.reference,
+        sypagoAfiliacionId: capture.sypagoAfiliacionId,
+        bankCode: capture.bankCode,
+        tipoCuenta: capture.tipoCuenta,
+        numeroCuenta: capture.numeroCuenta,
+        titularCuenta: capture.titularCuenta,
+        cci_rif: capture.cci_rif,
+        correo: capture.correo,
+        paidOn: capture.paidOn,
+      },
+    });
+    if (genericCheckout) {
+      scheduleGenericCheckoutReturn({ checkoutPayload, checkoutRules });
     }
   }
 
@@ -690,13 +734,20 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
           <Sparkles size={11} className="text-indigo-500" />
           Método de pago
         </p>
+        {pagoFraccionado && (
+          <p className="text-xs text-slate-500 mb-3">
+            Esta póliza es de pago fraccionado: el cobro de recibos se hace por domiciliación SyPago.
+          </p>
+        )}
         {availableMethods.length === 0 ? (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-center">
             <p className="text-sm font-bold text-amber-800">No hay métodos de pago disponibles</p>
             <p className="text-xs text-amber-700 mt-1">Por favor, contacta a soporte o revisa la configuración del producto.</p>
           </div>
         ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className={`grid grid-cols-1 gap-3 ${
+          availableMethods.length >= 3 ? 'sm:grid-cols-3' : 'sm:grid-cols-2'
+        }`}>
           {availableMethods.map(({ method, label, sub, Icon }) => (
             <button
               key={method}
@@ -1041,7 +1092,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
                   {/* fila 2: banco · teléfono */}
                   <Field label="Banco del pagador" error={otpErrors.bank}>
                     <BankSearchSelect
-                      options={BANCOS_MOVIL}
+                      options={bancosSypago}
                       value={otpBankCode}
                       onChange={setOtpBankCode}
                     />
@@ -1236,6 +1287,14 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
             )}
           </div>
         )}
+
+        {/* ── DOMICILIACIÓN (SyPago) ── */}
+        <div className={paymentMethod === 'domiciliacion' ? 'contents' : 'hidden'}>
+          <DomiciliacionForm
+            existingPolicy={getCheckoutPolicyRef(checkout, checkoutPayload)}
+            onAuthorized={handleDomiciliacionAuthorized}
+          />
+        </div>
       </div>
 
       {/* Trust badges */}
