@@ -26,13 +26,15 @@ El módulo Pagos es el **paso final** del flujo de contratación RCV. Permite al
 | Método | Proveedor | Estado |
 |:-------|:----------|:------:|
 | Pago Móvil | Meritop / Banco Activo | 🟡 QA |
-| Débito OTP  | SyPago               | 🟡 Pendiente prod |
-| Domiciliación | SyPago (débito de recibos) | 🟢 Checkout SSO |
+| Débito OTP  | SyPago · Débito directo | 🟡 Pendiente prod |
+| Domiciliación | SyPago · Débito automático de recibos | 🟢 Activo (Checkout SSO) |
 
 ### Características principales
 
 - ✅ Verificación de Pago Móvil via Meritop (Banco Activo)
 - ✅ Débito OTP via SyPago con flujo de confirmación en 2 pasos
+- ✅ **Domiciliación SyPago** — afiliación de cuenta bancaria para cobro automático de recibos fraccionados
+- ✅ Checkout genérico SSO (Nexus) con selección de métodos controlada por `rules.methods`
 - ✅ Pantalla de éxito con datos de póliza y descarga PDF
 - ✅ Integración directa con Módulo Emisión (puerto 4004)
 - ✅ API REST documentada con Swagger/OpenAPI
@@ -46,15 +48,15 @@ El módulo Pagos es el **paso final** del flujo de contratación RCV. Permite al
 modulo-pagos/
 ├── frontend/                    # React 18 + Vite 5 + TailwindCSS
 │   ├── src/
-│   │   ├── features/payment/    # PaymentStep + SuccessStep
+│   │   ├── features/payment/    # PaymentStep + DomiciliacionForm + SuccessStep
 │   │   ├── features/plans/      # PlansStep
 │   │   ├── features/emission/   # EmissionStep (datos tomador)
 │   │   └── ...
 │   └── dist/
 ├── server/                      # Node.js 20 + Express
 │   ├── src/
-│   │   ├── routes/              # /api/payments
-│   │   ├── services/            # Meritop + SyPago adapters
+│   │   ├── routes/              # /api/payments + /api/domiciliacion
+│   │   ├── services/            # Meritop + SyPago + Domiciliación adapters
 │   │   └── ...
 │   ├── .env.example
 │   └── ...
@@ -110,15 +112,23 @@ PORT=3001
 CORS_ORIGINS=http://localhost:5180
 
 # Meritop — Pago Móvil (Banco Activo)
-MERITOP_URL=http://172.30.147.26:9020
-MERITOP_URL2=http://172.30.149.18:9040
-MERITOP_APIKEY=TU_APIKEY_MERITOP
-MERITOP_IP=IP_DEL_SERVIDOR
-MERITOP_ENABLED=true
+LAMUNDIAL_PAYMENTS_URL=https://apisys2000.lamundialdeseguros.com
+LAMUNDIAL_PAYMENTS_API_KEY=TU_APIKEY
+LAMUNDIAL_PAYMENTS_ENABLED=true
 
-# SyPago — Débito OTP (pendiente credenciales productivas)
-# SYPAGO_URL=https://api.sypago.com
-# SYPAGO_TOKEN=TU_TOKEN_SYPAGO
+# SyPago — Débito OTP
+SYPAGO_URL=https://api.sypago.net
+SYPAGO_BEARER_TOKEN=TU_TOKEN
+SYPAGO_CLIENT_ID=TU_CLIENT_ID
+SYPAGO_SECRET=TU_SECRET
+SYPAGO_MOCK=false
+
+# Domiciliación SyPago — cobro automático de recibos fraccionados
+DOMICILIACION_API_URL=https://cierrelmds.exelixitech.com/domiciliacion-services
+
+# Nexus SSO (autenticación del módulo)
+NEXUS_AUTH_ENABLED=true
+TENANT_TOKEN_SECRET=TU_SECRET_NEXUS
 ```
 
 > ⚠️ **Nunca comitas el archivo `.env` al repositorio.**
@@ -143,20 +153,6 @@ pm2 start ecosystem.dev.config.js
 
 ```bash
 curl http://localhost:3001/api/health
-# {"status":"ok","module":"pagos","meritop":{"enabled":true,"mock":false},"sypago":{"mock":false}}
-```
-
-Probar verificación de Pago Móvil:
-
-```bash
-curl -X POST http://localhost:3001/api/payments/verify-mobile \
-  -H "Content-Type: application/json" \
-  -d '{
-    "sourcePhoneNumber": "04141234567",
-    "bankCode": "0102",
-    "amount": 62.80,
-    "paidOn": "2026-05-08T10:00:00Z"
-  }'
 ```
 
 ---
@@ -195,6 +191,34 @@ Solicita la clave OTP a SyPago para débito directo.
 ### `POST /api/payments/otp/confirm`
 Confirma el débito con la OTP recibida por el usuario.
 
+### `POST /api/domiciliacion/registrar`
+Registra la afiliación bancaria del titular en SyPago para el cobro automático de recibos fraccionados de una póliza ya emitida.
+
+**Request body**
+```json
+{
+  "numeroPoliza": "18-1-0000048127",
+  "polizaId": "optional-internal-id",
+  "capture": {
+    "bankCode": "0134",
+    "tipoCuenta": "AHORROS",
+    "numeroCuenta": "01341234567890123456",
+    "titularCuenta": "Juan Pérez",
+    "cci_rif": "V-12345678",
+    "correo": "juan@correo.com"
+  }
+}
+```
+
+**Response `200`**
+```json
+{
+  "sypagoAfiliacionId": "AFP-2026-001",
+  "estado": "ACTIVA",
+  "sypagoMensaje": "Afiliación registrada exitosamente"
+}
+```
+
 La especificación completa está en **Swagger UI**: `http://localhost:3001/docs`
 
 ---
@@ -205,6 +229,7 @@ La especificación completa está en **Swagger UI**: `http://localhost:3001/docs
 |:---------|:------:|:------|
 | Pago Móvil (Meritop) | 🟡 QA | Funcional en entorno de pruebas |
 | Débito OTP (SyPago)  | 🟡 Pendiente | Endpoints listos, credenciales prod pendientes |
+| Domiciliación (SyPago) | 🟢 Activo | Registro de afiliación al emitir o desde checkout SSO |
 | Emisión de póliza    | ✅ Activo | Llamado al Módulo Emisión (puerto 4004) |
 
 ---
