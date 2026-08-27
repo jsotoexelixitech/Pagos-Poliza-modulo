@@ -4,7 +4,7 @@ import { Field, Input } from '../../components/ui/FormField';
 import { BankSearchSelect } from '../../components/ui/BankSearchSelect';
 import type { PaymentMethod, PaymentCapture, PaymentEmitContext } from '../../types';
 import {
-  Smartphone, Lock, ShieldCheck, KeyRound, Building2, Landmark,
+  Smartphone, Lock, ShieldCheck, KeyRound, Landmark,
   Check, Receipt, Sparkles, Loader2, BadgeCheck, AlertTriangle,
   CheckCircle2, XCircle, RefreshCw, Send, ClipboardCheck,
 } from 'lucide-react';
