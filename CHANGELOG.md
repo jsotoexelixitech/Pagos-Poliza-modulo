@@ -6,6 +6,33 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.0.0/) y el p
 
 ---
 
+## [1.1.0] — 2026-08-27
+
+### Added
+- **Domiciliación SyPago** como método de pago oficial en el frontend (`PaymentMethod = 'domiciliacion'`)
+- Opción "Domiciliación · SyPago · Débito automático de recibos" visible en el selector de métodos
+- Endpoint `POST /api/domiciliacion/registrar` para afiliación bancaria al cobro automático de recibos fraccionados
+- Variable de entorno `DOMICILIACION_API_URL` requerida para el servicio de domiciliación
+- Soporte de Checkout SSO (Nexus) para inyectar `rules.methods: ['domiciliacion']` desde el portal origen
+
+### Changed
+- `PAYMENT_OPTIONS` en `PaymentStep.tsx` ahora expone Domiciliación como tercer método seleccionable
+- `PaymentMethod` type extendido para incluir `'domiciliacion'`
+- Árbol de componentes actualizado: `features/payment/` incluye `DomiciliacionForm.tsx`
+- Variables de entorno del backend actualizadas a nombres canónicos (`LAMUNDIAL_PAYMENTS_*`, `SYPAGO_*`)
+- README: arquitectura, `.env.example` y tabla de integraciones actualizadas
+
+### Fixed
+- Bug en `App.tsx`: redirección post-pago solo se ejecuta cuando `mode === 'redirect'` (antes redirigía con cualquier URL)
+- Validaciones redundantes eliminadas en `DomiciliacionForm.handleAutorizar` (ya cubiertas por `puedeEnviar`)
+- `getGenericCheckoutReturnUrl` refactorizado: `payload.returnUrl` evaluado una sola vez como fallback general
+
+### Refactored
+- Extraído `handlePaymentSuccessActions()` en `PaymentStep.tsx`: consolida la secuencia `triggerAutoEmit → notifyClientCheckoutStatus → scheduleGenericCheckoutReturn` usada por los tres métodos de pago
+- Añadido comentario explicativo en `main.tsx` sobre por qué se omite `NexusGuard` en modo DEV
+
+---
+
 ## [1.0.0] — 2026-05-22
 
 ### Added
