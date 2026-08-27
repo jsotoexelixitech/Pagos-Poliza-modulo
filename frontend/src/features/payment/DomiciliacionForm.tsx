@@ -164,21 +164,6 @@ export function DomiciliacionForm({ existingPolicy, onAuthorized }: Props) {
 
   async function handleAutorizar() {
     if (!puedeEnviar) return;
-    if (requierePolizaExistente && (!poliza || recibos.length === 0)) {
-      setErrorEnvio(errorPoliza || MSG_SIN_RECIBOS_COBRABLES);
-      return;
-    }
-    if (!esCuentaBancariaValida(numeroCuenta, banco)) {
-      setErrorEnvio(
-        mensajeErrorCuentaBanco(numeroCuenta, banco)
-          || `El número de cuenta debe tener exactamente ${NUMERO_CUENTA_DIGITOS} dígitos y comenzar con el código del banco (${banco}).`,
-      );
-      return;
-    }
-    if (!esCorreoDomiciliacionValido(correo)) {
-      setErrorEnvio('Debe indicar un correo electrónico válido para las notificaciones de cobro.');
-      return;
-    }
 
     setEnviando(true);
     setErrorEnvio('');

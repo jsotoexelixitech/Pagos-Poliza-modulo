@@ -307,7 +307,7 @@ export default function App() {
       return;
     }
 
-    if (redirectUrl) {
+    if (mode === 'redirect' && redirectUrl) {
       window.location.href = redirectUrl;
       return;
     }
