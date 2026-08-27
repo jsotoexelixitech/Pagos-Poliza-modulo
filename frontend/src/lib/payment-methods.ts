@@ -43,8 +43,9 @@ const FREQ_FRACCIONADA = new Set(['M', 'T', 'S', 'MENSUAL', 'TRIMESTRAL', 'SEMES
 const FREQ_CONTADO = new Set(['A', 'C', 'ANUAL', 'CONTADO']);
 
 /**
- * Pago fraccionado (cuotas M/T/S): solo domiciliación.
- * Contado / anual / pago completo: resto de métodos.
+ * Pago fraccionado (cuotas M/T/S):
+ * - Con requireFirstPayment: cobrar 1ª cuota (móvil/OTP) y luego domiciliar.
+ * - Legacy (solo domiciliacion en methods): solo domiciliación.
  */
 export function isPagoFraccionado(input: {
   fraccionado?: unknown;

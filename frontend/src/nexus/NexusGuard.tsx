@@ -35,7 +35,7 @@ function NexusScreen({ type, reason, onRetry }: {
       position: 'fixed', inset: 0, display: 'flex',
       alignItems: 'center', justifyContent: 'center',
       background: 'linear-gradient(135deg, #0C133A 0%, #1a2460 100%)',
-      fontFamily: 'Inter, system-ui, sans-serif', zIndex: 9999,
+      fontFamily: 'Poppins, system-ui, -apple-system, sans-serif', zIndex: 9999,
     }}>
       <div style={{
         background: '#fff', borderRadius: '1.25rem',

@@ -157,6 +157,29 @@ export function getGenericCheckoutReturnUrl(
   );
 }
 
+/** Añade status / idOperacion al return URL si el portal no los trae. */
+function withCheckoutReturnParams(
+  url: string,
+  status: 'success' | 'failed',
+  payload: Record<string, unknown> | null | undefined,
+): string {
+  try {
+    const u = new URL(url);
+    if (!u.searchParams.get('status') && !u.searchParams.get('paymentStatus')) {
+      u.searchParams.set('status', status === 'success' ? 'ok' : 'error');
+    }
+    const id = String(
+      payload?.idOperacion || payload?.referenceId || '',
+    ).trim();
+    if (id && !u.searchParams.get('idOperacion') && !u.searchParams.get('referenceId')) {
+      u.searchParams.set('idOperacion', id);
+    }
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
+
 /**
  * Checkout embebido (Hogar/Condominio): no hay botón Continuar.
  * Tras autorizar pago o domiciliación, vuelve al portal origen.
@@ -167,12 +190,14 @@ export function scheduleGenericCheckoutReturn(params: {
   status?: 'success' | 'failed';
 }): boolean {
   if (params.checkoutRules?.autoRedirect === false) return false;
-  const url = getGenericCheckoutReturnUrl(
+  const status = params.status ?? 'success';
+  const baseUrl = getGenericCheckoutReturnUrl(
     params.checkoutPayload,
     params.checkoutRules,
-    params.status ?? 'success',
+    status,
   );
-  if (!url) return false;
+  if (!baseUrl) return false;
+  const url = withCheckoutReturnParams(baseUrl, status, params.checkoutPayload);
   const delayRaw = Number(params.checkoutRules?.redirectDelayMs);
   const delay = Number.isFinite(delayRaw) ? Math.max(0, delayRaw) : 2000;
   window.setTimeout(() => {

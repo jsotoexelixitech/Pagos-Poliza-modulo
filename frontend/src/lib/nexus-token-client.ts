@@ -1,6 +1,7 @@
 /**
  * Cliente: resolución y persistencia del nexus_token en módulos front.
  * Prioriza sessionStorage (renovado por NexusGuard/heartbeat) sobre la URL.
+ * Al entrar por SSO, verifyNexusAccess debe persistir primero el token de la URL.
  */
 
 import type { AxiosInstance } from 'axios';
