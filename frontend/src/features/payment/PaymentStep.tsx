@@ -4,7 +4,7 @@ import { Field, Input } from '../../components/ui/FormField';
 import { BankSearchSelect } from '../../components/ui/BankSearchSelect';
 import type { PaymentMethod, PaymentCapture, PaymentEmitContext } from '../../types';
 import {
-  Smartphone, Lock, ShieldCheck, KeyRound, Landmark,
+  Smartphone, Lock, ShieldCheck, KeyRound, Building2, Landmark,
   Check, Receipt, Sparkles, Loader2, BadgeCheck, AlertTriangle,
   CheckCircle2, XCircle, RefreshCw, Send, ClipboardCheck,
 } from 'lucide-react';
@@ -197,6 +197,38 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
     }
   };
 
+  /**
+   * Acciones comunes post-pago exitoso:
+   *   1. Dispara auto-emisión (si aplica).
+   *   2. Notifica al cliente origen con el resultado del pago.
+   *   3. Programa la redirección de vuelta al portal (genericCheckout).
+   *
+   * Cada manejador (mobile, OTP, domiciliación) llama a esto tras
+   * actualizar su propio estado local (setVerifyStatus, setOtpStep, etc.).
+   */
+  async function handlePaymentSuccessActions(
+    capture: PaymentCapture,
+    notification: {
+      code: string;
+      message: string;
+      payment: Record<string, unknown>;
+    },
+  ) {
+    await triggerAutoEmit(capture);
+    await notifyClientCheckoutStatus({
+      checkout,
+      checkoutRules,
+      checkoutPayload,
+      paymentVerified: true,
+      code: notification.code,
+      message: notification.message,
+      payment: notification.payment,
+    });
+    if (genericCheckout) {
+      scheduleGenericCheckoutReturn({ checkoutPayload, checkoutRules });
+    }
+  }
+
   // ── SyPago Débito OTP ─────────────────────────────────────────────────
   const [otpDocType,   setOtpDocType]   = useState('V');
   const [otpDocNum,    setOtpDocNum]    = useState('');
@@ -376,12 +408,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
           cci_rif: cedulaPago ? cedulaPago.toUpperCase() : undefined,
         };
         setPaymentCapture(capture);
-        await triggerAutoEmit(capture);
-        await notifyClientCheckoutStatus({
-          checkout,
-          checkoutRules,
-          checkoutPayload,
-          paymentVerified: true,
+        await handlePaymentSuccessActions(capture, {
           code: result.code,
           message: result.message,
           payment: {
@@ -394,9 +421,6 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
             message: result.message,
           },
         });
-        if (genericCheckout) {
-          scheduleGenericCheckoutReturn({ checkoutPayload, checkoutRules });
-        }
       } else {
         releaseEmissionPopupSlots();
         setPaymentCapture(null);
@@ -563,12 +587,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
         bankCode: otpBankCode || undefined,
       };
       setPaymentCapture(capture);
-      await triggerAutoEmit(capture);
-      await notifyClientCheckoutStatus({
-        checkout,
-        checkoutRules,
-        checkoutPayload,
-        paymentVerified: true,
+      await handlePaymentSuccessActions(capture, {
         code: final.status || 'ACCP',
         message: final.statusInfo?.label || 'Pago OTP confirmado',
         payment: {
@@ -579,9 +598,6 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
           reference: final.ref_ibp || final.transaction_id,
         },
       });
-      if (genericCheckout) {
-        scheduleGenericCheckoutReturn({ checkoutPayload, checkoutRules });
-      }
       // Latch queda activo en 'done' — no se puede volver a confirmar
     } catch (err) {
       releaseEmissionPopupSlots();
@@ -607,12 +623,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
     if (onPaymentVerified) reserveEmissionPopupSlots();
     setPaymentVerified(true);
     setPaymentCapture(capture);
-    await triggerAutoEmit(capture);
-    await notifyClientCheckoutStatus({
-      checkout,
-      checkoutRules,
-      checkoutPayload,
-      paymentVerified: true,
+    await handlePaymentSuccessActions(capture, {
       code: capture.sypagoAfiliacionId ? 'DOMICILIACION_ACTIVA' : 'DOMICILIACION_AUTORIZADA',
       message: capture.sypagoAfiliacionId
         ? 'Domiciliación activada en SyPago'
@@ -630,9 +641,6 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
         paidOn: capture.paidOn,
       },
     });
-    if (genericCheckout) {
-      scheduleGenericCheckoutReturn({ checkoutPayload, checkoutRules });
-    }
   }
 
   return (

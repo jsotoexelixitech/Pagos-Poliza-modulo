@@ -147,14 +147,14 @@ export function getGenericCheckoutReturnUrl(
   status: 'success' | 'failed' = 'success',
 ): string | null {
   const p = payload && typeof payload === 'object' ? payload : {};
+  let url: string | null = null;
   if (status === 'failed') {
-    return asHttpUrl(p.cancelUrl) || asHttpUrl(p.failureUrl) || asHttpUrl(p.returnUrl);
+    url = asHttpUrl(p.cancelUrl) || asHttpUrl(p.failureUrl);
+  } else {
+    url = asHttpUrl(p.successUrl) || asHttpUrl(rules?.onSuccess?.redirectUrl);
   }
-  return (
-    asHttpUrl(p.successUrl) ||
-    asHttpUrl(rules?.onSuccess?.redirectUrl) ||
-    asHttpUrl(p.returnUrl)
-  );
+  // payload.returnUrl es el fallback general, independiente del estado
+  return url || asHttpUrl(p.returnUrl);
 }
 
 /**
