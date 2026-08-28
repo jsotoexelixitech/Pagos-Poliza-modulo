@@ -31,6 +31,7 @@ import {
   isStandaloneGenericCheckoutSession,
   isValidCheckoutInput,
   quoteFromCheckout,
+  applySsoCheckoutMetadata,
 } from './checkout';
 
 // ── Configuración por puerto (dev local) o hostname (HTTPS sslip.io) ───────
@@ -273,6 +274,13 @@ function makeBridge(): BridgeAPI {
       } catch { /* ignore */ }
       useWizardStore.getState().goTo(5);
     }
+
+    applySsoCheckoutMetadata({
+      sessionMeta:
+        data.metadata && typeof data.metadata === 'object'
+          ? (data.metadata as Record<string, unknown>)
+          : null,
+    });
   };
 
   const hydrate = async () => {

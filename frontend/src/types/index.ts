@@ -179,6 +179,10 @@ export interface CheckoutRules {
   lockFields?: boolean;
   /** Ocultar stepper / navegación a pasos anteriores */
   hideNavigation?: boolean;
+  /** Tras pago SSO embebido, volver al portal origen (default true). */
+  autoRedirect?: boolean;
+  /** Espera antes de redirigir (ms). Default 2000. */
+  redirectDelayMs?: number;
   onSuccess?: {
     mode?: CheckoutOnSuccessMode;
     redirectUrl?: string;

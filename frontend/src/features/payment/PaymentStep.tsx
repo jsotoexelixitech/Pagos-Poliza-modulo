@@ -20,8 +20,10 @@ import {
 } from '../../lib/frecuencia';
 import {
   getCheckoutPaymentConcept,
+  isEmbeddedMetadataCheckout,
   isGenericCheckoutMode,
   isPaymentBypassEnabled,
+  scheduleGenericCheckoutReturn,
 } from '../../lib/checkout';
 import { notifyClientCheckoutStatus } from '../../lib/checkout-notify';
 import { isPaymentMethodEnabled, isPagoFraccionado } from '../../lib/payment-methods';
@@ -277,6 +279,12 @@ export function PaymentStep({
     if (genericCheckoutCompleteStarted.current) return;
     genericCheckoutCompleteStarted.current = true;
     try {
+      if (
+        isEmbeddedMetadataCheckout({ checkout })
+        && scheduleGenericCheckoutReturn({ checkoutPayload, checkoutRules })
+      ) {
+        return;
+      }
       await onGenericCheckoutComplete();
     } catch {
       genericCheckoutCompleteStarted.current = false;
