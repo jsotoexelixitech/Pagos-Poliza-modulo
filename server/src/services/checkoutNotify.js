@@ -205,7 +205,11 @@ async function deliverCheckoutNotify({ tokenMetadata, tokenPayload, body }) {
   };
 
   const clientRes = await axios.post(notifyUrl, outbound, {
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'bypass-tunnel-reminder': 'true',
+      'User-Agent': 'NexusWebhook/1.0'
+    },
     timeout: parseInt(process.env.CHECKOUT_NOTIFY_TIMEOUT_MS || '15000', 10),
     validateStatus: () => true,
   });
