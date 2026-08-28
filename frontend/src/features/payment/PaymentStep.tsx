@@ -174,8 +174,8 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
     }
   }, [requireFirstThenDomiciliar, fraccionPhase, paymentMethod, setPaymentMethod]);
 
-  /** Tras 1ª cuota en fraccionado: no cerrar checkout; pasar a domiciliar. */
-  function completeFirstCuotaOrFinish(capture: PaymentCapture, opts?: { method?: PaymentMethod }) {
+  /** Tras 1º cuota en fraccionado: no cerrar checkout; pasar a domiciliar. */
+  function completeFirstCuotaOrFinish(capture: PaymentCapture) {
     if (requireFirstThenDomiciliar && fraccionPhase === 'cobro') {
       setFirstCuotaCapture(capture);
       setPaymentCapture(capture);
