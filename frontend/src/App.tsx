@@ -27,12 +27,19 @@ import {
 import { validateRcvEmitPersonas } from './lib/person-identificacion';
 import { Zap, ShieldCheck, Sparkles } from 'lucide-react';
 import type { PaymentEmitContext } from './types';
+import { useProductConfig } from './hooks/useProductConfig';
+import { useUiFlags } from './lib/ui-flags';
+import { getProductId } from './lib/product';
+
+const EMPRESA_ID = Number(import.meta.env.VITE_EMPRESA_ID ?? 1);
 
 export default function App() {
   useNexusTokenMetadata();
   const store = useWizardStore();
   const { step, goTo, setPolicy } = store;
   const [emitting, setEmitting] = useState(false);
+  const { config } = useProductConfig(EMPRESA_ID, getProductId(), 'pagos');
+  const { hideStepper, hideFooterBar } = useUiFlags(config);
 
   const isSuccess = step === 6;
   const funeralFlow = isFunerario();
@@ -418,7 +425,7 @@ export default function App() {
           } ${genericCheckout ? 'pt-10' : 'pt-[72px] lg:pt-10'}`}
         >
           <div className="max-w-5xl mx-auto">
-            {!genericCheckout && <TopStepper />}
+            {!genericCheckout && !hideStepper && <TopStepper />}
 
             {!isSuccess && (
               <header className="mb-8 animate-fade-in">
@@ -472,7 +479,7 @@ export default function App() {
                 {isSuccess && <SuccessStep />}
               </div>
 
-              {!isSuccess && !embeddedCheckout && (
+              {!isSuccess && !embeddedCheckout && !hideFooterBar && (
                 <div className="hidden md:flex items-center justify-between gap-4 px-8 lg:px-10 py-5 border-t border-slate-100/80 bg-gradient-to-b from-slate-50/50 to-white/40 backdrop-blur-sm">
                   <div className="flex items-center gap-2 text-xs text-slate-500">
                     <ShieldCheck size={13} className="text-emerald-500" />
