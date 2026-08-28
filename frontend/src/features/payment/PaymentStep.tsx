@@ -291,6 +291,12 @@ export function PaymentStep({
     }
   };
 
+  /** Tras pago verificado: auto-emite (RCV/funerario) o cierra checkout genérico. */
+  const completeCheckoutAfterPayment = async () => {
+    if (onPaymentVerified) return;
+    await finishGenericCheckout();
+  };
+
   // ── SyPago Débito OTP ─────────────────────────────────────────────────
   const [otpDocType,   setOtpDocType]   = useState('V');
   const [otpDocNum,    setOtpDocNum]    = useState('');
@@ -553,6 +559,7 @@ export function PaymentStep({
       setPaymentVerified(true);
       setPaymentCapture(capture);
       await triggerAutoEmit(capture);
+      await completeCheckoutAfterPayment();
       return;
     }
 
@@ -598,7 +605,7 @@ export function PaymentStep({
             message: result.message,
           },
         });
-        await finishGenericCheckout();
+        await completeCheckoutAfterPayment();
       } else {
         setPaymentVerified(false);
         releaseEmissionPopupSlots();
@@ -788,7 +795,7 @@ export function PaymentStep({
           reference: final.ref_ibp || final.transaction_id,
         },
       });
-      await finishGenericCheckout();
+      await completeCheckoutAfterPayment();
       // Latch queda activo en 'done' — no se puede volver a confirmar
     } catch (err) {
       releaseEmissionPopupSlots();
@@ -853,7 +860,7 @@ export function PaymentStep({
         domiciliacionOk: Boolean(capture.sypagoAfiliacionId),
       },
     });
-    await finishGenericCheckout();
+    await completeCheckoutAfterPayment();
   }
 
   return (

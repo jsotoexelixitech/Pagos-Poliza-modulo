@@ -363,7 +363,11 @@ export default function App() {
         : !canEmitRcv;
 
   const primaryLabel = genericCheckout
-    ? (emitting ? 'Procesando...' : 'Continuar')
+    ? (emitting
+      ? 'Emitiendo póliza...'
+      : funeralFlow && store.paymentVerified
+        ? 'Emitir póliza'
+        : 'Continuar')
     : exelixiFlow
       ? store.paymentVerified
         ? (emitting ? 'Emitiendo póliza Exélixi...' : 'Emitir póliza')
@@ -374,24 +378,12 @@ export default function App() {
         ? (emitting ? 'Emitiendo y activando recibo...' : 'Reemitir póliza')
         : (emitting ? 'Emitiendo póliza...' : 'Verificar pago para emitir');
 
-  async function handleEmitir() {
-    if (!funeralFlow) return;
+  async function handleContinuarFunerario(paymentCtx?: PaymentEmitContext) {
+    const snap = useWizardStore.getState();
+    const verified = paymentCtx?.paymentVerified ?? snap.paymentVerified;
+    const approved = isFuneralApprovedCheckout(snap);
 
-    if (!funeralApproved && !store.funeral?.healthQuestionnaireDone) {
-      toast.warning(
-        'Cuestionario pendiente',
-        'Completa el cuestionario de salud al confirmar el plan antes de emitir.',
-      );
-      return;
-    }
-    if (!funeralApproved && !store.funeral?.aceptaTerminos) {
-      toast.warning(
-        'Términos pendientes',
-        'Debes aceptar los términos en el cuestionario de salud.',
-      );
-      return;
-    }
-    if (paymentRequired && !store.paymentVerified) {
+    if (paymentRequired && !verified) {
       toast.warning(
         'Pago pendiente',
         'Verifica o confirma el pago con el banco antes de emitir.',
@@ -399,11 +391,26 @@ export default function App() {
       return;
     }
 
+    if (!approved && !snap.funeral?.healthQuestionnaireDone) {
+      toast.warning(
+        'Cuestionario pendiente',
+        'Completa el cuestionario de salud al confirmar el plan antes de emitir.',
+      );
+      return;
+    }
+    if (!approved && !snap.funeral?.aceptaTerminos) {
+      toast.warning(
+        'Términos pendientes',
+        'Debes aceptar los términos en el cuestionario de salud.',
+      );
+      return;
+    }
+
     setEmitting(true);
     try {
       const result = await emitFuneral({
-        state: buildFuneralEmitState(),
-        frecuencia: (store.funeral?.frecuencia as 'A' | 'S' | 'M' | 'T' | 'C') ?? 'M',
+        state: buildFuneralEmitState(paymentCtx),
+        frecuencia: (snap.funeral?.frecuencia as 'A' | 'S' | 'M' | 'T' | 'C') ?? 'M',
       });
       await applyEmissionResult(result, 'funerario');
     } catch (err) {
@@ -411,6 +418,11 @@ export default function App() {
     } finally {
       setEmitting(false);
     }
+  }
+
+  async function handleEmitir() {
+    if (!funeralFlow) return;
+    await handleContinuarFunerario();
   }
 
   return (
@@ -473,7 +485,9 @@ export default function App() {
                         ? handleContinuarExelixi
                         : rcvFlow && !genericCheckout
                           ? handleContinuarRcv
-                          : undefined
+                          : funeralFlow
+                            ? handleContinuarFunerario
+                            : undefined
                     }
                     onGenericCheckoutComplete={
                       genericCheckout ? handleGenericComplete : undefined
