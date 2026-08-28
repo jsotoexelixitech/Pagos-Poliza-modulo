@@ -107,6 +107,8 @@ export interface PaymentCapture {
   transactionId?: string;
   amount?: number;
   paidOn?: string;
+  /** Método con el que se cobró la 1ª cuota / pago (mobile | otp | …). */
+  method?: PaymentMethod;
   /** Código banco origen (cbanco_ref) usado en la verificación móvil. */
   bankCode?: string;
   /** Teléfono origen del pago móvil (xtelefono). */
@@ -160,8 +162,12 @@ export type CheckoutOnSuccessMode = 'none' | 'redirect' | 'webhook' | 'emit';
 export interface CheckoutRules {
   requirePayment?: boolean;
   methods?: PaymentMethod[];
-  /** Prima en cuotas (M/T/S): el checkout solo ofrece domiciliación. */
+  /** Prima en cuotas (M/T/S): flujo fraccionado. */
   fraccionado?: boolean;
+  /** Cobrar 1ª cuota (móvil/OTP) antes de continuar. */
+  requireFirstPayment?: boolean;
+  /** Tras la 1ª cuota, exigir domiciliación SyPago. */
+  requireDomiciliacion?: boolean;
   /** Tras verificar/autorizar, redirige a payload.successUrl (SSO Hogar/Condominio). */
   autoRedirect?: boolean;
   redirectDelayMs?: number;

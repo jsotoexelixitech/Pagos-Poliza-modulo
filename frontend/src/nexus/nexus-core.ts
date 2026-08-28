@@ -68,8 +68,16 @@ export interface NexusVerifyResult {
 }
 
 export async function verifyNexusAccess(nexusApiUrl: string): Promise<NexusVerifyResult> {
-  const tokenFromUrl = new URLSearchParams(window.location.search).get('nexus_token');
-  if (tokenFromUrl && !getNexusToken(STORAGE_KEY)) {
+  // SSO delegate siempre manda un nexus_token fresco en la URL. Si hay uno en sessionStorage
+  // de una sesión anterior (otra empresa / módulo), NO debe ganar: provoca
+  // "Servicio no activado para esta empresa" con un token válido nuevo en la URL.
+  let tokenFromUrl: string | null = null;
+  try {
+    tokenFromUrl = new URLSearchParams(window.location.search).get('nexus_token');
+  } catch {
+    tokenFromUrl = null;
+  }
+  if (tokenFromUrl) {
     persistNexusToken(STORAGE_KEY, tokenFromUrl);
   }
 

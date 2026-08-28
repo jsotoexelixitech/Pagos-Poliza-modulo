@@ -6,7 +6,7 @@ import { ToggleSwitch } from '../../components/ui/ToggleSwitch';
 import { SearchSelect } from '../../components/ui/SearchSelect';
 import { useCatalogs, useCiudades } from '../../hooks/useCatalogs';
 import { User, UserPlus, Heart, Wallet, ShieldAlert } from 'lucide-react';
-import { formatTelefono, isValidPhonePrefix } from '@exelixi/shared';
+import { formatTelefono, phoneDigits, isValidPhonePrefix, PHONE_MASK_MAX_LENGTH } from '../../lib/phone';
 
 
 export function SectionCard({
@@ -161,7 +161,7 @@ export function EmissionStep() {
 
     if (req(tomador.telefono)) {
       e.telefono = 'El teléfono es obligatorio';
-    } else if (digs(tomador.telefono) !== 11) {
+    } else if (phoneDigits(tomador.telefono).length !== 11) {
       e.telefono = 'El teléfono debe tener exactamente 11 dígitos (ej. 04121234567)';
     } else if (!isValidPhonePrefix(tomador.telefono || '')) {
       e.telefono = 'El prefijo debe ser válido en Venezuela (ej. 0414, 0412, 0212)';
@@ -232,7 +232,7 @@ export function EmissionStep() {
 
       if (req(pagador.telefono)) {
         e.pag_telefono = 'El teléfono del pagador es obligatorio';
-      } else if (digs(pagador.telefono) !== 11) {
+      } else if (phoneDigits(pagador.telefono).length !== 11) {
         e.pag_telefono = 'El teléfono debe tener exactamente 11 dígitos (ej. 04121234567)';
       } else if (!isValidPhonePrefix(pagador.telefono || '')) {
         e.pag_telefono = 'El prefijo debe ser válido en Venezuela (ej. 0414, 0412, 0212)';
@@ -325,7 +325,7 @@ export function EmissionStep() {
           placeholder="04121234567"
           type="tel"
           inputMode="numeric"
-          maxLength={11}
+          maxLength={PHONE_MASK_MAX_LENGTH}
         />
       </Field>
     ),
@@ -529,7 +529,7 @@ export function EmissionStep() {
                   placeholder="04121234567"
                   type="tel"
                   inputMode="numeric"
-                  maxLength={11}
+                  maxLength={PHONE_MASK_MAX_LENGTH}
                 />
               </Field>
               <Field label="Correo electrónico (opcional)" error={errors.pag_email} full>
@@ -575,7 +575,7 @@ export function EmissionStep() {
                 <Input value={asegurado.apellido} onChange={(e) => setAsegurado({ apellido: onlyLetters(e.target.value) })} placeholder="Apellido" />
               </Field>
               <Field label="Teléfono *" error={errors.aseg_telefono}>
-                <Input value={asegurado.telefono ?? ''} onChange={(e) => setAsegurado({ telefono: formatTelefono(e.target.value) })} placeholder="04121234567" type="tel" maxLength={11} />
+                <Input value={asegurado.telefono ?? ''} onChange={(e) => setAsegurado({ telefono: formatTelefono(e.target.value) })} placeholder="04121234567" type="tel" maxLength={PHONE_MASK_MAX_LENGTH} />
               </Field>
               <Field label="Correo electrónico" error={errors.aseg_email}>
                 <Input value={asegurado.email ?? ''} onChange={(e) => setAsegurado({ email: e.target.value })} placeholder="correo@ejemplo.com" type="email" />
@@ -653,7 +653,7 @@ export function EmissionStep() {
                 <Input value={beneficiario.apellido} onChange={(e) => setBeneficiario({ apellido: onlyLetters(e.target.value) })} placeholder="Apellido" />
               </Field>
               <Field label="Teléfono *" error={errors.benef_telefono}>
-                <Input value={beneficiario.telefono ?? ''} onChange={(e) => setBeneficiario({ telefono: formatTelefono(e.target.value) })} placeholder="04121234567" type="tel" maxLength={11} />
+                <Input value={beneficiario.telefono ?? ''} onChange={(e) => setBeneficiario({ telefono: formatTelefono(e.target.value) })} placeholder="04121234567" type="tel" maxLength={PHONE_MASK_MAX_LENGTH} />
               </Field>
               <Field label="Correo electrónico" error={errors.benef_email}>
                 <Input value={beneficiario.email ?? ''} onChange={(e) => setBeneficiario({ email: e.target.value })} placeholder="correo@ejemplo.com" type="email" />

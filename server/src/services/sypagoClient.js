@@ -55,7 +55,7 @@ function normalizeStatus(raw) {
 
 function _getConfig() {
   return {
-    baseUrl      : (process.env.SYPAGO_URL || 'https://pruebas.api.sypago.net').replace(/\/$/, ''),
+    baseUrl      : (process.env.SYPAGO_URL || 'https://pruebas.sypago.net:8086').replace(/\/$/, ''),
     bearerToken  : process.env.SYPAGO_BEARER_TOKEN || '',   // JWT fijo (sin expiración)
     clientId     : process.env.SYPAGO_CLIENT_ID || '',      // API Key dinámica
     secret       : process.env.SYPAGO_SECRET || '',
@@ -206,8 +206,13 @@ async function requestOtp({ documentType, documentNumber, debtorBankCode, debtor
   const cfg = _getConfig();
 
   if (cfg.mock) {
+    // Solo para desarrollo sin red. Preferir sandbox real: SYPAGO_MOCK=false + pruebas.api.sypago.net
     console.log('[SyPago MOCK] requestOtp →', { documentType, documentNumber, debtorBankCode, debtorPhone, amount });
-    return { success: true, mock: true, message: 'OTP enviada al teléfono del cliente [MODO PRUEBA]' };
+    return {
+      success: true,
+      mock: true,
+      message: 'OTP simulada [MOCK LOCAL desaconsejado]. Usa SYPAGO_MOCK=false para el sandbox de SyPago (OTP por correo).',
+    };
   }
 
   const payload = {

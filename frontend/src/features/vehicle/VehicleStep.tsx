@@ -6,7 +6,7 @@ import { SectionCard } from '../emission/EmissionStep';
 import { useCatalogs, useCiudades } from '../../hooks/useCatalogs';
 import { SearchSelect } from '../../components/ui/SearchSelect';
 import { IdentityInput } from '../../components/ui/IdentityInput';
-import { formatTelefono } from '@exelixi/shared';
+import { formatTelefono, PHONE_MASK_MAX_LENGTH } from '../../lib/phone';
 import {
   Car, UserCog, Sparkles, ScanLine, ShieldCheck,
   Loader2, AlertTriangle,
@@ -907,7 +907,7 @@ export function VehicleStep() {
                 <Input value={conductor.apellido} onChange={(e) => setConductor({ apellido: String(e.target.value).replace(/[^a-zA-ZáéíóúüñÁÉÍÓÚÜÑ\s]/g, '') })} placeholder="Apellido" />
               </Field>
               <Field label="Teléfono *" error={errors.cond_telefono}>
-                <Input value={conductor.telefono ?? ''} onChange={(e) => setConductor({ telefono: formatTelefono(e.target.value) })} placeholder="04121234567" type="tel" maxLength={11} />
+                <Input value={conductor.telefono ?? ''} onChange={(e) => setConductor({ telefono: formatTelefono(e.target.value) })} placeholder="04121234567" type="tel" maxLength={PHONE_MASK_MAX_LENGTH} />
               </Field>
               <Field label="Correo electrónico" error={errors.cond_email}>
                 <Input value={conductor.email ?? ''} onChange={(e) => setConductor({ email: e.target.value })} placeholder="correo@ejemplo.com" type="email" />
