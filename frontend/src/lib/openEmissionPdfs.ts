@@ -98,3 +98,9 @@ export function notifyEmissionSuccessAndOpenPdfs(
 ): OpenEmissionResult {
   return openEmissionPdfs(docs);
 }
+
+/** Reserva popups en el clic del usuario (domiciliación / OTP). No-op en flujo local. */
+export function reserveEmissionPopupSlots(_count = 4): void {}
+
+/** Libera popups reservados. No-op en flujo local. */
+export function releaseEmissionPopupSlots(): void {}

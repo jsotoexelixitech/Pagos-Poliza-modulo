@@ -55,7 +55,7 @@ function clearClientFlowState() {
 
 export function SuccessStep() {
   const {
-    policy, tomador, selectedPlan, checkout, paymentCapture, reset, diligencia,
+    policy, tomador, selectedPlan, checkout, paymentCapture, paymentMethod, reset, diligencia,
   } = useWizardStore();
 
   const genericCheckout = isGenericCheckoutMode({ checkout });
@@ -110,7 +110,9 @@ export function SuccessStep() {
             Operación registrada
           </h2>
           <p className="text-slate-500 max-w-md mx-auto leading-relaxed text-sm">
-            El pago fue confirmado. Tu sistema recibirá la notificación automáticamente.
+            {paymentMethod === 'domiciliacion'
+              ? 'Domiciliación autorizada. Tu sistema recibirá la confirmación y continuará con la emisión.'
+              : 'El pago fue confirmado. Tu sistema recibirá la notificación automáticamente.'}
           </p>
         </div>
 
@@ -322,6 +324,24 @@ export function SuccessStep() {
                   <ExternalLink size={11} className="shrink-0" />
                   <span className="truncate">{ingresoCajaUrl}</span>
                 </a>
+              </div>
+            ) : null}
+
+            {paymentMethod === 'domiciliacion' && paymentCapture?.numeroCuenta ? (
+              <div className="pt-4 border-t border-slate-100">
+                <p className="text-[0.58rem] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                  Domiciliación SyPago
+                </p>
+                <p className="text-sm font-semibold text-slate-800">
+                  {paymentCapture.sypagoAfiliacionId
+                    ? `Afiliación ${paymentCapture.sypagoAfiliacionId}`
+                    : 'Autorizada · pendiente de afiliación'}
+                </p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Cuenta ····{paymentCapture.numeroCuenta.slice(-4)}
+                  {paymentCapture.titularCuenta ? ` · ${paymentCapture.titularCuenta}` : ''}
+                  {paymentCapture.correo ? ` · ${paymentCapture.correo}` : ''}
+                </p>
               </div>
             ) : null}
           </div>

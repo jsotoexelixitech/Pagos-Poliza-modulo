@@ -4,12 +4,14 @@
  * Backend que cubre:
  *   - Verificacion de pago movil (Meritop / Banco Activo).
  *   - Debito OTP (SyPago).
+ *   - Domiciliacion de recibos (proxy Nest / SyPago).
  *
  * Endpoints:
  *   POST /api/payments/verify-mobile
  *   POST /api/payments/otp/request
  *   POST /api/payments/otp/confirm
  *   GET  /api/payments/otp/status/:transactionId
+ *   /api/domiciliacion/*  (proxy Nest SyPago)
  *   GET  /api/health
  */
 require('dotenv').config();
@@ -21,6 +23,7 @@ const swaggerSpec = require('./swagger');
 
 const pagosRoutes = require('./routes/pagos');
 const checkoutRoutes = require('./routes/checkout');
+const domiciliacionRoutes = require('./routes/domiciliacion');
 const { getVerifyMobileTargetUrl } = require('./services/meritopClient');
 const nexusAuth   = require('./middleware/nexusAuth');
 
@@ -57,6 +60,9 @@ app.get('/api/health', (_req, res) => {
       verifyMobileTarget: getVerifyMobileTargetUrl(),
     },
     sypago:  { mock: process.env.SYPAGO_MOCK === 'true', url: process.env.SYPAGO_URL || null },
+    domiciliacion: {
+      url: (process.env.DOMICILIACION_API_URL || 'https://cierrelmds.exelixitech.com/domiciliacion-services').replace(/\/$/, ''),
+    },
     nexusAuth: process.env.NEXUS_AUTH_ENABLED === 'true',
   });
 });
@@ -111,6 +117,7 @@ app.post('/api/payments/otp/webhook', pagosRoutes.handleSypagoWebhook);
 // Multi-tenant: pagos y notificación checkout requieren nexus_token
 app.use('/api/checkout', nexusAuth, checkoutRoutes);
 app.use('/api/payments', nexusAuth, pagosRoutes);
+app.use('/api/domiciliacion', nexusAuth, domiciliacionRoutes);
 
 app.use((err, _req, res, _next) => {
   console.error('[modulo-pagos] error:', err);
