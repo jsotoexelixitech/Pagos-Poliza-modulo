@@ -422,7 +422,6 @@ export interface SypagoOtpConfirmResponse {
   status?          : string;
   statusInfo?      : SypagoStatusInfo;
   ref_ibp?         : string | null;
-  mock?            : boolean;
 }
 
 export interface SypagoTransactionStatus {
@@ -430,7 +429,6 @@ export interface SypagoTransactionStatus {
   transaction_id : string;
   status         : string;
   statusInfo?    : SypagoStatusInfo;
-  mock?          : boolean;
   [key: string]  : unknown;
 }
 
@@ -482,7 +480,7 @@ function _throwSypago(err: unknown): never {
 /** Paso 1: solicita que el banco del cliente envíe una OTP */
 export async function sypagoRequestOtp(
   payload: SypagoOtpRequestPayload
-): Promise<{ success: boolean; message: string; mock?: boolean }> {
+): Promise<{ success: boolean; message: string }> {
   try {
     const res = await api.post('/payments/otp/request', payload);
     return res.data;

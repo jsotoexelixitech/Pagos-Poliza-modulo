@@ -59,7 +59,7 @@ app.get('/api/health', (_req, res) => {
       url: (process.env.LAMUNDIAL_PAYMENTS_URL || 'https://apisys2000.lamundialdeseguros.com').replace(/\/$/, ''),
       verifyMobileTarget: getVerifyMobileTargetUrl(),
     },
-    sypago:  { mock: process.env.SYPAGO_MOCK === 'true', url: process.env.SYPAGO_URL || null },
+    sypago:  { url: process.env.SYPAGO_URL || null },
     domiciliacion: {
       url: (process.env.DOMICILIACION_API_URL || 'https://cierrelmds.exelixitech.com/domiciliacion-services').replace(/\/$/, ''),
     },

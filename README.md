@@ -121,7 +121,6 @@ SYPAGO_URL=https://api.sypago.net
 SYPAGO_BEARER_TOKEN=TU_TOKEN
 SYPAGO_CLIENT_ID=TU_CLIENT_ID
 SYPAGO_SECRET=TU_SECRET
-SYPAGO_MOCK=false
 
 # Domiciliación SyPago — cobro automático de recibos fraccionados
 DOMICILIACION_API_URL=https://cierrelmds.exelixitech.com/domiciliacion-services

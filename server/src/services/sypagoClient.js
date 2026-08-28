@@ -24,7 +24,6 @@
  *   SYPAGO_TYPE           Tipo de cuenta (CNTA)
  *   SYPAGO_NUMBER         Número de cuenta acreedor (20 dígitos)
  *   SYPAGO_WEBHOOK_URL    URL donde SyPago notifica el resultado final (opcional en dev)
- *   SYPAGO_MOCK           "true" para simular sin red (default: false)
  *   SYPAGO_TIMEOUT        Timeout HTTP en ms (default: 20000)
  */
 
@@ -64,7 +63,6 @@ function _getConfig() {
     accountNumber: process.env.SYPAGO_NUMBER || '',
     webhookUrl   : process.env.SYPAGO_WEBHOOK_URL || '',
     publicKey    : (process.env.SYPAGO_WEBHOOK_PUBLIC_KEY || '').replace(/\\n/g, '\n'),
-    mock         : process.env.SYPAGO_MOCK === 'true',
     timeout      : parseInt(process.env.SYPAGO_TIMEOUT, 10) || DEFAULT_TIMEOUT,
   };
 }
@@ -205,16 +203,6 @@ function _handleError(err, operation) {
 async function requestOtp({ documentType, documentNumber, debtorBankCode, debtorPhone, amount }) {
   const cfg = _getConfig();
 
-  if (cfg.mock) {
-    // Solo para desarrollo sin red. Preferir sandbox real: SYPAGO_MOCK=false + pruebas.api.sypago.net
-    console.log('[SyPago MOCK] requestOtp →', { documentType, documentNumber, debtorBankCode, debtorPhone, amount });
-    return {
-      success: true,
-      mock: true,
-      message: 'OTP simulada [MOCK LOCAL desaconsejado]. Usa SYPAGO_MOCK=false para el sandbox de SyPago (OTP por correo).',
-    };
-  }
-
   const payload = {
     creditor_account: {
       bank_code: cfg.bankCode,
@@ -270,16 +258,6 @@ async function requestOtp({ documentType, documentNumber, debtorBankCode, debtor
  */
 async function confirmOtp({ documentType, documentNumber, debtorBankCode, debtorPhone, debtorName, amount, otp, concept }) {
   const cfg = _getConfig();
-
-  if (cfg.mock) {
-    const txId = _randomId();
-    console.log('[SyPago MOCK] confirmOtp →', { otp, amount, txId });
-    return {
-      transaction_id   : txId,
-      operation_secret : `mock-secret-${Date.now()}`,
-      mock             : true,
-    };
-  }
 
   const internalId = _randomId();
   const groupId    = _randomId();
@@ -344,15 +322,6 @@ async function confirmOtp({ documentType, documentNumber, debtorBankCode, debtor
 async function getTransactionStatus(transactionId) {
   const cfg = _getConfig();
 
-  if (cfg.mock) {
-    return {
-      transaction_id: transactionId,
-      status        : 'ACCP',
-      statusInfo    : normalizeStatus('ACCP'),
-      mock          : true,
-    };
-  }
-
   try {
     const resp = await axios.get(
       `${cfg.baseUrl}/api/v1/transaction/${transactionId}`,
@@ -376,17 +345,6 @@ function _sleep(ms) {
  * Mismo patrón que SysIP (getTransactionOtp): espera inicial + reintentos con backoff.
  */
 async function pollTransactionStatus(transactionId, { maxAttempts = 10, initialDelayMs = 5000 } = {}) {
-  const cfg = _getConfig();
-
-  if (cfg.mock) {
-    return {
-      transaction_id: transactionId,
-      status        : 'ACCP',
-      statusInfo    : normalizeStatus('ACCP'),
-      mock          : true,
-    };
-  }
-
   await _sleep(initialDelayMs);
   let last = await getTransactionStatus(transactionId);
   let attempt = 1;

@@ -299,8 +299,6 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
   const [otpStep,      setOtpStep]      = useState<OtpStep>('form');
   const [otpError,     setOtpError]     = useState('');
   const [otpResult,    setOtpResult]    = useState<SypagoOtpConfirmResponse | null>(null);
-  /** true si el backend respondió con mock local (no llama a SyPago sandbox). */
-  const [otpMockLocal, setOtpMockLocal] = useState(false);
   // otpSubmitted: true después del primer intento de "Solicitar OTP"
   const [otpSubmitted, setOtpSubmitted] = useState(false);
   const [otpCooldown,  setOtpCooldown]  = useState(0); // segundos restantes para reenvío
@@ -318,7 +316,6 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
     setOtpStep('form');
     setOtpError('');
     setOtpResult(null);
-    setOtpMockLocal(false);
     setOtpCode('');
     setOtpSubmitted(false);
     setOtpCooldown(0);
@@ -589,7 +586,6 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       if (resp && resp.success === false) {
         throw new SypagoError({ message: resp.message || 'Error al solicitar OTP.', code: 'SYPAGO_ERROR' });
       }
-      setOtpMockLocal(Boolean(resp?.mock));
       succeeded = true;
     } catch (err) {
       setOtpError(err instanceof SypagoError ? err.message : 'Error al solicitar OTP.');
@@ -1305,18 +1301,15 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
                   </div>
                   <div>
                     <p className="text-sm font-bold text-indigo-800">
-                      {otpMockLocal ? 'Mock local (sin SyPago)' : 'Clave OTP enviada'}
+                      Clave OTP enviada
                     </p>
                     <p className="text-xs text-indigo-600 mt-1">
-                      {otpMockLocal
-                        ? 'SYPAGO_MOCK está activo: no se envía correo. Desactívalo para usar el sandbox real de SyPago.'
-                        : <>Revisa el <span className="font-bold">correo</span> asociado a la cuenta (sandbox SyPago). En producción llega por SMS/notificación al teléfono <span className="font-mono font-bold">{otpPhone}</span>. Ingresa la clave para autorizar el débito.</>
-                      }
+                      Revisa el <span className="font-bold">correo</span> asociado a la cuenta (sandbox SyPago). En producción llega por SMS/notificación al teléfono <span className="font-mono font-bold">{otpPhone}</span>. Ingresa la clave para autorizar el débito.
                     </p>
                   </div>
                 </div>
 
-                <Field label="Clave OTP" hint={otpMockLocal ? 'Mock local — no uses este modo' : 'Código de 6 u 8 dígitos del correo (pruebas) o SMS/notificación'}>
+                <Field label="Clave OTP" hint="Código de 6 u 8 dígitos del correo (pruebas) o SMS/notificación">
                   <Input
                     value={otpCode}
                     onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 8))}
@@ -1390,7 +1383,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-emerald-800 mb-2">
-                      {otpResult.mock ? 'Pago autorizado [MODO PRUEBA]' : 'Pago confirmado por SyPago'}
+                      Pago confirmado por SyPago
                     </p>
                     <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
                       <dt className="text-slate-500 font-semibold">ID de transacción</dt>

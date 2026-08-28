@@ -248,7 +248,6 @@ router.post('/otp/request', async (req, res) => {
     });
     return res.status(200).json({
       success: true,
-      mock: Boolean(result?.mock),
       message: result?.message || 'OTP enviada.',
     });
   } catch (err) {
