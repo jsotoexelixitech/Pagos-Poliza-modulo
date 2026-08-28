@@ -150,7 +150,12 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       return opt.method === 'mobile' || opt.method === 'domiciliacion';
     }
     if (!isPaymentMethodEnabled(opt.method, config?.metodos)) return false;
-    if (opt.method === 'domiciliacion') return true;
+    // En flujo anual, domiciliación NO se ofrece por defecto.
+    // Solo se muestra si el checkout genérico la lista explícitamente en methods.
+    // El caso fraccionado ya está cubierto arriba (línea `if (pagoFraccionado)`).
+    if (opt.method === 'domiciliacion') {
+      return !!(genericCheckout && checkoutRules?.methods?.includes('domiciliacion'));
+    }
     if (genericCheckout && checkoutRules?.methods?.length) {
       return checkoutRules.methods.includes(opt.method);
     }
@@ -174,8 +179,8 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
     }
   }, [requireFirstThenDomiciliar, fraccionPhase, paymentMethod, setPaymentMethod]);
 
-  /** Tras 1ª cuota en fraccionado: no cerrar checkout; pasar a domiciliar. */
-  function completeFirstCuotaOrFinish(capture: PaymentCapture, opts?: { method?: PaymentMethod }) {
+  /** Tras 1º cuota en fraccionado: no cerrar checkout; pasar a domiciliar. */
+  function completeFirstCuotaOrFinish(capture: PaymentCapture) {
     if (requireFirstThenDomiciliar && fraccionPhase === 'cobro') {
       setFirstCuotaCapture(capture);
       setPaymentCapture(capture);
