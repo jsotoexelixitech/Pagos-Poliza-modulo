@@ -28,10 +28,13 @@ function getAccessTokenFromBrowser(): string | null {
   );
 }
 
-/** Metadata SSO del token en URL/storage (sin bridge ?sid=). */
+/**
+ * Metadata SSO del token en URL/storage.
+ * Con ?sid= el bridge tiene prioridad al hidratar la sesión, pero el token
+ * sigue siendo válido como bootstrap (p. ej. sid + nexus_token a la vez).
+ */
 export function getSsoMetadataFromBrowser(): Record<string, unknown> | null {
   if (typeof window === 'undefined') return null;
-  if (new URLSearchParams(window.location.search).get('sid')) return null;
 
   const token = getAccessTokenFromBrowser();
   if (!token) return null;
@@ -50,7 +53,10 @@ export function isStandaloneGenericCheckoutSession(): boolean {
   return isValidCheckoutInput(meta.checkout);
 }
 
-/** Hidrata checkout desde nexus_token antes del primer render de React. */
+/**
+ * Hidrata checkout desde nexus_token antes del primer render de React.
+ * Si ya hay checkout en el store (p. ej. bridge hidrató la sesión), no pisa.
+ */
 export function hydrateCheckoutFromAccessToken(): boolean {
   const meta = getSsoMetadataFromBrowser();
   if (!meta) return false;
@@ -58,11 +64,14 @@ export function hydrateCheckoutFromAccessToken(): boolean {
   const { checkout, rules, payer, payload: opaque, ...canal } = meta;
   const store = useWizardStore.getState();
 
-  if (Object.keys(canal).length > 0) {
+  if (Object.keys(canal).length > 0 && !store.metadataCanal) {
     store.setMetadataCanal(canal);
   }
 
   if (!isValidCheckoutInput(checkout)) return false;
+
+  // Bridge (?sid=) puede llegar después y sobrescribir; no pisar si ya hay checkout.
+  if (hasGenericCheckout(store)) return true;
 
   store.setCheckout({
     data: checkout,
