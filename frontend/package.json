@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:gcia": "tsc -b && vite build --mode production.gcia",
     "preview": "vite preview"
   },
   "dependencies": {
