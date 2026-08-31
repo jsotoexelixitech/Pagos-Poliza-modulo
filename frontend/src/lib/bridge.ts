@@ -30,9 +30,11 @@ import { applyWizardStepFromUrl, defaultStepForModule, stepToModuleOrder } from 
 import {
   isStandaloneGenericCheckoutSession,
   isValidCheckoutInput,
+  parseCheckoutRules,
   quoteFromCheckout,
   applySsoCheckoutMetadata,
 } from './checkout';
+import type { CheckoutPayer } from '../types';
 
 // ── Configuración por puerto (dev local) o hostname (HTTPS sslip.io) ───────
 const PORT_TO_ORDER: Record<string, number> = {
@@ -268,16 +270,71 @@ function makeBridge(): BridgeAPI {
     if (!data || typeof data !== 'object') return;
     const filtered: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(data)) {
-      if (!HYDRATE_EXCLUDE.has(k)) filtered[k] = v;
+      // Evita dejar keys Nexus crudas (rules/payload/payer) que no usa el store.
+      if (
+        HYDRATE_EXCLUDE.has(k)
+        || k === 'rules'
+        || k === 'payload'
+        || k === 'payer'
+      ) {
+        continue;
+      }
+      filtered[k] = v;
     }
     const set = (useWizardStore as unknown as { setState: (p: Partial<Record<string, unknown>>) => void }).setState;
     set(filtered);
 
     const checkout = data.checkout;
     if (isValidCheckoutInput(checkout)) {
-      const { setQuote, setQuoteState } = useWizardStore.getState();
-      setQuote(quoteFromCheckout(checkout), 'checkout-session');
-      setQuoteState('ready');
+      const store = useWizardStore.getState();
+      // Forma canónica del store O metadata Nexus (rules/payload/payer) como en SSO.
+      // Si la sesión bridge no trae rules/payload, conservar lo que ya hidrató el token.
+      const rulesFromSession = parseCheckoutRules(
+        data.checkoutRules ?? data.rules,
+      );
+      const payloadRaw = data.checkoutPayload ?? data.payload;
+      const payloadFromSession =
+        payloadRaw && typeof payloadRaw === 'object'
+          ? (payloadRaw as Record<string, unknown>)
+          : null;
+      const payerRaw = data.checkoutPayer ?? data.payer;
+      const payerFromSession =
+        payerRaw && typeof payerRaw === 'object'
+          ? (payerRaw as CheckoutPayer)
+          : null;
+
+      store.setCheckout({
+        data: checkout,
+        rules: rulesFromSession ?? store.checkoutRules,
+        payer: payerFromSession ?? store.checkoutPayer,
+        payload: payloadFromSession ?? store.checkoutPayload,
+      });
+      store.setQuote(quoteFromCheckout(checkout), 'checkout-session');
+      store.setQuoteState('ready');
+
+      // Canal: resto de metadata Nexus (frecuencia, fraccionado, etc.)
+      if (!store.metadataCanal) {
+        const canal: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(data)) {
+          if (
+            k === 'checkout'
+            || k === 'checkoutRules'
+            || k === 'checkoutPayload'
+            || k === 'checkoutPayer'
+            || k === 'rules'
+            || k === 'payload'
+            || k === 'payer'
+            || k === 'nexus_token'
+            || typeof v === 'function'
+          ) {
+            continue;
+          }
+          canal[k] = v;
+        }
+        if (Object.keys(canal).length > 0) {
+          store.setMetadataCanal(canal);
+        }
+      }
     }
 
     if (data.funeralApprovedCheckout === true) {

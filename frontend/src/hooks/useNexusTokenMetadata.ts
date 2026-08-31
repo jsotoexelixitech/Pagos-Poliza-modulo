@@ -3,7 +3,7 @@ import { applySsoCheckoutMetadata } from '../lib/checkout';
 
 /**
  * Fusiona metadata SSO (rules, checkout, canal) con el store.
- * Funciona con bridge (?sid=) y con entrada directa a Pagos.
+ * Con ?sid= el bridge hidrata la sesión; el token sigue como bootstrap.
  * Re-aplica si el token se renueva vía /api/access/verify.
  */
 export function useNexusTokenMetadata() {

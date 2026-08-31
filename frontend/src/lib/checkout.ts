@@ -140,7 +140,10 @@ export function isStandaloneGenericCheckoutSession(): boolean {
   return isValidCheckoutInput(meta.checkout);
 }
 
-/** Hidrata checkout desde nexus_token antes del primer render de React. */
+/**
+ * Hidrata checkout desde nexus_token antes del primer render de React.
+ * Si ya hay checkout en el store (p. ej. bridge hidrató la sesión), no pisa.
+ */
 export function hydrateCheckoutFromAccessToken(): boolean {
   return applySsoCheckoutMetadata();
 }

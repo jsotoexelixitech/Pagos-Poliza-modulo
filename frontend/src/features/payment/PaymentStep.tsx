@@ -156,6 +156,20 @@ export function PaymentStep({
   );
   const [firstCuotaCapture, setFirstCuotaCapture] = useState<PaymentCapture | null>(null);
 
+  /**
+   * Bridge hidrata el store de forma async (tras el primer render).
+   * Si useState inicializó en 'domiciliar' porque aún no había rules/payload,
+   * al aparecer requireFirstThenDomiciliar hay que volver a 'cobro' (salvo que
+   * la 1ª cuota ya se haya cobrado en esta sesión).
+   */
+  useEffect(() => {
+    if (!requireFirstThenDomiciliar) return;
+    if (firstCuotaCapture) return;
+    if (fraccionPhase !== 'cobro') {
+      setFraccionPhase('cobro');
+    }
+  }, [requireFirstThenDomiciliar, firstCuotaCapture, fraccionPhase]);
+
   const availableMethods = PAYMENT_OPTIONS.filter(opt => {
     if (requireFirstThenDomiciliar) {
       if (fraccionPhase === 'cobro') {
@@ -192,6 +206,7 @@ export function PaymentStep({
     }
   }, [requireFirstThenDomiciliar, fraccionPhase, paymentMethod, setPaymentMethod]);
 
+  /** Tras 1º cuota en fraccionado: no cerrar checkout; pasar a domiciliar. */
   function completeFirstCuotaOrFinish(capture: PaymentCapture) {
     if (requireFirstThenDomiciliar && fraccionPhase === 'cobro') {
       setFirstCuotaCapture(capture);
