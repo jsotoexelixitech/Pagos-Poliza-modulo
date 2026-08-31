@@ -7,7 +7,8 @@
 #   cd ~/exelixi/Pagos-Poliza-modulo
 #   bash scripts/build-gcia-produccion.sh
 #   unset PORT VITE_APP_BASE VITE_DEPLOY_PREFIX DATABASE_URL
-#   pm2 reload pagos-web
+#   pm2 delete pagos-web
+#   pm2 start ecosystem.config.js --only pagos-web --env production
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -29,4 +30,7 @@ echo ""
 echo "Verificar assets en dist/index.html (deben ser /assets/..., NO /pagos/assets/):"
 grep -o 'src="[^"]*"' dist/index.html | head -3
 echo ""
-echo "pm2 reload pagos-web"
+echo "Reiniciar preview (delete + start, NO reload — vite preview debe usar base /):"
+echo "  cd $ROOT && pm2 delete pagos-web"
+echo "  unset PORT VITE_APP_BASE VITE_DEPLOY_PREFIX DATABASE_URL"
+echo "  pm2 start ecosystem.config.js --only pagos-web --env production"
