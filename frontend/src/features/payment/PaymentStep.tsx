@@ -302,6 +302,29 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       payment: notification.payment,
     });
     if (genericCheckout) {
+      // Avisa al portal padre (iframe Autocasco) aunque falle el redirect.
+      try {
+        if (window.parent && window.parent !== window) {
+          const idOperacion =
+            checkoutPayload?.idOperacion
+            || checkout?.referenceId
+            || null;
+          window.parent.postMessage(
+            {
+              type: 'payment.success',
+              event: 'payment.success',
+              paymentVerified: true,
+              status: 'ok',
+              code: notification.code,
+              idOperacion,
+              referenceId: idOperacion,
+            },
+            '*',
+          );
+        }
+      } catch {
+        /* ignore */
+      }
       scheduleGenericCheckoutReturn({ checkoutPayload, checkoutRules });
     }
   }
@@ -727,12 +750,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
     };
     setPaymentVerified(true);
     setPaymentCapture(merged);
-    await triggerAutoEmit(merged);
-    await notifyClientCheckoutStatus({
-      checkout,
-      checkoutRules,
-      checkoutPayload,
-      paymentVerified: true,
+    await handlePaymentSuccessActions(merged, {
       code: capture.sypagoAfiliacionId ? 'DOMICILIACION_ACTIVA' : 'DOMICILIACION_AUTORIZADA',
       message: requireFirstThenDomiciliar
         ? (capture.sypagoAfiliacionId
