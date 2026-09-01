@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Build Pagos — cierrelmds / QA compartido (https://cierrelmds.exelixitech.com/pagos/).
+# NO usar en pagos.exelixitech.com (producción GCIA → scripts/build-prod.sh).
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"

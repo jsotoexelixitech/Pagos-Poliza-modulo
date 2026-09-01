@@ -30,7 +30,7 @@ jobs:
       - name: 🔨 Build frontend
         run: |
           cd /opt/services/Pagos-Poliza-modulo
-          npm run build --prefix frontend
+          bash scripts/build-cierrelmds.sh
 
       - name: 📋 Copiar dist a Nginx
         run: |
@@ -65,7 +65,7 @@ jobs:
       - name: 🔨 Build frontend
         run: |
           cd /opt/services/Pagos-Poliza-modulo
-          npm run build --prefix frontend
+          bash scripts/build-cierrelmds.sh
 
       - name: 📋 Copiar dist a Nginx
         run: |

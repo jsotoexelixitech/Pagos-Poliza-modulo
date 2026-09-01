@@ -34,9 +34,9 @@ git pull origin "$BRANCH"
 echo "📦 Instalando dependencias (npm run install:all)..."
 npm run install:all
 
-# 4. Compilar el frontend
+# 4. Compilar el frontend (cierrelmds: base ./ + prefijo /pagos)
 echo "🔨 Compilando frontend..."
-npm run build --prefix frontend
+bash scripts/build-cierrelmds.sh
 
 # 5. Copiar archivos compilados al directorio de Nginx
 echo "📋 Copiando dist/ → $NGINX_DIR"

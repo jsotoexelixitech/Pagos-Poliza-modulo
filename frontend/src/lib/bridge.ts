@@ -60,6 +60,10 @@ const HOST_TO_ORDER: Record<string, number> = {
   'form.200-75-131-138.sslip.io': 2,
   'emision.200-75-131-138.sslip.io': 3,
   'pagos.200-75-131-138.sslip.io': 4,
+  'ocr.exelixitech.com': 1,
+  'formulario.exelixitech.com': 2,
+  'emision.exelixitech.com': 3,
+  'pagos.exelixitech.com': 4,
 };
 
 // sessionStorage key usada por api.ts de cada módulo para inyectar el token
@@ -76,6 +80,10 @@ const HOST_TO_TOKEN_KEY: Record<string, string> = {
   'form.200-75-131-138.sslip.io': 'nexus_access_token_formulario',
   'emision.200-75-131-138.sslip.io': 'nexus_access_token_emision',
   'pagos.200-75-131-138.sslip.io': 'nexus_access_token_pagos',
+  'ocr.exelixitech.com': 'nexus_access_token_ocr',
+  'formulario.exelixitech.com': 'nexus_access_token_formulario',
+  'emision.exelixitech.com': 'nexus_access_token_emision',
+  'pagos.exelixitech.com': 'nexus_access_token_pagos',
 };
 
 function matchPathPrefix<T>(rules: [string, T][]): T | null {
