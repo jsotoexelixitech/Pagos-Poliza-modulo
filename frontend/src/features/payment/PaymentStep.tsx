@@ -152,6 +152,10 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
   }, [requireFirstThenDomiciliar, firstCuotaCapture, fraccionPhase]);
 
   const availableMethods = PAYMENT_OPTIONS.filter(opt => {
+    // Domiciliación solo para fraccionado (M/T/S). Anual/contado: pago móvil u OTP.
+    if (opt.method === 'domiciliacion' && !pagoFraccionado) {
+      return false;
+    }
     if (requireFirstThenDomiciliar) {
       if (fraccionPhase === 'cobro') {
         return opt.method === 'mobile' || opt.method === 'otp';
@@ -159,17 +163,11 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       return opt.method === 'domiciliacion';
     }
     if (pagoFraccionado) return opt.method === 'domiciliacion';
-    // QA / piloto: pago móvil simulado. OTP queda oculto; domiciliación sí se ofrece.
+    // QA / piloto: pago móvil simulado (sin OTP ni domiciliación en anual).
     if (mobilePaymentSimulated) {
-      return opt.method === 'mobile' || opt.method === 'domiciliacion';
+      return opt.method === 'mobile';
     }
     if (!isPaymentMethodEnabled(opt.method, config?.metodos)) return false;
-    // En flujo anual, domiciliación NO se ofrece por defecto.
-    // Solo se muestra si el checkout genérico la lista explícitamente en methods.
-    // El caso fraccionado ya está cubierto arriba (línea `if (pagoFraccionado)`).
-    if (opt.method === 'domiciliacion') {
-      return !!(genericCheckout && checkoutRules?.methods?.includes('domiciliacion'));
-    }
     if (genericCheckout && checkoutRules?.methods?.length) {
       return checkoutRules.methods.includes(opt.method);
     }
