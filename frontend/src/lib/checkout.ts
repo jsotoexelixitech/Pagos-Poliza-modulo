@@ -242,9 +242,17 @@ export function parseCheckoutRules(raw: unknown): CheckoutRules | null {
 
 /** ¿Exige pago verificado antes de continuar? */
 export function requiresPaymentBeforeContinue(
-  state: Pick<WizardState, 'checkout' | 'checkoutRules'>,
+  state: Pick<WizardState, 'checkout' | 'checkoutRules' | 'canalVisibility'>,
   funeralFlow: boolean,
 ): boolean {
+  const canalRequired = state.canalVisibility?.ui
+    ? state.canalVisibility.ui.mostrarPasoPago
+      && state.canalVisibility.ui.requierePagoVerificado
+    : null;
+
+  if (canalRequired === false) return false;
+  if (canalRequired === true) return true;
+
   if (hasGenericCheckout(state)) {
     return state.checkoutRules?.requirePayment !== false;
   }

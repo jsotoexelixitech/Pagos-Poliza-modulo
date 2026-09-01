@@ -21,6 +21,7 @@ import {
 } from '../../lib/checkout';
 import { notifyClientCheckoutStatus, mergePaymentNotifyFields } from '../../lib/checkout-notify';
 import { isPaymentMethodEnabled, isPagoFraccionado, resolveCheckoutFrecuencia } from '../../lib/payment-methods';
+import { isCanalPaymentMethodAllowed } from '../../lib/canal-visibility';
 import {
   releaseEmissionPopupSlots,
   reserveEmissionPopupSlots,
@@ -78,7 +79,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
     paymentMethod, setPaymentMethod,
     selectedPlan, quote, quoteState, vehicle,
     checkout, checkoutRules, checkoutPayer, checkoutPayload,
-    tomador, rcv, funeral, metadataCanal,
+    tomador, rcv, funeral, metadataCanal, canalVisibility,
     setQuote, setQuoteState,
     setPaymentVerified,
     setPaymentCapture,
@@ -173,6 +174,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       return opt.method === 'mobile';
     }
     if (!isPaymentMethodEnabled(opt.method, config?.metodos)) return false;
+    if (!isCanalPaymentMethodAllowed(opt.method, canalVisibility)) return false;
     if (genericCheckout && checkoutRules?.methods?.length) {
       return checkoutRules.methods.includes(opt.method);
     }

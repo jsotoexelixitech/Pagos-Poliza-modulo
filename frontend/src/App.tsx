@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useWizardStore } from './store/wizardStore';
 import { TopStepper } from './components/TopStepper';
 import { TopProgressBar } from './components/TopProgressBar';
@@ -19,6 +19,8 @@ import {
   requiresPaymentBeforeContinue,
 } from './lib/checkout';
 import { useNexusTokenMetadata } from './hooks/useNexusTokenMetadata';
+import { useCanalVisibility } from './hooks/useCanalVisibility';
+import { shouldShowPaymentStep } from './lib/canal-visibility';
 import { toast } from './store/toastStore';
 import {
   emissionPdfHint,
@@ -26,14 +28,16 @@ import {
   releaseEmissionPopupSlots,
   reserveEmissionPopupSlots,
 } from './lib/openEmissionPdfs';
-import { Zap, ShieldCheck, Sparkles } from 'lucide-react';
+import { Zap, ShieldCheck, Sparkles, Loader2 } from 'lucide-react';
 import type { PaymentEmitContext } from './types';
 
 export default function App() {
   useNexusTokenMetadata();
+  useCanalVisibility();
   const store = useWizardStore();
-  const { step, goTo, setPolicy } = store;
+  const { step, goTo, setPolicy, canalVisibility } = store;
   const [emitting, setEmitting] = useState(false);
+  const skipPaymentEmittedRef = useRef(false);
 
   const isSuccess = step === 6;
   const funeralFlow = isFunerario();
@@ -42,6 +46,7 @@ export default function App() {
   const genericCheckout = isGenericCheckoutMode(store);
   const embeddedCheckout = isEmbeddedMetadataCheckout(store);
   const paymentRequired = requiresPaymentBeforeContinue(store, funeralFlow);
+  const hidePaymentStep = shouldShowPaymentStep(canalVisibility) === false;
 
   /** Funerario legacy: emitir sin bloquear por verificación bancaria. */
   const canEmitFuneral = funeralFlow && !genericCheckout && !emitting;
@@ -400,6 +405,33 @@ export default function App() {
     }
   }
 
+  useEffect(() => {
+    if (!hidePaymentStep || genericCheckout || emitting || step !== 5 || isSuccess) return;
+    if (skipPaymentEmittedRef.current) return;
+    skipPaymentEmittedRef.current = true;
+
+    if (exelixiFlow) {
+      void handleContinuarExelixi();
+      return;
+    }
+    if (funeralFlow) {
+      void handleEmitir();
+      return;
+    }
+    if (rcvFlow) {
+      void handleContinuarRcv();
+    }
+  }, [
+    hidePaymentStep,
+    genericCheckout,
+    emitting,
+    step,
+    isSuccess,
+    exelixiFlow,
+    funeralFlow,
+    rcvFlow,
+  ]);
+
   return (
     <div className="min-h-screen relative">
       <WelcomeSplash />
@@ -444,20 +476,31 @@ export default function App() {
             <section className="surface-card overflow-hidden step-enter">
               <div className="p-6 sm:p-8 lg:p-10">
                 {!isSuccess && (
-                  <PaymentStep
-                    onPaymentVerified={
-                      exelixiFlow && !genericCheckout
-                        ? handleContinuarExelixi
-                        : rcvFlow && !genericCheckout
-                          ? handleContinuarRcv
-                          : undefined
-                    }
-                  />
+                  hidePaymentStep ? (
+                    <div className="flex flex-col items-center justify-center gap-4 py-16 text-center">
+                      <Loader2 className="h-10 w-10 animate-spin text-indigo-500" />
+                      <p className="text-slate-600 font-medium">
+                        {emitting
+                          ? 'Emitiendo póliza sin paso de pago…'
+                          : 'Preparando emisión según configuración del canal…'}
+                      </p>
+                    </div>
+                  ) : (
+                    <PaymentStep
+                      onPaymentVerified={
+                        exelixiFlow && !genericCheckout
+                          ? handleContinuarExelixi
+                          : rcvFlow && !genericCheckout
+                            ? handleContinuarRcv
+                            : undefined
+                      }
+                    />
+                  )
                 )}
                 {isSuccess && <SuccessStep />}
               </div>
 
-              {!isSuccess && !embeddedCheckout && (
+              {!isSuccess && !embeddedCheckout && !hidePaymentStep && (
                 <div className="hidden md:flex items-center justify-between gap-4 px-8 lg:px-10 py-5 border-t border-slate-100/80 bg-gradient-to-b from-slate-50/50 to-white/40 backdrop-blur-sm">
                   <div className="flex items-center gap-2 text-xs text-slate-500">
                     <ShieldCheck size={13} className="text-emerald-500" />
@@ -510,7 +553,7 @@ export default function App() {
         </main>
       </div>
 
-      {!isSuccess && !embeddedCheckout && (
+      {!isSuccess && !embeddedCheckout && !hidePaymentStep && (
         <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 px-4 py-3 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-[0_-8px_24px_rgba(15,23,42,0.08)]">
           {paymentRequired && !store.paymentVerified && (
             <p className="text-[0.65rem] font-semibold text-amber-700 text-center mb-2">
