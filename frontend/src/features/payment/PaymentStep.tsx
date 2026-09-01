@@ -20,7 +20,7 @@ import {
   scheduleGenericCheckoutReturn,
 } from '../../lib/checkout';
 import { notifyClientCheckoutStatus, mergePaymentNotifyFields } from '../../lib/checkout-notify';
-import { isPaymentMethodEnabled, isPagoFraccionado } from '../../lib/payment-methods';
+import { isPaymentMethodEnabled, isPagoFraccionado, resolveCheckoutFrecuencia } from '../../lib/payment-methods';
 import {
   releaseEmissionPopupSlots,
   reserveEmissionPopupSlots,
@@ -85,12 +85,22 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
   } = useWizardStore();
 
   const genericCheckout = isGenericCheckoutMode({ checkout });
+  const bridgeChained = typeof window !== 'undefined'
+    && Boolean(new URLSearchParams(window.location.search).get('sid'));
   const qaMobileBypass = isPaymentBypassEnabled();
   // Piloto Exélixi o QA RCV: el pago móvil se simula (sin conexión bancaria real).
   const mobilePaymentSimulated = !genericCheckout && (isExelixiCatalogProduct() || qaMobileBypass);
 
   const producto = new URLSearchParams(window.location.search).get('product') as 'rcv' | 'funerario' ?? 'rcv';
   const { config } = useProductConfig(EMPRESA_ID, producto, 'pagos');
+
+  const frecuenciaCode = resolveCheckoutFrecuencia({
+    checkoutPayload,
+    metadataCanal,
+    rcvFrecuencia: rcv?.frecuencia,
+    funeralFrecuencia: funeral?.frecuencia,
+    preferWizardFrecuencia: bridgeChained && !genericCheckout,
+  });
 
   const pagoFraccionado = isPagoFraccionado({
     fraccionado:
@@ -101,12 +111,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       checkoutPayload?.forma_pago ??
       checkoutPayload?.formaPago ??
       metadataCanal?.forma_pago,
-    frecuencia:
-      checkoutPayload?.ifrecuencia ??
-      checkoutPayload?.frecuencia ??
-      metadataCanal?.ifrecuencia ??
-      metadataCanal?.frecuencia ??
-      (producto === 'funerario' ? funeral?.frecuencia : rcv?.frecuencia),
+    frecuencia: frecuenciaCode,
   });
 
   /**
