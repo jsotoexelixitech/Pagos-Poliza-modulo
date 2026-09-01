@@ -1,16 +1,16 @@
 import { useLayoutEffect } from 'react';
-import { hydrateCheckoutFromAccessToken } from '../lib/checkout';
+import { applySsoCheckoutMetadata } from '../lib/checkout';
 
 /**
- * Lee metadata del nexus_token (patrón emisión / sso-delegate).
- * Prioridad: sid (bridge) > metadata del token.
- * También re-aplica si el token se renueva vía /api/access/verify.
+ * Fusiona metadata SSO (rules, checkout, canal) con el store.
+ * Con ?sid= el bridge hidrata la sesión; el token sigue como bootstrap.
+ * Re-aplica si el token se renueva vía /api/access/verify.
  */
 export function useNexusTokenMetadata() {
   useLayoutEffect(() => {
-    hydrateCheckoutFromAccessToken();
+    applySsoCheckoutMetadata();
 
-    const onTokenRefresh = () => hydrateCheckoutFromAccessToken();
+    const onTokenRefresh = () => applySsoCheckoutMetadata();
     window.addEventListener('nexus-token-refreshed', onTokenRefresh);
     return () => window.removeEventListener('nexus-token-refreshed', onTokenRefresh);
   }, []);

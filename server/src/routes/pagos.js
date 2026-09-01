@@ -7,7 +7,7 @@
  */
 const express = require('express');
 const crypto  = require('crypto');
-const rateLimit = require('express-rate-limit');
+const { rateLimit } = require('express-rate-limit');
 const { verifyMobilePayment } = require('../services/meritopClient');
 const sypagoClient = require('../services/sypagoClient');
 const sypagoStore  = require('../services/sypagoStore');
@@ -46,7 +46,6 @@ const otpConfirmLimiter = rateLimit({
   max: parseInt(process.env.RATE_LIMIT_OTP_CONFIRM, 10) || 2,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-  keyGenerator: (req) => req.ip,
   handler: (_req, res) => res.status(429).json({
     success: false,
     code: 'OTP_CONFIRM_RATE_LIMIT',

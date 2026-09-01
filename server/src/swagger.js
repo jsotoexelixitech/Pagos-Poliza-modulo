@@ -16,7 +16,7 @@ const options = {
 1. **Nexus API** — \`POST /api/auth/sso-delegate\` con \`target: "pagos"\`, \`x-api-key\` y metadata:
    - \`checkout.totalVes\` (monto obligatorio)
    - \`payload.notifyUrl\` (webhook HTTPS post-pago)
-   - \`rules.methods\`: \`mobile\` | \`otp\` | \`transfer\` | \`card\`
+   - \`rules.methods\`: \`mobile\` | \`otp\` | \`domiciliacion\` | \`transfer\` | \`card\`
 2. Redirigir al usuario a \`redirect_url\` (incluye \`nexus_token\`).
 3. Tras pago, Pagos llama a \`POST /api/checkout/notify\` → reenvía a \`notifyUrl\`.
 
@@ -35,6 +35,20 @@ Guía completa: **Nexus** \`docs/INTEGRACION-SSO-Y-PAGOS.md\` · Swagger Nexus: 
 1. \`POST /api/payments/otp/request\`
 2. \`POST /api/payments/otp/confirm\`
 3. \`GET  /api/payments/otp/status/:transactionId\`
+
+#### 3. Domiciliación (SyPago · débito automático de recibos)
+Proxy a Nest: \`/api/domiciliacion/*\`
+- \`GET  /api/domiciliacion/sypago/banks\`
+- \`GET  /api/domiciliacion/polizas?numeroPoliza=\`
+- \`POST /api/domiciliacion/domiciliaciones\`
+
+En checkout SSO (Hogar/Condominio): si no hay \`numeroPoliza\` se capturan los datos
+bancarios, se notifica \`DOMICILIACION_AUTORIZADA\` y se redirige a \`payload.successUrl\`.
+La afiliación SyPago ocurre al emitir (póliza + recibos en Sis2000).
+
+Tras un pago/domiciliación exitoso el webhook envía \`status: "success"\`, \`success: true\`
+y \`paymentVerified: true\`. Si \`rules.autoRedirect\` no es \`false\`, el navegador vuelve
+a \`payload.successUrl\`.
 
 ### Autenticación
 Todas las rutas \`/api/payments/*\` y \`/api/checkout/*\` requieren **\`Authorization: Bearer <nexus_token>\`**

@@ -9,6 +9,7 @@ import { Button } from './components/ui/Button';
 import { PaymentStep } from './features/payment/PaymentStep';
 import { SuccessStep } from './features/payment/SuccessStep';
 import { emitPolicy, emitFuneral, emitExelixiPolicy, PolicyEmitError } from './lib/api';
+import { registrarDomiciliacionForPolicy } from './lib/domiciliacion';
 import { isFunerario, isRcv, isExelixiCatalogProduct } from './lib/product';
 import { readStoredBuilderProduct } from './lib/exelixi-catalog';
 import {
@@ -23,6 +24,7 @@ import { toast } from './store/toastStore';
 import {
   emissionPdfHint,
   notifyEmissionSuccessAndOpenPdfs,
+  releaseEmissionPopupSlots,
 } from './lib/openEmissionPdfs';
 import { validateRcvEmitPersonas } from './lib/person-identificacion';
 import { Zap, ShieldCheck, Sparkles } from 'lucide-react';
@@ -124,11 +126,19 @@ export default function App() {
       checkout: snap.checkout,
       checkoutPayload: snap.checkoutPayload,
       quote: snap.quote,
-      funeralSubmissionId: snap.funeralSubmissionId,
+      funeralSubmissionId:
+        snap.funeralSubmissionId
+        || (typeof snap.checkoutPayload?.funeralSubmissionId === 'string'
+          ? snap.checkoutPayload.funeralSubmissionId
+          : undefined),
+      paymentSid:
+        typeof window !== 'undefined'
+          ? new URLSearchParams(window.location.search).get('sid') || undefined
+          : undefined,
     };
   }
 
-  function applyEmissionResult(
+  async function applyEmissionResult(
     result: Awaited<ReturnType<typeof emitPolicy>>,
     product: 'rcv' | 'funerario' | 'generic' = 'rcv',
   ) {
@@ -160,6 +170,8 @@ export default function App() {
       `Número ${result.policy.cnpoliza}${emissionPdfHint(openResult)}`,
       6000,
     );
+
+    await maybeRegisterDomiciliacion(result.policy);
 
     const meta = result.policy.metadata as { collectionError?: string; collectionSkipped?: string } | undefined;
     if (meta?.collectionError) {
@@ -222,7 +234,7 @@ export default function App() {
     setEmitting(true);
     try {
       const result = await emitExelixiPolicy({ state: buildExelixiEmitState(paymentCtx) });
-      applyEmissionResult(result, 'generic');
+      await applyEmissionResult(result, 'generic');
     } catch (err) {
       handleEmissionError(err);
     } finally {
@@ -258,7 +270,7 @@ export default function App() {
         frecuencia,
         ndias: ndias ?? undefined,
       });
-      applyEmissionResult(result, 'rcv');
+      await applyEmissionResult(result, 'rcv');
     } catch (err) {
       handleEmissionError(err);
     } finally {
@@ -359,7 +371,11 @@ export default function App() {
         : !canEmitRcv;
 
   const primaryLabel = genericCheckout
-    ? (emitting ? 'Procesando...' : 'Continuar')
+    ? (emitting
+      ? 'Emitiendo póliza...'
+      : funeralFlow && store.paymentVerified
+        ? 'Emitir póliza'
+        : 'Continuar')
     : exelixiFlow
       ? store.paymentVerified
         ? (emitting ? 'Emitiendo póliza Exélixi...' : 'Emitir póliza')
@@ -370,24 +386,12 @@ export default function App() {
         ? (emitting ? 'Emitiendo y activando recibo...' : 'Reemitir póliza')
         : (emitting ? 'Emitiendo póliza...' : 'Verificar pago para emitir');
 
-  async function handleEmitir() {
-    if (!funeralFlow) return;
+  async function handleContinuarFunerario(paymentCtx?: PaymentEmitContext) {
+    const snap = useWizardStore.getState();
+    const verified = paymentCtx?.paymentVerified ?? snap.paymentVerified;
+    const approved = isFuneralApprovedCheckout(snap);
 
-    if (!funeralApproved && !store.funeral?.healthQuestionnaireDone) {
-      toast.warning(
-        'Cuestionario pendiente',
-        'Completa el cuestionario de salud al confirmar el plan antes de emitir.',
-      );
-      return;
-    }
-    if (!funeralApproved && !store.funeral?.aceptaTerminos) {
-      toast.warning(
-        'Términos pendientes',
-        'Debes aceptar los términos en el cuestionario de salud.',
-      );
-      return;
-    }
-    if (paymentRequired && !store.paymentVerified) {
+    if (paymentRequired && !verified) {
       toast.warning(
         'Pago pendiente',
         'Verifica o confirma el pago con el banco antes de emitir.',
@@ -395,18 +399,38 @@ export default function App() {
       return;
     }
 
+    if (!approved && !snap.funeral?.healthQuestionnaireDone) {
+      toast.warning(
+        'Cuestionario pendiente',
+        'Completa el cuestionario de salud al confirmar el plan antes de emitir.',
+      );
+      return;
+    }
+    if (!approved && !snap.funeral?.aceptaTerminos) {
+      toast.warning(
+        'Términos pendientes',
+        'Debes aceptar los términos en el cuestionario de salud.',
+      );
+      return;
+    }
+
     setEmitting(true);
     try {
       const result = await emitFuneral({
-        state: buildFuneralEmitState(),
-        frecuencia: (store.funeral?.frecuencia as 'A' | 'S' | 'M' | 'T' | 'C') ?? 'M',
+        state: buildFuneralEmitState(paymentCtx),
+        frecuencia: (snap.funeral?.frecuencia as 'A' | 'S' | 'M' | 'T' | 'C') ?? 'M',
       });
-      applyEmissionResult(result, 'funerario');
+      await applyEmissionResult(result, 'funerario');
     } catch (err) {
       handleEmissionError(err);
     } finally {
       setEmitting(false);
     }
+  }
+
+  async function handleEmitir() {
+    if (!funeralFlow) return;
+    await handleContinuarFunerario();
   }
 
   return (
@@ -469,7 +493,9 @@ export default function App() {
                         ? handleContinuarExelixi
                         : rcvFlow && !genericCheckout
                           ? handleContinuarRcv
-                          : undefined
+                          : funeralFlow
+                            ? handleContinuarFunerario
+                            : undefined
                     }
                     onGenericCheckoutComplete={
                       genericCheckout ? handleGenericComplete : undefined
@@ -558,7 +584,55 @@ export default function App() {
   );
 }
 
+async function maybeRegisterDomiciliacion(
+  policy: { cnpoliza?: string; number?: string; internalPolicyId?: string },
+) {
+  const snap = useWizardStore.getState();
+  if (snap.paymentMethod !== 'domiciliacion') return;
+  const capture = snap.paymentCapture;
+  if (!capture?.numeroCuenta || !capture.bankCode) return;
+  if (capture.sypagoAfiliacionId) return;
+
+  const numeroPoliza = policy.cnpoliza || policy.number;
+  if (!numeroPoliza) return;
+
+  try {
+    const res = await registrarDomiciliacionForPolicy({
+      numeroPoliza,
+      polizaId: policy.internalPolicyId,
+      capture,
+    });
+    snap.setPaymentCapture({
+      ...capture,
+      reference: res.sypagoAfiliacionId ?? capture.reference,
+      sypagoAfiliacionId: res.sypagoAfiliacionId ?? undefined,
+    });
+    if (res.estado === 'ACTIVA') {
+      toast.success(
+        'Domiciliación activada',
+        res.sypagoMensaje || 'La cuenta quedó afiliada a SyPago para el cobro de recibos.',
+        7000,
+      );
+    } else {
+      toast.warning(
+        'Afiliación no activada',
+        res.sypagoMensaje || 'SyPago no activó la domiciliación. Revisa los datos bancarios.',
+        9000,
+      );
+    }
+  } catch (err) {
+    toast.warning(
+      'Póliza emitida — domiciliación pendiente',
+      err instanceof Error
+        ? err.message
+        : 'No se pudo afiliar la cuenta. Puedes registrarla luego en el módulo de domiciliación.',
+      10000,
+    );
+  }
+}
+
 function handleEmissionError(err: unknown) {
+  releaseEmissionPopupSlots();
   if (err instanceof PolicyEmitError) {
     switch (err.code) {
       case 'LAMUNDIAL_PLATE_ALREADY_INSURED':

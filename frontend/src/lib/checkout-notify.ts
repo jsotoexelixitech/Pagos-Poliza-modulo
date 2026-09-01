@@ -32,8 +32,9 @@ export async function notifyClientCheckoutStatus(params: {
     }
 
     if (params.paymentVerified) {
+      const domiciliacion = params.payment?.method === 'domiciliacion';
       toast.success(
-        'Pago verificado',
+        domiciliacion ? 'Domiciliación autorizada' : 'Pago verificado',
         'Tu sistema recibió la confirmación del pago.',
         5000,
       );

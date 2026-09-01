@@ -119,6 +119,8 @@ const initialState: WizardState = {
   product: 'rcv',
   documents: {
     cedula: defaultDoc(),
+    cedula_titular: defaultDoc(),
+    cedula_beneficiario: defaultDoc(),
     licencia: defaultDoc(),
     certificado: defaultDoc(),
     rif: defaultDoc(),
