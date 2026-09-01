@@ -364,4 +364,5 @@ export interface WizardState {
   funeralApprovedCheckout?: boolean;
   funeralSubmissionId?: string;
   funeralPaymentExpiresAt?: string;
+  paymentSid?: string;
 }

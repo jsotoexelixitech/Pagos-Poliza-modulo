@@ -126,7 +126,15 @@ export default function App() {
       checkout: snap.checkout,
       checkoutPayload: snap.checkoutPayload,
       quote: snap.quote,
-      funeralSubmissionId: snap.funeralSubmissionId,
+      funeralSubmissionId:
+        snap.funeralSubmissionId
+        || (typeof snap.checkoutPayload?.funeralSubmissionId === 'string'
+          ? snap.checkoutPayload.funeralSubmissionId
+          : undefined),
+      paymentSid:
+        typeof window !== 'undefined'
+          ? new URLSearchParams(window.location.search).get('sid') || undefined
+          : undefined,
     };
   }
 
