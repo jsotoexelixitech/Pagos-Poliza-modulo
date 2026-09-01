@@ -19,7 +19,7 @@ import {
   isPaymentBypassEnabled,
   scheduleGenericCheckoutReturn,
 } from '../../lib/checkout';
-import { notifyClientCheckoutStatus } from '../../lib/checkout-notify';
+import { notifyClientCheckoutStatus, mergePaymentNotifyFields } from '../../lib/checkout-notify';
 import { isPaymentMethodEnabled, isPagoFraccionado } from '../../lib/payment-methods';
 import {
   releaseEmissionPopupSlots,
@@ -297,7 +297,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       paymentVerified: true,
       code: notification.code,
       message: notification.message,
-      payment: notification.payment,
+      payment: mergePaymentNotifyFields(capture, notification.payment),
     });
     if (genericCheckout) {
       // Avisa al portal padre (iframe Autocasco) aunque falle el redirect.
@@ -489,7 +489,19 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       if (!completeFirstCuotaOrFinish(capture)) return;
       setPaymentVerified(true);
       setPaymentCapture(capture);
-      await triggerAutoEmit(capture);
+      await handlePaymentSuccessActions(capture, {
+        code: simulated.code || 'SIMULATED',
+        message: simulated.message || 'Pago simulado',
+        payment: {
+          method: 'mobile',
+          reference: simulated.reference,
+          amount: simAmount,
+          paidOn,
+          verifiedOn: simulated.verifiedOn,
+          code: simulated.code,
+          message: simulated.message,
+        },
+      });
       return;
     }
 
