@@ -27,17 +27,17 @@ jobs:
           cd /opt/services/Pagos-Poliza-modulo
           npm run install:all
 
-      - name: 🔨 Build frontend
+      - name: 🔨 Build frontend (PM2 + nexus proxy)
         run: |
           cd /opt/services/Pagos-Poliza-modulo
-          bash scripts/build-cierrelmds.sh
+          VITE_NEXUS_USE_MODULE_PROXY=1 bash scripts/build-cierrelmds.sh
 
-      - name: 📋 Copiar dist a Nginx
+      - name: ♻️ Recargar PM2 (pagos-api + pagos-web)
         run: |
-          cp -r /opt/services/Pagos-Poliza-modulo/frontend/dist/* /var/www/html/pagos/
-
-      - name: ♻️ Recargar API con PM2
-        run: pm2 reload pagos-api
+          cd /opt/services/Pagos-Poliza-modulo
+          unset PORT VITE_APP_BASE VITE_EMISSION_CONTINUE_BASE DATABASE_URL
+          pm2 reload pagos-api
+          pm2 restart pagos-web
 
       - name: ✅ Deploy DEV completado
         run: echo "Deploy a DEV finalizado correctamente — $(date)"
@@ -62,17 +62,17 @@ jobs:
           cd /opt/services/Pagos-Poliza-modulo
           npm run install:all
 
-      - name: 🔨 Build frontend
+      - name: 🔨 Build frontend (PM2 + nexus proxy)
         run: |
           cd /opt/services/Pagos-Poliza-modulo
-          bash scripts/build-cierrelmds.sh
+          VITE_NEXUS_USE_MODULE_PROXY=1 bash scripts/build-cierrelmds.sh
 
-      - name: 📋 Copiar dist a Nginx
+      - name: ♻️ Recargar PM2 (pagos-api + pagos-web)
         run: |
-          cp -r /opt/services/Pagos-Poliza-modulo/frontend/dist/* /var/www/html/pagos/
-
-      - name: ♻️ Recargar API con PM2
-        run: pm2 reload pagos-api
+          cd /opt/services/Pagos-Poliza-modulo
+          unset PORT VITE_APP_BASE VITE_EMISSION_CONTINUE_BASE DATABASE_URL
+          pm2 reload pagos-api
+          pm2 restart pagos-web
 
       - name: ✅ Deploy QA completado
         run: echo "Deploy a QA finalizado correctamente — $(date)"

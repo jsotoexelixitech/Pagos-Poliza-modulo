@@ -3,6 +3,7 @@
  *
  * Uso:
  *   pm2 start ecosystem.config.js --env production
+ *   pm2 start ecosystem.config.js --env qa          # srv001qa
  *   pm2 stop pagos-api pagos-web
  */
 const path = require('path');
@@ -19,6 +20,11 @@ module.exports = {
       watch: false,
       max_memory_restart: '256M',
       env_production: {
+        NODE_ENV: 'production',
+        PORT: 4003,
+      },
+      /** srv001qa (nexusqa) — CORS y orígenes del portal QA */
+      env_qa: {
         NODE_ENV: 'production',
         PORT: 4003,
       },
