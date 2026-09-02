@@ -279,6 +279,7 @@ function makeBridge(): BridgeAPI {
         || k === 'rules'
         || k === 'payload'
         || k === 'payer'
+        || k === 'canalVisibility'
       ) {
         continue;
       }
@@ -372,6 +373,7 @@ function makeBridge(): BridgeAPI {
       }
       // eslint-disable-next-line no-console
       console.info('[bridge] hydrated session', sid);
+      window.dispatchEvent(new CustomEvent('bridge-hydrated'));
     } catch (e) {
       // eslint-disable-next-line no-console
       console.warn('[bridge] hydrate failed', e);

@@ -54,19 +54,21 @@ export default function App() {
 
   /** Funerario legacy: emitir sin bloquear por verificación bancaria. */
   const canEmitFuneral = funeralFlow && !genericCheckout && !emitting;
-  /** RCV legacy: exige pago verificado salvo bypass QA. */
+  const canEmitWithOptionalPayment =
+    !paymentRequired || store.paymentVerified || emitPendingMode;
+  /** RCV legacy: exige pago verificado salvo emisión pendiente (tipoEmision emit). */
   const canEmitRcv =
     rcvFlow &&
     !exelixiFlow &&
     !genericCheckout &&
     !emitting &&
-    (!paymentRequired || store.paymentVerified);
-  /** Exélixi catálogo: emite vía product-emission tras pago (o bypass QA). */
+    canEmitWithOptionalPayment;
+  /** Exélixi catálogo: emite vía product-emission tras pago (o bypass QA / emit pendiente). */
   const canEmitExelixi =
     exelixiFlow &&
     !genericCheckout &&
     !emitting &&
-    (!paymentRequired || store.paymentVerified);
+    canEmitWithOptionalPayment;
   /** Checkout genérico: respeta rules.requirePayment. */
   const canCompleteGeneric =
     genericCheckout &&
@@ -210,7 +212,8 @@ export default function App() {
   async function handleContinuarExelixi(paymentCtx?: PaymentEmitContext) {
     const snap = useWizardStore.getState();
     const verified = paymentCtx?.paymentVerified ?? snap.paymentVerified;
-    if (paymentRequired && !verified) {
+    const pendingEmit = allowsEmitPending(snap.canalVisibility, snap.metadataCanal);
+    if (paymentRequired && !verified && !pendingEmit) {
       toast.warning(
         'Pago pendiente',
         'Verifica o confirma el pago con el banco antes de emitir.',
@@ -234,7 +237,8 @@ export default function App() {
   async function handleContinuarRcv(paymentCtx?: PaymentEmitContext) {
     const snap = useWizardStore.getState();
     const verified = paymentCtx?.paymentVerified ?? snap.paymentVerified;
-    if (paymentRequired && !verified) {
+    const pendingEmit = allowsEmitPending(snap.canalVisibility, snap.metadataCanal);
+    if (paymentRequired && !verified && !pendingEmit) {
       toast.warning(
         'Pago pendiente',
         'Verifica o confirma el pago con el banco antes de continuar.',
@@ -341,13 +345,28 @@ export default function App() {
     void handleContinuarRcv();
   }
 
+  function handleEmitPending() {
+    if (exelixiFlow) {
+      void handleContinuarExelixi();
+      return;
+    }
+    void handleContinuarRcv();
+  }
+
+  const showEmitPendingButton =
+    emitPendingMode && !store.paymentVerified && !genericCheckout && !funeralFlow;
+  const canEmitPendingNow =
+    showEmitPendingButton && (exelixiFlow ? canEmitExelixi : canEmitRcv);
+
   const primaryDisabled = genericCheckout
     ? !canCompleteGeneric
     : exelixiFlow
       ? !canEmitExelixi
       : funeralFlow
         ? !canEmitFuneral
-        : !canEmitRcv;
+        : showEmitPendingButton
+          ? !store.paymentVerified || !canEmitRcv
+          : !canEmitRcv;
 
   const pendingPaymentHint = store.paymentMethod === 'domiciliacion'
     ? 'Autoriza la domiciliación para continuar'
@@ -355,9 +374,7 @@ export default function App() {
 
   const verifyToEmitLabel = store.paymentMethod === 'domiciliacion'
     ? 'Autoriza la domiciliación para emitir'
-    : emitPendingMode && !store.paymentVerified
-      ? 'Emitir como pendiente'
-      : 'Verificar pago para emitir';
+    : 'Verificar pago para emitir';
 
   const primaryLabel = genericCheckout
     ? (emitting ? 'Procesando...' : 'Continuar')
@@ -530,29 +547,48 @@ export default function App() {
                       {pendingPaymentHint}
                     </p>
                   )}
-                  <Button
-                    variant="primary"
-                    onClick={handlePrimaryAction}
-                    disabled={primaryDisabled}
-                    className="min-w-[180px]"
-                    title={
-                      paymentRequired && !store.paymentVerified
-                        ? pendingPaymentHint
-                        : undefined
-                    }
-                  >
-                    {emitting ? (
-                      <>
-                        <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin-slow" />
-                        {primaryLabel}
-                      </>
-                    ) : (
-                      <>
-                        <Zap size={15} fill="currentColor" />
-                        {primaryLabel}
-                      </>
+                  <div className="flex items-center gap-2">
+                    {showEmitPendingButton && (
+                      <Button
+                        variant="secondary"
+                        onClick={handleEmitPending}
+                        disabled={!canEmitPendingNow}
+                        className="min-w-[180px]"
+                      >
+                        {emitting ? (
+                          <>
+                            <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-indigo-400/40 border-t-indigo-600 animate-spin-slow" />
+                            Emitiendo…
+                          </>
+                        ) : (
+                          'Emitir como pendiente'
+                        )}
+                      </Button>
                     )}
-                  </Button>
+                    <Button
+                      variant="primary"
+                      onClick={handlePrimaryAction}
+                      disabled={primaryDisabled}
+                      className="min-w-[180px]"
+                      title={
+                        paymentRequired && !store.paymentVerified && !emitPendingMode
+                          ? pendingPaymentHint
+                          : undefined
+                      }
+                    >
+                      {emitting && !showEmitPendingButton ? (
+                        <>
+                          <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin-slow" />
+                          {primaryLabel}
+                        </>
+                      ) : (
+                        <>
+                          <Zap size={15} fill="currentColor" />
+                          {primaryLabel}
+                        </>
+                      )}
+                    </Button>
+                  </div>
                 </div>
                 </div>
               )}
@@ -583,13 +619,23 @@ export default function App() {
               {pendingPaymentHint}
             </p>
           )}
+          {showEmitPendingButton && (
+            <Button
+              variant="secondary"
+              className="w-full mb-2"
+              onClick={handleEmitPending}
+              disabled={!canEmitPendingNow}
+            >
+              {emitting ? 'Emitiendo…' : 'Emitir como pendiente'}
+            </Button>
+          )}
           <Button
             variant="primary"
             className="w-full"
             onClick={handlePrimaryAction}
             disabled={primaryDisabled}
             title={
-              paymentRequired && !store.paymentVerified
+              paymentRequired && !store.paymentVerified && !emitPendingMode
                 ? pendingPaymentHint
                 : undefined
             }

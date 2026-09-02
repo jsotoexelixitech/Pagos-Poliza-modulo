@@ -1,5 +1,7 @@
 import { useLayoutEffect } from 'react';
 import { hydrateCheckoutFromAccessToken } from '../lib/checkout';
+import { getSsoMetadataFromBrowser } from '../lib/sso-metadata';
+import { useWizardStore } from '../store/wizardStore';
 
 /**
  * Lee metadata del nexus_token (patrón emisión / sso-delegate).
@@ -11,7 +13,20 @@ export function useNexusTokenMetadata() {
   useLayoutEffect(() => {
     hydrateCheckoutFromAccessToken();
 
-    const onTokenRefresh = () => hydrateCheckoutFromAccessToken();
+    const meta = getSsoMetadataFromBrowser();
+    if (meta) {
+      const store = useWizardStore.getState();
+      store.setMetadataCanal({ ...(store.metadataCanal || {}), ...meta });
+    }
+
+    const onTokenRefresh = () => {
+      hydrateCheckoutFromAccessToken();
+      const refreshed = getSsoMetadataFromBrowser();
+      if (refreshed) {
+        const store = useWizardStore.getState();
+        store.setMetadataCanal({ ...(store.metadataCanal || {}), ...refreshed });
+      }
+    };
     window.addEventListener('nexus-token-refreshed', onTokenRefresh);
     return () => window.removeEventListener('nexus-token-refreshed', onTokenRefresh);
   }, []);

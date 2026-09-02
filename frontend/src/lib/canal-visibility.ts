@@ -137,6 +137,7 @@ export function resolveEntityFromMetadata(
     ? String(metadata.centidad).trim().toUpperCase()
     : '';
   const citemRaw = metadata.citem
+    ?? (centidad === 'P' ? metadata.cproductor : null)
     ?? (centidad === 'C' ? (metadata.ccanalalt_in ?? metadata.ccanalalt) : null);
   const citem = citemRaw != null && citemRaw !== '' ? String(citemRaw).trim() : '';
 
