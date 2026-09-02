@@ -1,10 +1,18 @@
 /** Visibilidad de canal (nest-api GET /canal/visibility). */
+import { isBridgeChained } from './bridge-session';
 export type MetodoPagoExelixi =
   | 'mobile'
   | 'otp'
   | 'domiciliacion'
   | 'mobile_bancamiga'
   | 'ubii';
+
+export type TipoEmisionCanal =
+  | 'emit'
+  | 'emit_pay'
+  | 'emit_libre_pago'
+  | 'emit_convenio'
+  | 'emit_garage_plus';
 
 export interface CanalVisibilityUi {
   mostrarPasoPago: boolean;
@@ -20,7 +28,7 @@ export interface CanalVisibility {
   cscanalalt?: number | null;
   cproducto?: string;
   cramo?: number;
-  tipoEmision: string | null;
+  tipoEmision: TipoEmisionCanal | string | null;
   tipoPago: string[];
   planes: Array<{
     cplan: string;
@@ -29,6 +37,41 @@ export interface CanalVisibility {
     cproducto?: string;
   }>;
   ui: CanalVisibilityUi;
+}
+
+function mapTipoPagoToMetodos(tipoPago: string[]): MetodoPagoExelixi[] {
+  const metodos = new Set<MetodoPagoExelixi>();
+  for (const raw of tipoPago) {
+    const value = String(raw).trim().toLowerCase();
+    if (value.includes('meritop') || value.includes('activo')) metodos.add('mobile');
+    if (value.includes('sypago')) {
+      metodos.add('otp');
+      metodos.add('domiciliacion');
+    }
+    if (value.includes('bancamiga')) metodos.add('mobile_bancamiga');
+    if (value.includes('ubii')) metodos.add('ubii');
+  }
+  return [...metodos];
+}
+
+export function resolveAllowedPaymentMethods(
+  canalVisibility: CanalVisibility | null | undefined,
+): MetodoPagoExelixi[] | null {
+  if (!canalVisibility) return null;
+  const fromUi = canalVisibility.ui?.metodosPago;
+  if (fromUi?.length) return fromUi;
+  if (canalVisibility.tipoPago?.length) {
+    return mapTipoPagoToMetodos(canalVisibility.tipoPago);
+  }
+  return null;
+}
+
+/** Solo aplica reglas Sis2000 en flujo bridge (?sid=). Standalone ignora canalVisibility. */
+export function effectiveCanalVisibility(
+  canalVisibility: CanalVisibility | null | undefined,
+): CanalVisibility | null | undefined {
+  if (!isBridgeChained()) return null;
+  return canalVisibility;
 }
 
 export function resolveCcanalaltFromMetadata(
@@ -75,23 +118,38 @@ export function resolveEntityFromMetadata(
 export function shouldRequirePaymentVerification(
   canalVisibility: CanalVisibility | null | undefined,
 ): boolean | null {
-  if (!canalVisibility?.ui) return null;
-  if (!canalVisibility.ui.mostrarPasoPago) return false;
-  return canalVisibility.ui.requierePagoVerificado;
+  const effective = effectiveCanalVisibility(canalVisibility);
+  if (!effective?.ui) return null;
+  if (!effective.ui.mostrarPasoPago) return false;
+  return effective.ui.requierePagoVerificado;
 }
 
 export function shouldShowPaymentStep(
   canalVisibility: CanalVisibility | null | undefined,
 ): boolean | null {
-  if (!canalVisibility?.ui) return null;
-  return canalVisibility.ui.mostrarPasoPago;
+  const effective = effectiveCanalVisibility(canalVisibility);
+  if (!effective?.ui) return null;
+  return effective.ui.mostrarPasoPago;
 }
 
 export function isCanalPaymentMethodAllowed(
   method: string,
   canalVisibility: CanalVisibility | null | undefined,
 ): boolean {
-  const allowed = canalVisibility?.ui?.metodosPago;
+  const effective = effectiveCanalVisibility(canalVisibility);
+  const allowed = resolveAllowedPaymentMethods(effective);
   if (!allowed?.length) return true;
   return allowed.includes(method as MetodoPagoExelixi);
+}
+
+/** Etiqueta legible del tipo de emisión Sis2000 (matipoemision). */
+export function labelTipoEmision(tipo: string | null | undefined): string | null {
+  switch (tipo) {
+    case 'emit': return 'Emisión pendiente';
+    case 'emit_pay': return 'Emisión paga';
+    case 'emit_libre_pago': return 'Emisión libre pago';
+    case 'emit_convenio': return 'Emisión convenio';
+    case 'emit_garage_plus': return 'Emisión + Garage Plus';
+    default: return null;
+  }
 }

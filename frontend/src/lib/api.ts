@@ -578,6 +578,10 @@ export const catalogoApi = {
     const qs = new URLSearchParams();
     if (params?.cproducto) qs.set('cproducto', params.cproducto);
     if (params?.cramo != null) qs.set('cramo', String(params.cramo));
+    if (typeof window !== 'undefined'
+      && new URLSearchParams(window.location.search).get('sid')) {
+      qs.set('bridge', '1');
+    }
     const query = qs.toString();
     return api.get<{ success: boolean; canalVisibility: CanalVisibility | null }>(
       `/catalogo/canal-visibility${query ? `?${query}` : ''}`,

@@ -5,6 +5,7 @@ import type {
   WizardState,
 } from '../types';
 import { useWizardStore } from '../store/wizardStore';
+import { effectiveCanalVisibility } from './canal-visibility';
 
 function decodeTokenPayload(token: string): Record<string, unknown> | null {
   try {
@@ -245,9 +246,10 @@ export function requiresPaymentBeforeContinue(
   state: Pick<WizardState, 'checkout' | 'checkoutRules' | 'canalVisibility'>,
   funeralFlow: boolean,
 ): boolean {
-  const canalRequired = state.canalVisibility?.ui
-    ? state.canalVisibility.ui.mostrarPasoPago
-      && state.canalVisibility.ui.requierePagoVerificado
+  const canal = effectiveCanalVisibility(state.canalVisibility);
+  const canalRequired = canal?.ui
+    ? canal.ui.mostrarPasoPago
+      && canal.ui.requierePagoVerificado
     : null;
 
   if (canalRequired === false) return false;
