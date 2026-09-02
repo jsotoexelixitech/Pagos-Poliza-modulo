@@ -99,6 +99,8 @@ export interface Plan {
   sumaAsegurada: number;
   /** Sufijo opcional para la suma asegurada (ej. "/unidad") */
   sumaAseguradaUnit?: string;
+  /** Producto Sis2000 — usado para visibilidad de canal y reglas de pago */
+  cproducto?: string;
 }
 
 export type PaymentMethod = 'card' | 'transfer' | 'mobile' | 'otp' | 'domiciliacion';
