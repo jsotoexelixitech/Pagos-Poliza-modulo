@@ -20,7 +20,7 @@ import {
 } from './lib/checkout';
 import { useNexusTokenMetadata } from './hooks/useNexusTokenMetadata';
 import { useCanalVisibility } from './hooks/useCanalVisibility';
-import { shouldShowPaymentStep } from './lib/canal-visibility';
+import { shouldShowPaymentStep, allowsEmitPending, labelTipoEmision, effectiveCanalVisibility } from './lib/canal-visibility';
 import { toast } from './store/toastStore';
 import {
   emissionPdfHint,
@@ -35,7 +35,7 @@ export default function App() {
   useNexusTokenMetadata();
   useCanalVisibility();
   const store = useWizardStore();
-  const { step, goTo, setPolicy, canalVisibility } = store;
+  const { step, goTo, setPolicy, canalVisibility, metadataCanal } = store;
   const [emitting, setEmitting] = useState(false);
   const skipPaymentEmittedRef = useRef(false);
 
@@ -46,7 +46,11 @@ export default function App() {
   const genericCheckout = isGenericCheckoutMode(store);
   const embeddedCheckout = isEmbeddedMetadataCheckout(store);
   const paymentRequired = requiresPaymentBeforeContinue(store, funeralFlow);
-  const hidePaymentStep = shouldShowPaymentStep(canalVisibility) === false;
+  const hidePaymentStep = shouldShowPaymentStep(canalVisibility, metadataCanal) === false;
+  const emitPendingMode = allowsEmitPending(canalVisibility, metadataCanal);
+  const tipoEmisionLabel = labelTipoEmision(
+    effectiveCanalVisibility(canalVisibility, metadataCanal)?.tipoEmision,
+  );
 
   /** Funerario legacy: emitir sin bloquear por verificación bancaria. */
   const canEmitFuneral = funeralFlow && !genericCheckout && !emitting;
@@ -351,7 +355,9 @@ export default function App() {
 
   const verifyToEmitLabel = store.paymentMethod === 'domiciliacion'
     ? 'Autoriza la domiciliación para emitir'
-    : 'Verificar pago para emitir';
+    : emitPendingMode && !store.paymentVerified
+      ? 'Emitir como pendiente'
+      : 'Verificar pago para emitir';
 
   const primaryLabel = genericCheckout
     ? (emitting ? 'Procesando...' : 'Continuar')
@@ -466,8 +472,15 @@ export default function App() {
                         ? 'Al verificar el pago, tu sistema recibirá el resultado automáticamente.'
                         : genericCheckout
                           ? 'Revisa el detalle y confirma el método de pago.'
-                          : 'Una conexión cifrada protege la operación de extremo a extremo.'}
+                          : emitPendingMode
+                            ? 'Puedes registrar el pago ahora o emitir la póliza con recibo pendiente de cobro.'
+                            : 'Una conexión cifrada protege la operación de extremo a extremo.'}
                     </p>
+                    {tipoEmisionLabel && (
+                      <p className="text-[0.65rem] font-bold uppercase tracking-wider text-indigo-600 mt-2">
+                        Tipo de emisión: {tipoEmisionLabel}
+                      </p>
+                    )}
                   </div>
                 </div>
               </header>
@@ -507,7 +520,12 @@ export default function App() {
                     <span className="font-medium">Cifrado de extremo a extremo · TLS 1.3</span>
                   </div>
                 <div className="flex flex-col items-end gap-1.5">
-                  {paymentRequired && !store.paymentVerified && (
+                  {emitPendingMode && !store.paymentVerified && (
+                    <p className="text-[0.65rem] font-semibold text-indigo-700">
+                      Opcional: verifica el pago o emite con recibo pendiente
+                    </p>
+                  )}
+                  {paymentRequired && !store.paymentVerified && !emitPendingMode && (
                     <p className="text-[0.65rem] font-semibold text-amber-700">
                       {pendingPaymentHint}
                     </p>
@@ -555,7 +573,12 @@ export default function App() {
 
       {!isSuccess && !embeddedCheckout && !hidePaymentStep && (
         <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 px-4 py-3 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-[0_-8px_24px_rgba(15,23,42,0.08)]">
-          {paymentRequired && !store.paymentVerified && (
+          {emitPendingMode && !store.paymentVerified && (
+            <p className="text-[0.65rem] font-semibold text-indigo-700 text-center mb-2">
+              Opcional: verifica el pago o emite con recibo pendiente
+            </p>
+          )}
+          {paymentRequired && !store.paymentVerified && !emitPendingMode && (
             <p className="text-[0.65rem] font-semibold text-amber-700 text-center mb-2">
               {pendingPaymentHint}
             </p>

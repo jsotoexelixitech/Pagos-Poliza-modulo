@@ -574,14 +574,14 @@ export const catalogoApi = {
   /** Resuelve texto libre (de OCR) → cmarca + cmodelo + versiones en una sola llamada */
   resolver: (fano: number, marca: string, modelo: string) =>
     api.get<ResolverResult>(`/catalogo/resolver?fano=${fano}&marca=${encodeURIComponent(marca)}&modelo=${encodeURIComponent(modelo)}`),
-  canalVisibility: (params?: { cproducto?: string; cramo?: number }) => {
+  canalVisibility: (params?: { cproducto?: string; cramo?: number; bridge?: boolean }) => {
     const qs = new URLSearchParams();
     if (params?.cproducto) qs.set('cproducto', params.cproducto);
     if (params?.cramo != null) qs.set('cramo', String(params.cramo));
-    if (typeof window !== 'undefined'
-      && new URLSearchParams(window.location.search).get('sid')) {
-      qs.set('bridge', '1');
-    }
+    const bridged = params?.bridge
+      || (typeof window !== 'undefined'
+        && Boolean(new URLSearchParams(window.location.search).get('sid')));
+    if (bridged) qs.set('bridge', '1');
     const query = qs.toString();
     return api.get<{ success: boolean; canalVisibility: CanalVisibility | null }>(
       `/catalogo/canal-visibility${query ? `?${query}` : ''}`,

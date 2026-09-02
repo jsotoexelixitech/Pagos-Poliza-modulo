@@ -21,7 +21,7 @@ import {
 } from '../../lib/checkout';
 import { notifyClientCheckoutStatus, mergePaymentNotifyFields } from '../../lib/checkout-notify';
 import { isPaymentMethodEnabled, isPagoFraccionado, resolveCheckoutFrecuencia } from '../../lib/payment-methods';
-import { isCanalPaymentMethodAllowed } from '../../lib/canal-visibility';
+import { allowsEmitPending, isCanalPaymentMethodAllowed } from '../../lib/canal-visibility';
 import {
   releaseEmissionPopupSlots,
   reserveEmissionPopupSlots,
@@ -86,6 +86,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
   } = useWizardStore();
 
   const genericCheckout = isGenericCheckoutMode({ checkout });
+  const emitPendingMode = allowsEmitPending(canalVisibility, metadataCanal);
   const bridgeChained = typeof window !== 'undefined'
     && Boolean(new URLSearchParams(window.location.search).get('sid'));
   const qaMobileBypass = isPaymentBypassEnabled();
@@ -174,7 +175,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       return opt.method === 'mobile';
     }
     if (!isPaymentMethodEnabled(opt.method, config?.metodos)) return false;
-    if (!isCanalPaymentMethodAllowed(opt.method, canalVisibility)) return false;
+    if (!isCanalPaymentMethodAllowed(opt.method, canalVisibility, metadataCanal)) return false;
     if (genericCheckout && checkoutRules?.methods?.length) {
       return checkoutRules.methods.includes(opt.method);
     }
@@ -802,8 +803,17 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       <p className="text-slate-500 text-sm leading-relaxed -mt-2">
         {genericCheckout
           ? 'Selecciona el método de pago y confirma la operación. La conexión está cifrada de extremo a extremo.'
-          : 'Confirma el método de pago y emite la póliza. La operación está cifrada de extremo a extremo.'}
+          : emitPendingMode
+            ? 'Registra el pago si el cliente ya pagó, o emite la póliza con recibo pendiente de cobro.'
+            : 'Confirma el método de pago y emite la póliza. La operación está cifrada de extremo a extremo.'}
       </p>
+
+      {emitPendingMode && !genericCheckout && (
+        <div className="rounded-xl border border-indigo-200 bg-indigo-50/80 px-4 py-3 text-sm text-indigo-900">
+          <strong>Emisión pendiente.</strong> Este gestor puede emitir sin verificar el pago en línea.
+          Usa el botón <em>Emitir como pendiente</em> al final del paso.
+        </div>
+      )}
 
       {/* Total bar */}
       <div className="rounded-2xl border-2 border-indigo-200 bg-gradient-to-r from-indigo-50/80 via-violet-50/40 to-fuchsia-50/30 p-5 flex items-center justify-between flex-wrap gap-4 relative overflow-hidden">

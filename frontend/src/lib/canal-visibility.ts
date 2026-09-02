@@ -66,12 +66,39 @@ export function resolveAllowedPaymentMethods(
   return null;
 }
 
-/** Solo aplica reglas Sis2000 en flujo bridge (?sid=). Standalone ignora canalVisibility. */
+/**
+ * Aplica reglas Sis2000 cuando hay contexto de canal/gestor:
+ * - flujo bridge (?sid=), o
+ * - SSO SysIP con centidad/citem en metadata del token.
+ */
+export function shouldApplyCanalRules(
+  metadataCanal?: Record<string, unknown> | null,
+): boolean {
+  if (isBridgeChained()) return true;
+  return resolveEntityFromMetadata(metadataCanal) != null;
+}
+
+/** Ignora canalVisibility si no hay contexto Sis2000 (standalone sin metadata). */
 export function effectiveCanalVisibility(
   canalVisibility: CanalVisibility | null | undefined,
+  metadataCanal?: Record<string, unknown> | null,
 ): CanalVisibility | null | undefined {
-  if (!isBridgeChained()) return null;
+  if (!shouldApplyCanalRules(metadataCanal)) return null;
   return canalVisibility;
+}
+
+/** tipoEmision `emit`: puede emitir sin pago verificado (recibo pendiente en Sis2000). */
+export function allowsEmitPending(
+  canalVisibility: CanalVisibility | null | undefined,
+  metadataCanal?: Record<string, unknown> | null,
+): boolean {
+  const effective = effectiveCanalVisibility(canalVisibility, metadataCanal);
+  if (!effective?.ui) return false;
+  if (!effective.ui.mostrarPasoPago) return false;
+  return (
+    effective.tipoEmision === 'emit'
+    && !effective.ui.requierePagoVerificado
+  );
 }
 
 export function resolveCcanalaltFromMetadata(
@@ -117,8 +144,9 @@ export function resolveEntityFromMetadata(
 
 export function shouldRequirePaymentVerification(
   canalVisibility: CanalVisibility | null | undefined,
+  metadataCanal?: Record<string, unknown> | null,
 ): boolean | null {
-  const effective = effectiveCanalVisibility(canalVisibility);
+  const effective = effectiveCanalVisibility(canalVisibility, metadataCanal);
   if (!effective?.ui) return null;
   if (!effective.ui.mostrarPasoPago) return false;
   return effective.ui.requierePagoVerificado;
@@ -126,8 +154,9 @@ export function shouldRequirePaymentVerification(
 
 export function shouldShowPaymentStep(
   canalVisibility: CanalVisibility | null | undefined,
+  metadataCanal?: Record<string, unknown> | null,
 ): boolean | null {
-  const effective = effectiveCanalVisibility(canalVisibility);
+  const effective = effectiveCanalVisibility(canalVisibility, metadataCanal);
   if (!effective?.ui) return null;
   return effective.ui.mostrarPasoPago;
 }
@@ -135,8 +164,9 @@ export function shouldShowPaymentStep(
 export function isCanalPaymentMethodAllowed(
   method: string,
   canalVisibility: CanalVisibility | null | undefined,
+  metadataCanal?: Record<string, unknown> | null,
 ): boolean {
-  const effective = effectiveCanalVisibility(canalVisibility);
+  const effective = effectiveCanalVisibility(canalVisibility, metadataCanal);
   const allowed = resolveAllowedPaymentMethods(effective);
   if (!allowed?.length) return true;
   return allowed.includes(method as MetodoPagoExelixi);

@@ -243,10 +243,10 @@ export function parseCheckoutRules(raw: unknown): CheckoutRules | null {
 
 /** ¿Exige pago verificado antes de continuar? */
 export function requiresPaymentBeforeContinue(
-  state: Pick<WizardState, 'checkout' | 'checkoutRules' | 'canalVisibility'>,
+  state: Pick<WizardState, 'checkout' | 'checkoutRules' | 'canalVisibility' | 'metadataCanal'>,
   funeralFlow: boolean,
 ): boolean {
-  const canal = effectiveCanalVisibility(state.canalVisibility);
+  const canal = effectiveCanalVisibility(state.canalVisibility, state.metadataCanal);
   const canalRequired = canal?.ui
     ? canal.ui.mostrarPasoPago
       && canal.ui.requierePagoVerificado

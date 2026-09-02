@@ -1,12 +1,11 @@
 import { useEffect } from 'react';
 import { catalogoApi } from '../lib/api';
-import { resolveEntityFromMetadata } from '../lib/canal-visibility';
-import { isBridgeChained } from '../lib/bridge-session';
+import { resolveEntityFromMetadata, shouldApplyCanalRules } from '../lib/canal-visibility';
 import { useWizardStore } from '../store/wizardStore';
 import { isRcv } from '../lib/product';
 
 /**
- * Carga visibilidad de canal en flujo bridge (?sid=) si no vino hidratada desde Emisión.
+ * Carga visibilidad de canal (bridge o SSO SysIP con centidad/citem en metadata).
  */
 export function useCanalVisibility(): void {
   const metadataCanal = useWizardStore((s) => s.metadataCanal);
@@ -15,7 +14,7 @@ export function useCanalVisibility(): void {
   const selectedPlan = useWizardStore((s) => s.selectedPlan);
 
   useEffect(() => {
-    if (!isBridgeChained()) return;
+    if (!shouldApplyCanalRules(metadataCanal)) return;
     if (canalVisibility) return;
 
     const entity = resolveEntityFromMetadata(metadataCanal);
@@ -37,6 +36,7 @@ export function useCanalVisibility(): void {
         cramo: metadataCanal?.cramo != null
           ? parseInt(String(metadataCanal.cramo), 10)
           : undefined,
+        bridge: true,
       })
       .then((res) => {
         if (cancelled) return;
