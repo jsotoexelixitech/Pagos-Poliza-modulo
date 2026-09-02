@@ -10,28 +10,6 @@ import { getSsoMetadataFromBrowser } from './sso-metadata';
 
 export { getSsoMetadataFromBrowser } from './sso-metadata';
 
-function decodeTokenPayload(token: string): Record<string, unknown> | null {
-  try {
-    const payloadBase64 = token.split('.')[1];
-    if (!payloadBase64) return null;
-    const payloadStr = atob(
-      payloadBase64.replace(/-/g, '+').replace(/_/g, '/'),
-    );
-    return JSON.parse(payloadStr) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-}
-
-function getAccessTokenFromBrowser(): string | null {
-  if (typeof window === 'undefined') return null;
-  return (
-    sessionStorage.getItem('nexus_access_token_pagos') ||
-    sessionStorage.getItem('nexus_access_token') ||
-    new URLSearchParams(window.location.search).get('nexus_token')
-  );
-}
-
 /** Sesión Pagos standalone con checkout en metadata (antes de hidratar el store). */
 export function isStandaloneGenericCheckoutSession(): boolean {
   const meta = getSsoMetadataFromBrowser();
