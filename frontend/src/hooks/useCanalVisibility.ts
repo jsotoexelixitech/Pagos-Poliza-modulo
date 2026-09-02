@@ -1,10 +1,10 @@
 import { useEffect } from 'react';
 import { catalogoApi } from '../lib/api';
-import { resolveCcanalaltFromMetadata } from '../lib/canal-visibility';
+import { resolveEntityFromMetadata } from '../lib/canal-visibility';
 import { useWizardStore } from '../store/wizardStore';
 
 /**
- * Carga visibilidad de canal si hay ccanalalt_in en metadata y no vino del bridge.
+ * Carga visibilidad de canal si hay contexto de entidad en metadata y no vino del bridge.
  */
 export function useCanalVisibility(): void {
   const metadataCanal = useWizardStore((s) => s.metadataCanal);
@@ -15,14 +15,20 @@ export function useCanalVisibility(): void {
   useEffect(() => {
     if (canalVisibility) return;
 
-    const ccanalalt = resolveCcanalaltFromMetadata(metadataCanal);
-    if (!ccanalalt) return;
+    const entity = resolveEntityFromMetadata(metadataCanal);
+    if (!entity) return;
 
     let cancelled = false;
 
+    const cproducto = selectedPlan?.cproducto != null
+      ? String(selectedPlan.cproducto)
+      : metadataCanal?.cproducto != null
+        ? String(metadataCanal.cproducto)
+        : undefined;
+
     catalogoApi
       .canalVisibility({
-        cproducto: selectedPlan?.cproducto,
+        cproducto,
         cramo: metadataCanal?.cramo != null
           ? parseInt(String(metadataCanal.cramo), 10)
           : undefined,
