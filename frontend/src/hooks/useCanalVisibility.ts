@@ -29,7 +29,6 @@ async function waitForBridgeHydration(): Promise<void> {
  */
 export function useCanalVisibility(): void {
   const metadataCanal = useWizardStore((s) => s.metadataCanal);
-  const canalVisibility = useWizardStore((s) => s.canalVisibility);
   const setCanalVisibility = useWizardStore((s) => s.setCanalVisibility);
   const selectedPlan = useWizardStore((s) => s.selectedPlan);
 
