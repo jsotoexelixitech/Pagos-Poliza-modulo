@@ -31,6 +31,7 @@ import {
 } from './checkout';
 import { getSsoMetadataFromBrowser } from './sso-metadata';
 import type { CanalVisibility } from './canal-visibility';
+import { resolveEntityFromMetadata, visibilityMatchesEntity } from './canal-visibility';
 import type { CheckoutPayer } from '../types';
 
 const CANAL_META_KEYS = [
@@ -290,10 +291,6 @@ function makeBridge(): BridgeAPI {
 
     const store = useWizardStore.getState();
 
-    if (data.canalVisibility && typeof data.canalVisibility === 'object') {
-      store.setCanalVisibility(data.canalVisibility as CanalVisibility);
-    }
-
     const canalMeta: Record<string, unknown> = {
       ...(getSsoMetadataFromBrowser() || {}),
       ...(store.metadataCanal || {}),
@@ -308,6 +305,15 @@ function makeBridge(): BridgeAPI {
     }
     if (Object.keys(canalMeta).length > 0) {
       store.setMetadataCanal(canalMeta);
+    }
+
+    const activeEntity = resolveEntityFromMetadata(canalMeta);
+    if (
+      data.canalVisibility
+      && typeof data.canalVisibility === 'object'
+      && visibilityMatchesEntity(data.canalVisibility as CanalVisibility, activeEntity)
+    ) {
+      store.setCanalVisibility(data.canalVisibility as CanalVisibility);
     }
 
     const checkout = data.checkout;

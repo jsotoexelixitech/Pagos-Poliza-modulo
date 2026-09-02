@@ -1,10 +1,10 @@
 import { useEffect } from 'react';
 import { catalogoApi } from '../lib/api';
 import {
-  allowsEmitPending,
   resolveCanalEntity,
   resolveCanalMetadata,
   shouldApplyCanalRules,
+  visibilityMatchesEntity,
 } from '../lib/canal-visibility';
 import { isBridgeChained } from '../lib/bridge-session';
 import { useWizardStore } from '../store/wizardStore';
@@ -25,13 +25,16 @@ async function waitForBridgeHydration(): Promise<void> {
 
 /**
  * Carga visibilidad de canal (bridge o SSO SysIP con centidad/citem en token/store).
- * Espera hidratación del bridge para no pisar canalVisibility con null de sesión vacía.
+ * Re-fetch si cambia entidad (p. ej. canal C/1 vs gestor P/215).
  */
 export function useCanalVisibility(): void {
   const metadataCanal = useWizardStore((s) => s.metadataCanal);
   const canalVisibility = useWizardStore((s) => s.canalVisibility);
   const setCanalVisibility = useWizardStore((s) => s.setCanalVisibility);
   const selectedPlan = useWizardStore((s) => s.selectedPlan);
+
+  const entity = resolveCanalEntity(metadataCanal);
+  const entityKey = entity ? `${entity.centidad}/${entity.citem}` : '';
 
   useEffect(() => {
     let cancelled = false;
@@ -42,15 +45,19 @@ export function useCanalVisibility(): void {
 
       const storeMeta = useWizardStore.getState().metadataCanal;
       const storeVisibility = useWizardStore.getState().canalVisibility;
+      const currentEntity = resolveCanalEntity(storeMeta);
 
       if (!shouldApplyCanalRules(storeMeta)) return;
+      if (!currentEntity && !isBridgeChained()) return;
 
-      if (allowsEmitPending(storeVisibility, storeMeta)) return;
-      if (storeVisibility?.tipoEmision && storeVisibility.ui) return;
+      const matches = visibilityMatchesEntity(storeVisibility, currentEntity);
+      if (matches && storeVisibility?.tipoEmision && storeVisibility.ui) return;
+
+      if (!matches && storeVisibility) {
+        setCanalVisibility(null);
+      }
 
       const mergedMeta = resolveCanalMetadata(storeMeta);
-      const entity = resolveCanalEntity(storeMeta);
-      if (!entity && !isBridgeChained()) return;
 
       const cproducto = selectedPlan?.cproducto != null
         ? String(selectedPlan.cproducto)
@@ -68,8 +75,8 @@ export function useCanalVisibility(): void {
         const res = await catalogoApi.canalVisibility({
           cproducto,
           cramo: Number.isFinite(cramo) ? cramo : undefined,
-          centidad: entity?.centidad,
-          citem: entity?.citem,
+          centidad: currentEntity?.centidad,
+          citem: currentEntity?.citem,
           bridge: true,
         });
         if (cancelled) return;
@@ -93,9 +100,7 @@ export function useCanalVisibility(): void {
       window.removeEventListener('bridge-hydrated', onBridgeHydrated);
     };
   }, [
-    canalVisibility?.tipoEmision,
-    canalVisibility?.ui?.requierePagoVerificado,
-    metadataCanal,
+    entityKey,
     selectedPlan?.cproducto,
     setCanalVisibility,
   ]);

@@ -1,6 +1,7 @@
 /** Visibilidad de canal (nest-api GET /canal/visibility). */
 import { isBridgeChained } from './bridge-session';
 import { getSsoMetadataFromBrowser } from './sso-metadata';
+
 export type MetodoPagoExelixi =
   | 'mobile'
   | 'otp'
@@ -88,12 +89,27 @@ export function shouldApplyCanalRules(
   return resolveEntityFromMetadata(resolveCanalMetadata(metadataCanal)) != null;
 }
 
-/** Ignora canalVisibility si no hay contexto Sis2000 (standalone sin metadata). */
+/** true si la visibilidad cargada corresponde a la entidad activa (C/1 vs P/215). */
+export function visibilityMatchesEntity(
+  canalVisibility: CanalVisibility | null | undefined,
+  entity: { centidad: string; citem: string } | null,
+): boolean {
+  if (!canalVisibility || !entity) return false;
+  const centidad = String(canalVisibility.centidad ?? '').trim().toUpperCase();
+  const citem = String(canalVisibility.citem ?? '').trim();
+  return centidad === entity.centidad && citem === entity.citem;
+}
+
+/** Ignora canalVisibility si no hay contexto Sis2000 o la entidad no coincide. */
 export function effectiveCanalVisibility(
   canalVisibility: CanalVisibility | null | undefined,
   metadataCanal?: Record<string, unknown> | null,
 ): CanalVisibility | null | undefined {
   if (!shouldApplyCanalRules(metadataCanal)) return null;
+  const entity = resolveEntityFromMetadata(resolveCanalMetadata(metadataCanal));
+  if (entity && canalVisibility && !visibilityMatchesEntity(canalVisibility, entity)) {
+    return null;
+  }
   return canalVisibility;
 }
 
