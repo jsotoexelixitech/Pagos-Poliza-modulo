@@ -46,7 +46,7 @@ const otpConfirmLimiter = rateLimit({
   max: parseInt(process.env.RATE_LIMIT_OTP_CONFIRM, 10) || 2,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-  keyGenerator: (req) => req.ip,
+  // Default keyGenerator already uses IP via ipKeyGenerator (IPv6-safe).
   handler: (_req, res) => res.status(429).json({
     success: false,
     code: 'OTP_CONFIRM_RATE_LIMIT',
@@ -246,7 +246,11 @@ router.post('/otp/request', async (req, res) => {
       debtorBankCode, debtorPhone: String(debtorPhone).replace(/\s/g, ''),
       amount: parseFloat(amount),
     });
-    return res.status(200).json({ success: true, message: result?.message || 'OTP enviada.' });
+    return res.status(200).json({
+      success: true,
+      mock: Boolean(result?.mock),
+      message: result?.message || 'OTP enviada.',
+    });
   } catch (err) {
     return _sendSypagoError(res, err);
   }

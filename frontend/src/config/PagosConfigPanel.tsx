@@ -4,7 +4,7 @@ import { getProductId } from '../lib/product';
 import {
   Settings2, RotateCcw, Save, CheckCircle2, AlertTriangle,
   Loader2, Plus, Trash2, ArrowLeftRight, CreditCard, Sparkles,
-  ChevronDown, ChevronUp, Smartphone, KeyRound, Building2, Zap, Wifi,
+  ChevronDown, ChevronUp, Smartphone, KeyRound, Building2, Zap, Wifi, Landmark,
 } from 'lucide-react';
 import { AuroraBackground } from '../components/AuroraBackground';
 
@@ -22,7 +22,7 @@ interface ApiMapEntry {
 }
 
 // ── Tipos de método de pago disponibles ──────────────────────────────
-type MetodoTipo = 'mobile' | 'otp' | 'transferencia' | 'zelle' | 'tarjetaCredito' | 'custom';
+type MetodoTipo = 'mobile' | 'otp' | 'domiciliacion' | 'transferencia' | 'zelle' | 'tarjetaCredito' | 'custom';
 
 interface DatosBancarios {
   banco?: string;
@@ -66,6 +66,13 @@ const METODOS_DEFAULT: MetodoPago[] = [
     datos: { gateway: 'SyPago', merchantId: '', apiKey: '' },
   },
   {
+    key: 'domiciliacion',
+    label: 'Domiciliación (SyPago)',
+    tipo: 'domiciliacion',
+    activo: true,
+    datos: { gateway: 'SyPago' },
+  },
+  {
     key: 'transferencia',
     label: 'Transferencia Bancaria',
     tipo: 'transferencia',
@@ -81,6 +88,7 @@ function MetodoIcon({ tipo }: { tipo: MetodoTipo }) {
   const cls = 'w-9 h-9 rounded-xl grid place-items-center shrink-0';
   if (tipo === 'mobile')       return <div className={`${cls} bg-indigo-100 text-indigo-600`}><Smartphone size={18} /></div>;
   if (tipo === 'otp')          return <div className={`${cls} bg-violet-100 text-violet-600`}><KeyRound size={18} /></div>;
+  if (tipo === 'domiciliacion') return <div className={`${cls} bg-teal-100 text-teal-700`}><Landmark size={18} /></div>;
   if (tipo === 'transferencia') return <div className={`${cls} bg-sky-100 text-sky-600`}><Building2 size={18} /></div>;
   if (tipo === 'zelle')        return <div className={`${cls} bg-purple-100 text-purple-600`}><Zap size={18} /></div>;
   if (tipo === 'tarjetaCredito') return <div className={`${cls} bg-emerald-100 text-emerald-600`}><CreditCard size={18} /></div>;
@@ -111,6 +119,17 @@ function DatosForm({ tipo, datos, onChange }: {
       <div><label className={lbl}>Gateway / Procesador</label><input className={inp} value={datos.gateway ?? ''} onChange={e => set('gateway', e.target.value)} placeholder="SyPago" /></div>
       <div><label className={lbl}>Merchant ID</label><input className={inp} value={datos.merchantId ?? ''} onChange={e => set('merchantId', e.target.value)} placeholder="ID del comercio" /></div>
       <div className="sm:col-span-2"><label className={lbl}>API Key / Credencial</label><input className={inp} type="password" value={datos.apiKey ?? ''} onChange={e => set('apiKey', e.target.value)} placeholder="••••••••••••" /></div>
+    </div>
+  );
+
+  if (tipo === 'domiciliacion') return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-slate-100 mt-3">
+      <div><label className={lbl}>Gateway / Procesador</label><input className={inp} value={datos.gateway ?? ''} onChange={e => set('gateway', e.target.value)} placeholder="SyPago" /></div>
+      <div className="sm:col-span-2">
+        <p className="text-xs text-slate-500 leading-relaxed">
+          El cliente autoriza el débito automático de recibos. La afiliación se envía al backend de domiciliación (SyPago) con banco, tipo y número de cuenta.
+        </p>
+      </div>
     </div>
   );
 
@@ -325,6 +344,7 @@ export function PagosConfigPanel() {
                             <select className={inp} value={newMetodo.tipo} onChange={e => setNewMetodo(p => ({ ...p, tipo: e.target.value as MetodoTipo }))}>
                               <option value="mobile">Pago Móvil</option>
                               <option value="otp">Débito OTP / Gateway</option>
+                              <option value="domiciliacion">Domiciliación SyPago</option>
                               <option value="transferencia">Transferencia Bancaria</option>
                               <option value="zelle">Zelle</option>
                               <option value="tarjetaCredito">Tarjeta de Crédito</option>
@@ -380,7 +400,7 @@ export function PagosConfigPanel() {
                               </button>
 
                               {/* Eliminar (solo custom o no-default) */}
-                              {(m.tipo === 'custom' || !['mobile', 'otp'].includes(m.key)) && (
+                              {(m.tipo === 'custom' || !['mobile', 'otp', 'domiciliacion'].includes(m.key)) && (
                                 <button
                                   type="button"
                                   onClick={() => { if (confirm(`¿Eliminar "${m.label}"?`)) removeMetodo(m.key); }}

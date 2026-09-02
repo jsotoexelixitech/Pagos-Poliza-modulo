@@ -15,6 +15,23 @@ const MODULE_NEXUS_API: [string, string][] = [
   ['/pagos', '/pagos/nexus-api'],
 ];
 
+/** Producción GCIA — subdominios dedicados (sin prefijo /pagos/ en la URL). */
+const PRODUCTION_GCIA_NEXUS_API = 'https://nexus-api.exelixitech.com';
+const PRODUCTION_GCIA_FRONT_HOSTS = new Set([
+  'ocr.exelixitech.com',
+  'formulario.exelixitech.com',
+  'emision.exelixitech.com',
+  'pagos.exelixitech.com',
+]);
+
+function resolveProductionGciaNexusApi(): string | null {
+  if (typeof window === 'undefined') return null;
+  if (PRODUCTION_GCIA_FRONT_HOSTS.has(window.location.hostname)) {
+    return PRODUCTION_GCIA_NEXUS_API;
+  }
+  return null;
+}
+
 function resolveModuleNexusApiOnHttps(): string | null {
   if (typeof window === 'undefined' || window.location.protocol !== 'https:') {
     return null;
@@ -34,6 +51,9 @@ function useModuleProxyBuild(): boolean {
 }
 
 export function resolveNexusApiUrl(configured?: string): string {
+  const gciaProd = resolveProductionGciaNexusApi();
+  if (gciaProd) return gciaProd;
+
   const moduleOnHttps = resolveModuleNexusApiOnHttps();
   if (moduleOnHttps && useModuleProxyBuild()) {
     return moduleOnHttps;
@@ -68,8 +88,16 @@ export interface NexusVerifyResult {
 }
 
 export async function verifyNexusAccess(nexusApiUrl: string): Promise<NexusVerifyResult> {
-  const tokenFromUrl = new URLSearchParams(window.location.search).get('nexus_token');
-  if (tokenFromUrl && !getNexusToken(STORAGE_KEY)) {
+  // SSO delegate siempre manda un nexus_token fresco en la URL. Si hay uno en sessionStorage
+  // de una sesión anterior (otra empresa / módulo), NO debe ganar: provoca
+  // "Servicio no activado para esta empresa" con un token válido nuevo en la URL.
+  let tokenFromUrl: string | null = null;
+  try {
+    tokenFromUrl = new URLSearchParams(window.location.search).get('nexus_token');
+  } catch {
+    tokenFromUrl = null;
+  }
+  if (tokenFromUrl) {
     persistNexusToken(STORAGE_KEY, tokenFromUrl);
   }
 

@@ -1,3 +1,5 @@
+import type { CanalVisibility } from '../lib/canal-visibility';
+
 export type DocType = 'cedula' | 'licencia' | 'certificado' | 'rif';
 
 /** Producto de seguro que se está suscribiendo en el flujo. */
@@ -97,9 +99,11 @@ export interface Plan {
   sumaAsegurada: number;
   /** Sufijo opcional para la suma asegurada (ej. "/unidad") */
   sumaAseguradaUnit?: string;
+  /** Producto Sis2000 — usado para visibilidad de canal y reglas de pago */
+  cproducto?: string;
 }
 
-export type PaymentMethod = 'card' | 'transfer' | 'mobile' | 'otp';
+export type PaymentMethod = 'card' | 'transfer' | 'mobile' | 'otp' | 'domiciliacion';
 
 /** Datos del pago verificado para activar recibo en Sis2000 al emitir. */
 export interface PaymentCapture {
@@ -107,6 +111,8 @@ export interface PaymentCapture {
   transactionId?: string;
   amount?: number;
   paidOn?: string;
+  /** Método con el que se cobró la 1ª cuota / pago (mobile | otp | …). */
+  method?: PaymentMethod;
   /** Código banco origen (cbanco_ref) usado en la verificación móvil. */
   bankCode?: string;
   /** Teléfono origen del pago móvil (xtelefono). */
@@ -119,6 +125,16 @@ export interface PaymentCapture {
   cbanco_dest_ref?: string;
   cbanco?: number;
   cbanco_destino?: number;
+  /** Domiciliación SyPago: tipo de cuenta. */
+  tipoCuenta?: 'AHORROS' | 'CORRIENTE';
+  /** Domiciliación SyPago: número de cuenta (20 dígitos). */
+  numeroCuenta?: string;
+  /** Domiciliación SyPago: titular de la cuenta. */
+  titularCuenta?: string;
+  /** Domiciliación: correo para notificaciones de cobro/rechazo (obligatorio en el servicio). */
+  correo?: string;
+  /** ID de afiliación SyPago tras registrar la domiciliación. */
+  sypagoAfiliacionId?: string;
 }
 
 /** Snapshot de pago pasado al auto-emit (evita race con re-render de React). */
@@ -150,6 +166,15 @@ export type CheckoutOnSuccessMode = 'none' | 'redirect' | 'webhook' | 'emit';
 export interface CheckoutRules {
   requirePayment?: boolean;
   methods?: PaymentMethod[];
+  /** Prima en cuotas (M/T/S): flujo fraccionado. */
+  fraccionado?: boolean;
+  /** Cobrar 1ª cuota (móvil/OTP) antes de continuar. */
+  requireFirstPayment?: boolean;
+  /** Tras la 1ª cuota, exigir domiciliación SyPago. */
+  requireDomiciliacion?: boolean;
+  /** Tras verificar/autorizar, redirige a payload.successUrl (SSO Hogar/Condominio). */
+  autoRedirect?: boolean;
+  redirectDelayMs?: number;
   onSuccess?: {
     mode?: CheckoutOnSuccessMode;
     redirectUrl?: string;
@@ -162,6 +187,7 @@ export interface CheckoutPayer {
   documentNumber?: string;
   name?: string;
   phone?: string;
+  email?: string;
 }
 
 /**
@@ -314,4 +340,6 @@ export interface WizardState {
   checkoutPayer: CheckoutPayer | null;
   /** Metadata canal SSO (cproductor, cramo, etc.) — igual que emisión. */
   metadataCanal: Record<string, unknown> | null;
+  /** Reglas de visibilidad del canal (SysIP / nest-api). */
+  canalVisibility: CanalVisibility | null;
 }

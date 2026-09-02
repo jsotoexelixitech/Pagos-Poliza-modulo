@@ -34,7 +34,7 @@ const router = express.Router();
  *                 example: paid
  *               paymentMethod:
  *                 type: string
- *                 enum: [mobile, otp, transfer, card]
+ *                 enum: [mobile, otp, domiciliacion, transfer, card]
  *               referenceId:
  *                 type: string
  *               amountVes:

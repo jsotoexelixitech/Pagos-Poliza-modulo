@@ -1,0 +1,78 @@
+name: 🚀 Deploy Pagos-Poliza
+
+on:
+  push:
+    branches:
+      - develop
+      - qa
+
+jobs:
+  # ──────────────────────────────────────────
+  # Deploy a servidor de DESARROLLO
+  # Se dispara con push a la rama "develop"
+  # ──────────────────────────────────────────
+  deploy-dev:
+    name: Deploy → DEV
+    if: github.ref == 'refs/heads/develop'
+    runs-on: [self-hosted, pagos-dev]
+
+    steps:
+      - name: 📥 Pull cambios
+        run: |
+          cd /opt/services/Pagos-Poliza-modulo
+          git pull origin develop
+
+      - name: 📦 Instalar dependencias
+        run: |
+          cd /opt/services/Pagos-Poliza-modulo
+          npm run install:all
+
+      - name: 🔨 Build frontend (PM2 + nexus proxy)
+        run: |
+          cd /opt/services/Pagos-Poliza-modulo
+          VITE_NEXUS_USE_MODULE_PROXY=1 bash scripts/build-cierrelmds.sh
+
+      - name: ♻️ Recargar PM2 (pagos-api + pagos-web)
+        run: |
+          cd /opt/services/Pagos-Poliza-modulo
+          unset PORT VITE_APP_BASE VITE_EMISSION_CONTINUE_BASE DATABASE_URL
+          pm2 reload pagos-api
+          pm2 restart pagos-web
+
+      - name: ✅ Deploy DEV completado
+        run: echo "Deploy a DEV finalizado correctamente — $(date)"
+
+  # ──────────────────────────────────────────
+  # Deploy a servidor de QA
+  # Se dispara con push a la rama "qa"
+  # ──────────────────────────────────────────
+  deploy-qa:
+    name: Deploy → QA
+    if: github.ref == 'refs/heads/qa'
+    runs-on: [self-hosted, pagos-qa]
+
+    steps:
+      - name: 📥 Pull cambios
+        run: |
+          cd /opt/services/Pagos-Poliza-modulo
+          git pull origin qa
+
+      - name: 📦 Instalar dependencias
+        run: |
+          cd /opt/services/Pagos-Poliza-modulo
+          npm run install:all
+
+      - name: 🔨 Build frontend (PM2 + nexus proxy)
+        run: |
+          cd /opt/services/Pagos-Poliza-modulo
+          VITE_NEXUS_USE_MODULE_PROXY=1 bash scripts/build-cierrelmds.sh
+
+      - name: ♻️ Recargar PM2 (pagos-api + pagos-web)
+        run: |
+          cd /opt/services/Pagos-Poliza-modulo
+          unset PORT VITE_APP_BASE VITE_EMISSION_CONTINUE_BASE DATABASE_URL
+          pm2 reload pagos-api
+          pm2 restart pagos-web
+
+      - name: ✅ Deploy QA completado
+        run: echo "Deploy a QA finalizado correctamente — $(date)"

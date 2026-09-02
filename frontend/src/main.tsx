@@ -30,16 +30,24 @@ function ExelixiHandoffBootstrap({ children }: { children: ReactNode }) {
 // /config (dev) o /pagos/config (prod con prefijo Apache)
 const isConfigRoute = /\/config\/?$/.test(window.location.pathname);
 
+const appTree = (
+  <ExelixiHandoffBootstrap>
+    <App />
+  </ExelixiHandoffBootstrap>
+);
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     {isConfigRoute ? (
       <PagosConfigPanel />
+    ) : import.meta.env.DEV ? (
+      // En DEV se omite NexusGuard para agilizar el desarrollo local sin SSO.
+      // El token Nexus no se valida en el servidor si NEXUS_AUTH_ENABLED=false (.env).
+      // Si necesitas probar el flujo de auth completo, pon VITE_FORCE_NEXUS_GUARD=true
+      // en .env.local y condicion: !import.meta.env.DEV || import.meta.env.VITE_FORCE_NEXUS_GUARD
+      appTree
     ) : (
-      <NexusGuard recheckInterval={30}>
-        <ExelixiHandoffBootstrap>
-          <App />
-        </ExelixiHandoffBootstrap>
-      </NexusGuard>
+      <NexusGuard recheckInterval={30}>{appTree}</NexusGuard>
     )}
   </StrictMode>,
 )

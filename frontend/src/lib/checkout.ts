@@ -5,43 +5,10 @@ import type {
   WizardState,
 } from '../types';
 import { useWizardStore } from '../store/wizardStore';
+import { effectiveCanalVisibility } from './canal-visibility';
+import { getSsoMetadataFromBrowser } from './sso-metadata';
 
-function decodeTokenPayload(token: string): Record<string, unknown> | null {
-  try {
-    const payloadBase64 = token.split('.')[1];
-    if (!payloadBase64) return null;
-    const payloadStr = atob(
-      payloadBase64.replace(/-/g, '+').replace(/_/g, '/'),
-    );
-    return JSON.parse(payloadStr) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-}
-
-function getAccessTokenFromBrowser(): string | null {
-  if (typeof window === 'undefined') return null;
-  return (
-    sessionStorage.getItem('nexus_access_token_pagos') ||
-    sessionStorage.getItem('nexus_access_token') ||
-    new URLSearchParams(window.location.search).get('nexus_token')
-  );
-}
-
-/** Metadata SSO del token en URL/storage (sin bridge ?sid=). */
-export function getSsoMetadataFromBrowser(): Record<string, unknown> | null {
-  if (typeof window === 'undefined') return null;
-  if (new URLSearchParams(window.location.search).get('sid')) return null;
-
-  const token = getAccessTokenFromBrowser();
-  if (!token) return null;
-
-  const payload = decodeTokenPayload(token);
-  const meta = payload?.metadata;
-  return meta && typeof meta === 'object'
-    ? (meta as Record<string, unknown>)
-    : null;
-}
+export { getSsoMetadataFromBrowser } from './sso-metadata';
 
 /** Sesión Pagos standalone con checkout en metadata (antes de hidratar el store). */
 export function isStandaloneGenericCheckoutSession(): boolean {
@@ -50,7 +17,10 @@ export function isStandaloneGenericCheckoutSession(): boolean {
   return isValidCheckoutInput(meta.checkout);
 }
 
-/** Hidrata checkout desde nexus_token antes del primer render de React. */
+/**
+ * Hidrata checkout desde nexus_token antes del primer render de React.
+ * Si ya hay checkout en el store (p. ej. bridge hidrató la sesión), no pisa.
+ */
 export function hydrateCheckoutFromAccessToken(): boolean {
   const meta = getSsoMetadataFromBrowser();
   if (!meta) return false;
@@ -59,10 +29,13 @@ export function hydrateCheckoutFromAccessToken(): boolean {
   const store = useWizardStore.getState();
 
   if (Object.keys(canal).length > 0) {
-    store.setMetadataCanal(canal);
+    store.setMetadataCanal({ ...(store.metadataCanal || {}), ...canal });
   }
 
   if (!isValidCheckoutInput(checkout)) return false;
+
+  // Bridge (?sid=) puede llegar después y sobrescribir; no pisar si ya hay checkout.
+  if (hasGenericCheckout(store)) return true;
 
   store.setCheckout({
     data: checkout,
@@ -113,6 +86,12 @@ export function getCheckoutPaymentConcept(
   return 'Pago en línea';
 }
 
+function asHttpUrl(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return /^https?:\/\//i.test(trimmed) ? trimmed : null;
+}
+
 /** URL/API del cliente para notificar estado del pago (payload o rules.onSuccess). */
 export function getCheckoutNotifyUrl(
   payload: Record<string, unknown> | null | undefined,
@@ -127,13 +106,77 @@ export function getCheckoutNotifyUrl(
   const keys = ['notifyUrl', 'callbackUrl', 'statusUrl', 'webhookUrl'] as const;
   for (const source of sources) {
     for (const key of keys) {
-      const value = source[key];
-      if (typeof value === 'string' && /^https?:\/\//i.test(value.trim())) {
-        return value.trim();
-      }
+      const url = asHttpUrl(source[key]);
+      if (url) return url;
     }
   }
   return null;
+}
+
+/** URL a la que volver tras pagar (Hogar/Condominio SSO: payload.successUrl). */
+export function getGenericCheckoutReturnUrl(
+  payload: Record<string, unknown> | null | undefined,
+  rules?: CheckoutRules | null,
+  status: 'success' | 'failed' = 'success',
+): string | null {
+  const p = payload && typeof payload === 'object' ? payload : {};
+  let url: string | null = null;
+  if (status === 'failed') {
+    url = asHttpUrl(p.cancelUrl) || asHttpUrl(p.failureUrl);
+  } else {
+    url = asHttpUrl(p.successUrl) || asHttpUrl(rules?.onSuccess?.redirectUrl);
+  }
+  // payload.returnUrl es el fallback general, independiente del estado
+  return url || asHttpUrl(p.returnUrl);
+}
+
+/** Añade status / idOperacion al return URL si el portal no los trae. */
+function withCheckoutReturnParams(
+  url: string,
+  status: 'success' | 'failed',
+  payload: Record<string, unknown> | null | undefined,
+): string {
+  try {
+    const u = new URL(url);
+    if (!u.searchParams.get('status') && !u.searchParams.get('paymentStatus')) {
+      u.searchParams.set('status', status === 'success' ? 'ok' : 'error');
+    }
+    const id = String(
+      payload?.idOperacion || payload?.referenceId || '',
+    ).trim();
+    if (id && !u.searchParams.get('idOperacion') && !u.searchParams.get('referenceId')) {
+      u.searchParams.set('idOperacion', id);
+    }
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
+
+/**
+ * Checkout embebido (Hogar/Condominio): no hay botón Continuar.
+ * Tras autorizar pago o domiciliación, vuelve al portal origen.
+ */
+export function scheduleGenericCheckoutReturn(params: {
+  checkoutPayload: Record<string, unknown> | null;
+  checkoutRules: CheckoutRules | null;
+  status?: 'success' | 'failed';
+}): boolean {
+  if (params.checkoutRules?.autoRedirect === false) return false;
+  const status = params.status ?? 'success';
+  const baseUrl = getGenericCheckoutReturnUrl(
+    params.checkoutPayload,
+    params.checkoutRules,
+    status,
+  );
+  if (!baseUrl) return false;
+  const url = withCheckoutReturnParams(baseUrl, status, params.checkoutPayload);
+  const delayRaw = Number(params.checkoutRules?.redirectDelayMs);
+  const delay = Number.isFinite(delayRaw) ? Math.max(0, delayRaw) : 2000;
+  window.setTimeout(() => {
+    window.location.href = url;
+  }, delay);
+  return true;
 }
 
 /** Convierte checkout → quote para reutilizar lógica de montos en Bs. */
@@ -163,9 +206,18 @@ export function parseCheckoutRules(raw: unknown): CheckoutRules | null {
 
 /** ¿Exige pago verificado antes de continuar? */
 export function requiresPaymentBeforeContinue(
-  state: Pick<WizardState, 'checkout' | 'checkoutRules'>,
+  state: Pick<WizardState, 'checkout' | 'checkoutRules' | 'canalVisibility' | 'metadataCanal'>,
   funeralFlow: boolean,
 ): boolean {
+  const canal = effectiveCanalVisibility(state.canalVisibility, state.metadataCanal);
+  const canalRequired = canal?.ui
+    ? canal.ui.mostrarPasoPago
+      && canal.ui.requierePagoVerificado
+    : null;
+
+  if (canalRequired === false) return false;
+  if (canalRequired === true) return true;
+
   if (hasGenericCheckout(state)) {
     return state.checkoutRules?.requirePayment !== false;
   }
