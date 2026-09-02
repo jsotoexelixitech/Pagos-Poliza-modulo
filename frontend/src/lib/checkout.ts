@@ -6,6 +6,9 @@ import type {
 } from '../types';
 import { useWizardStore } from '../store/wizardStore';
 import { effectiveCanalVisibility } from './canal-visibility';
+import { getSsoMetadataFromBrowser } from './sso-metadata';
+
+export { getSsoMetadataFromBrowser } from './sso-metadata';
 
 function decodeTokenPayload(token: string): Record<string, unknown> | null {
   try {
@@ -29,24 +32,6 @@ function getAccessTokenFromBrowser(): string | null {
   );
 }
 
-/**
- * Metadata SSO del token en URL/storage.
- * Con ?sid= el bridge tiene prioridad al hidratar la sesión, pero el token
- * sigue siendo válido como bootstrap (p. ej. sid + nexus_token a la vez).
- */
-export function getSsoMetadataFromBrowser(): Record<string, unknown> | null {
-  if (typeof window === 'undefined') return null;
-
-  const token = getAccessTokenFromBrowser();
-  if (!token) return null;
-
-  const payload = decodeTokenPayload(token);
-  const meta = payload?.metadata;
-  return meta && typeof meta === 'object'
-    ? (meta as Record<string, unknown>)
-    : null;
-}
-
 /** Sesión Pagos standalone con checkout en metadata (antes de hidratar el store). */
 export function isStandaloneGenericCheckoutSession(): boolean {
   const meta = getSsoMetadataFromBrowser();
@@ -65,8 +50,8 @@ export function hydrateCheckoutFromAccessToken(): boolean {
   const { checkout, rules, payer, payload: opaque, ...canal } = meta;
   const store = useWizardStore.getState();
 
-  if (Object.keys(canal).length > 0 && !store.metadataCanal) {
-    store.setMetadataCanal(canal);
+  if (Object.keys(canal).length > 0) {
+    store.setMetadataCanal({ ...(store.metadataCanal || {}), ...canal });
   }
 
   if (!isValidCheckoutInput(checkout)) return false;

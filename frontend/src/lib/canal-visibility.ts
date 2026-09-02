@@ -1,5 +1,6 @@
 /** Visibilidad de canal (nest-api GET /canal/visibility). */
 import { isBridgeChained } from './bridge-session';
+import { getSsoMetadataFromBrowser } from './sso-metadata';
 export type MetodoPagoExelixi =
   | 'mobile'
   | 'otp'
@@ -66,16 +67,25 @@ export function resolveAllowedPaymentMethods(
   return null;
 }
 
+/** Store + JWT SSO (SysIP marketplace suele traer centidad/citem solo en el token). */
+export function resolveCanalMetadata(
+  metadataCanal?: Record<string, unknown> | null,
+): Record<string, unknown> | null {
+  const fromToken = getSsoMetadataFromBrowser() || {};
+  const merged = { ...fromToken, ...(metadataCanal || {}) };
+  return Object.keys(merged).length > 0 ? merged : null;
+}
+
 /**
  * Aplica reglas Sis2000 cuando hay contexto de canal/gestor:
  * - flujo bridge (?sid=), o
- * - SSO SysIP con centidad/citem en metadata del token.
+ * - SSO SysIP con centidad/citem en metadata (store o token).
  */
 export function shouldApplyCanalRules(
   metadataCanal?: Record<string, unknown> | null,
 ): boolean {
   if (isBridgeChained()) return true;
-  return resolveEntityFromMetadata(metadataCanal) != null;
+  return resolveEntityFromMetadata(resolveCanalMetadata(metadataCanal)) != null;
 }
 
 /** Ignora canalVisibility si no hay contexto Sis2000 (standalone sin metadata). */
@@ -85,6 +95,12 @@ export function effectiveCanalVisibility(
 ): CanalVisibility | null | undefined {
   if (!shouldApplyCanalRules(metadataCanal)) return null;
   return canalVisibility;
+}
+
+export function resolveCanalEntity(
+  metadataCanal?: Record<string, unknown> | null,
+): { centidad: string; citem: string } | null {
+  return resolveEntityFromMetadata(resolveCanalMetadata(metadataCanal));
 }
 
 /** tipoEmision `emit`: puede emitir sin pago verificado (recibo pendiente en Sis2000). */

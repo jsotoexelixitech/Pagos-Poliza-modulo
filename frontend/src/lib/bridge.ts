@@ -29,7 +29,16 @@ import {
   parseCheckoutRules,
   quoteFromCheckout,
 } from './checkout';
+import { getSsoMetadataFromBrowser } from './sso-metadata';
+import type { CanalVisibility } from './canal-visibility';
 import type { CheckoutPayer } from '../types';
+
+const CANAL_META_KEYS = [
+  'centidad', 'citem', 'cproducto', 'cramo', 'cproductor',
+  'ccanalalt', 'cscanalalt', 'ccanalalt_in', 'cscanalalt_in',
+  'xform', 'xproducto', 'cgestor', 'ifrecuencia', 'frecuencia',
+  'fraccionado', 'forma_pago',
+] as const;
 
 // ── Configuración por puerto (dev local) o hostname (HTTPS sslip.io) ───────
 const PORT_TO_ORDER: Record<string, number> = {
@@ -278,9 +287,30 @@ function makeBridge(): BridgeAPI {
     const set = (useWizardStore as unknown as { setState: (p: Partial<Record<string, unknown>>) => void }).setState;
     set(filtered);
 
+    const store = useWizardStore.getState();
+
+    if (data.canalVisibility && typeof data.canalVisibility === 'object') {
+      store.setCanalVisibility(data.canalVisibility as CanalVisibility);
+    }
+
+    const canalMeta: Record<string, unknown> = {
+      ...(getSsoMetadataFromBrowser() || {}),
+      ...(store.metadataCanal || {}),
+    };
+    if (data.metadataCanal && typeof data.metadataCanal === 'object') {
+      Object.assign(canalMeta, data.metadataCanal as Record<string, unknown>);
+    }
+    for (const key of CANAL_META_KEYS) {
+      if (data[key] != null && data[key] !== '') {
+        canalMeta[key] = data[key];
+      }
+    }
+    if (Object.keys(canalMeta).length > 0) {
+      store.setMetadataCanal(canalMeta);
+    }
+
     const checkout = data.checkout;
     if (isValidCheckoutInput(checkout)) {
-      const store = useWizardStore.getState();
       // Forma canónica del store O metadata Nexus (rules/payload/payer) como en SSO.
       // Si la sesión bridge no trae rules/payload, conservar lo que ya hidrató el token.
       const rulesFromSession = parseCheckoutRules(
@@ -305,30 +335,6 @@ function makeBridge(): BridgeAPI {
       });
       store.setQuote(quoteFromCheckout(checkout), 'checkout-session');
       store.setQuoteState('ready');
-
-      // Canal: resto de metadata Nexus (frecuencia, fraccionado, etc.)
-      if (!store.metadataCanal) {
-        const canal: Record<string, unknown> = {};
-        for (const [k, v] of Object.entries(data)) {
-          if (
-            k === 'checkout'
-            || k === 'checkoutRules'
-            || k === 'checkoutPayload'
-            || k === 'checkoutPayer'
-            || k === 'rules'
-            || k === 'payload'
-            || k === 'payer'
-            || k === 'nexus_token'
-            || typeof v === 'function'
-          ) {
-            continue;
-          }
-          canal[k] = v;
-        }
-        if (Object.keys(canal).length > 0) {
-          store.setMetadataCanal(canal);
-        }
-      }
     }
   };
 
