@@ -130,11 +130,22 @@ export default function App() {
         snap.funeralSubmissionId
         || (typeof snap.checkoutPayload?.funeralSubmissionId === 'string'
           ? snap.checkoutPayload.funeralSubmissionId
+          : undefined)
+        || (typeof snap.metadataCanal?.funeralSubmissionId === 'string'
+          ? snap.metadataCanal.funeralSubmissionId
           : undefined),
       paymentSid:
         typeof window !== 'undefined'
           ? new URLSearchParams(window.location.search).get('sid') || undefined
-          : undefined,
+          : snap.paymentSid,
+      originSessionId:
+        snap.originSessionId
+        || (typeof snap.checkoutPayload?.originSessionId === 'string'
+          ? snap.checkoutPayload.originSessionId
+          : undefined)
+        || (typeof snap.metadataCanal?.originSessionId === 'string'
+          ? snap.metadataCanal.originSessionId
+          : undefined),
     };
   }
 

@@ -363,6 +363,8 @@ export interface WizardState {
   /** Link de pago post-aprobación funerario */
   funeralApprovedCheckout?: boolean;
   funeralSubmissionId?: string;
+  /** SID OCR original (el checkout crea otro SID). */
+  originSessionId?: string;
   funeralPaymentExpiresAt?: string;
   paymentSid?: string;
 }

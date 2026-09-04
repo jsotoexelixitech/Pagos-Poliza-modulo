@@ -230,7 +230,17 @@ function makeBridge(): BridgeAPI {
     }
     // Limpieza de datos fantasma y bloqueo de producto en la sesión backend
     const isCatalogFlow = isExelixiCatalogFlow();
-    const prod = sessionStorage.getItem('exelixi_product') || 'rcv';
+    const urlProduct =
+      typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search).get('product')
+        : null;
+    const storedProd = sessionStorage.getItem('exelixi_product');
+    const isFuneral =
+      out.product === 'funerario'
+      || storedProd === 'funerario'
+      || urlProduct === 'funerario'
+      || Boolean(out.funeralSubmissionId);
+    const prod = isFuneral ? 'funerario' : (storedProd || urlProduct || 'rcv');
     if (!isCatalogFlow) {
       if (prod === 'funerario') {
         delete out.vehicle;
@@ -239,6 +249,11 @@ function makeBridge(): BridgeAPI {
       }
     }
     out.product = prod;
+    if (isFuneral) {
+      try {
+        sessionStorage.setItem('exelixi_product', 'funerario');
+      } catch { /* ignore */ }
+    }
     out.exelixiCatalogFlow = isCatalogFlow;
     try {
       const builderRaw = sessionStorage.getItem(BUILDER_PRODUCT_STORAGE_KEY);

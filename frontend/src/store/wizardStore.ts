@@ -155,6 +155,11 @@ const initialState: WizardState = {
   checkoutPayer: null,
   metadataCanal: null,
   diligencia: null,
+  funeralApprovedCheckout: false,
+  funeralSubmissionId: undefined,
+  originSessionId: undefined,
+  funeralPaymentExpiresAt: undefined,
+  paymentSid: undefined,
 };
 
 export const useWizardStore = create<WizardState & WizardActions>()((set) => ({
