@@ -1,6 +1,7 @@
 ﻿import { useEffect, useState } from 'react';
 import { publicAsset } from '../lib/app-base';
 import { isExelixiCatalogFlow } from '../lib/exelixi-catalog';
+import { isTarjetaRcvFlow } from '../lib/rcv-tarjeta-flow';
 
 const VISIBLE_MS = 2400;
 const FADE_MS = 700;
@@ -16,10 +17,11 @@ const BRAND = {
   redLight: '#FF6675', // Rojo Imperial (claro)
 };
 
-/** No mostrar splash La Mundial en bridge, checkout SSO ni flujo Exélixi. */
+/** No mostrar splash La Mundial en bridge, checkout SSO, tarjeta ni flujo Exélixi. */
 function shouldSkipSplash(): boolean {
   try {
     if (isExelixiCatalogFlow()) return true;
+    if (isTarjetaRcvFlow()) return true;
     const p = new URLSearchParams(window.location.search);
     if (p.get('sid')) return true;
     if (p.get('nexus_token')) return true;
