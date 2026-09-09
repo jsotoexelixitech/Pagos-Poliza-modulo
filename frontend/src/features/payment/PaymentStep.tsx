@@ -36,6 +36,11 @@ import { useBancosSypago } from '../../hooks/useBancosSypago';
 import { getCheckoutPolicyRef } from '../../lib/domiciliacion';
 import { DomiciliacionForm } from './DomiciliacionForm';
 import { isFuneralApprovedCheckout, isFuneralPaymentLinkExpired } from '../../lib/funeral-approved-checkout';
+import {
+  getTarjetaPlanCmoneda,
+  shouldUseTarjetaPublicApi,
+  tarjetaQuoteShowsVes,
+} from '../../lib/rcv-tarjeta-flow';
 
 const EMPRESA_ID = Number(import.meta.env.VITE_EMPRESA_ID ?? 1);
 
@@ -520,6 +525,12 @@ export function PaymentStep({
     : (checkout!.title ?? selectedPlan?.name ?? 'Pago en línea');
   const displaySubtitle = genericCheckout && !funeralProductUi ? checkout!.subtitle : null;
   const showProductQuoteBar = funeralProductUi || !genericCheckout;
+  const tarjetaFlow = shouldUseTarjetaPublicApi();
+  const tarjetaCmoneda = tarjetaFlow
+    ? getTarjetaPlanCmoneda(metadataCanal as Record<string, unknown> | null)
+    : null;
+  const tarjetaVesPrimary = Boolean(tarjetaFlow && tarjetaQuoteShowsVes(tarjetaCmoneda));
+  const tarjetaUsdOnly = Boolean(tarjetaFlow && !tarjetaVesPrimary);
 
   // ── Validaciones pago móvil ───────────────────────────────────────────
   const movErrors = {
@@ -952,14 +963,18 @@ export function PaymentStep({
               </span>
             ) : (
               <span className="text-3xl sm:text-4xl font-display font-black gradient-text-indigo leading-none tabular-nums">
-                {showProductQuoteBar ? formatQuoteUsdMoney(annualUsd) : formatUsdShort(annualUsd)}
+                {tarjetaVesPrimary
+                  ? `${formatQuoteVesLabel(annualVes)}${headerSuffix ? ` ${headerSuffix}` : ''}`
+                  : showProductQuoteBar
+                    ? formatQuoteUsdMoney(annualUsd)
+                    : formatUsdShort(annualUsd)}
               </span>
             )}
-            {showProductQuoteBar && (
+            {showProductQuoteBar && !tarjetaVesPrimary && (
               <span className="text-xs text-slate-500 font-semibold pb-1">{headerSuffix}</span>
             )}
           </div>
-          {(hasRealQuote || (genericCheckout && !funeralProductUi)) && annualVes > 0 && (
+          {!tarjetaFlow && (hasRealQuote || (genericCheckout && !funeralProductUi)) && annualVes > 0 && (
             <p className="text-sm font-display font-black text-indigo-700 mt-1 tabular-nums">
               {showProductQuoteBar
                 ? `${formatQuoteVesLabel(annualVes)}${headerSuffix ? ` ${headerSuffix}` : ''}`
@@ -968,7 +983,9 @@ export function PaymentStep({
           )}
           {showProductQuoteBar && hasRealQuote && !isShortPeriodQuote && freqAmounts.cuotas > 1 && (
             <p className="text-[0.6rem] text-slate-500 mt-0.5 tabular-nums">
-              1er recibo: {formatQuoteUsdMoney(freqAmounts.installmentUsd)} ({freqAmounts.periodSuffix.trim()})
+              1er recibo: {tarjetaVesPrimary
+                ? formatQuoteVesLabel(freqAmounts.installmentVes)
+                : formatQuoteUsdMoney(freqAmounts.installmentUsd)} ({freqAmounts.periodSuffix.trim()})
             </p>
           )}
           {!showProductQuoteBar && hasRealQuote && quote?.ptasa && quote.ptasa > 0 && (
@@ -976,7 +993,7 @@ export function PaymentStep({
               Tasa BCV: {formatQuoteTasa(quote.ptasa)}
             </p>
           )}
-          {showProductQuoteBar && hasRealQuote && quote?.ptasa && quote.ptasa > 0 && (
+          {showProductQuoteBar && !tarjetaUsdOnly && hasRealQuote && quote?.ptasa && quote.ptasa > 0 && (
             <p className="text-[0.6rem] text-slate-500 mt-0.5 tabular-nums">
               Tasa BCV: {formatQuoteTasa(quote.ptasa)}
             </p>
