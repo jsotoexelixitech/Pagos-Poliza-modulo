@@ -47,6 +47,27 @@ export function formatVes(n: number): string {
   return `Bs ${VES.format(n)}`;
 }
 
+/** Parsea un monto en Bs (sea número, string con coma o punto, o prefijo Bs) a número flotante real. */
+export function parseVesAmount(raw: string | number | undefined | null): number {
+  if (typeof raw === 'number') return isNaN(raw) ? 0 : raw;
+  if (!raw) return 0;
+  const cleaned = String(raw).replace(/[^\d.,]/g, '').trim();
+  if (!cleaned) return 0;
+  if (cleaned.includes(',')) {
+    const normalized = cleaned.replace(/\./g, '').replace(',', '.');
+    return parseFloat(normalized) || 0;
+  }
+  return parseFloat(cleaned) || 0;
+}
+
+/** Formatea un monto en formato estándar venezolano (separador de miles con punto y decimales con coma). */
+export function formatVesAmount(raw: string | number | undefined | null, includePrefix = true): string {
+  const num = parseVesAmount(raw);
+  if (isNaN(num) || num <= 0) return '';
+  const formatted = num.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return includePrefix ? `Bs ${formatted}` : formatted;
+}
+
 export function formatUsdShort(n: number): string {
   // ej. "$408.29"  -> usado en bloques compactos
   return `$${n.toFixed(2)}`;

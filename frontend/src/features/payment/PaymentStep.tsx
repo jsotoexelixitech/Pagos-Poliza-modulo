@@ -9,7 +9,7 @@ import {
   CheckCircle2, XCircle, RefreshCw, Send, ClipboardCheck,
   User, Users,
 } from 'lucide-react';
-import { formatUsdShort, vesAnnual } from '../../lib/money';
+import { formatUsdShort, vesAnnual, formatVesAmount, parseVesAmount } from '../../lib/money';
 import { formatTelefono, phoneDigits, isCompletePhoneVe, PHONE_MASK_MAX_LENGTH } from '../../lib/phone';
 import { formatCedulaRif, validateCedulaRif } from '../../lib/cedula-rif';
 import { useProductConfig } from '../../hooks/useProductConfig';
@@ -477,11 +477,17 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
   // No es editable por el usuario: es el monto exacto a pagar (prima anual a tasa BCV).
   // Esto evita que el cliente coloque un monto menor al cotizado.
   useEffect(() => {
+    if (genericCheckout && checkout?.totalVes) {
+      const vesStr = checkout.totalVes.toFixed(2);
+      setMontoM(vesStr);
+      setOtpAmount(vesStr);
+      return;
+    }
     if (quoteState !== 'ready' || !quote) return;
     const vesStr = vesAnnual(quote).toFixed(2);
     setMontoM(vesStr);
     setOtpAmount(vesStr);
-  }, [quoteState, quote]);
+  }, [quoteState, quote, genericCheckout, checkout?.totalVes]);
 
   // Countdown para reenvío de OTP
   useEffect(() => {
@@ -533,7 +539,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
     cedula   : isEmisionPoliza
       ? (!cedulaPago.trim() ? 'La cédula/RIF es obligatoria' : '')
       : validateCedulaRif(cedulaPago),
-    monto    : !montoPagoM                                        ? 'El monto es obligatorio'            : isNaN(parseFloat(montoPagoM)) || parseFloat(montoPagoM) <= 0 ? 'Monto inválido' : '',
+    monto    : parseVesAmount(montoPagoM || annualVes) <= 0 ? 'El monto es obligatorio' : '',
     fecha    : !fechaPagoM                                        ? 'La fecha es obligatoria'            : fechaPagoM > TODAY_ISO ? 'La fecha no puede ser futura' : '',
   };
   const pagoMovilListo = Object.values(movErrors).every(e => !e) && isCompletePhoneVe(telefonoPago);
@@ -548,11 +554,12 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
 
     // Solo se envía la fecha (YYYY-MM-DD) — la nueva API no requiere hora
     const paidOn = fechaPagoM;
+    const amountToVerify = parseVesAmount(montoPagoM || annualVes);
 
     // Piloto Exélixi / QA RCV: simula la verificación sin llamar a ningún banco.
     if (mobilePaymentSimulated) {
       await new Promise((r) => setTimeout(r, 900));
-      const simAmount = parseFloat(montoPagoM);
+      const simAmount = amountToVerify;
       const simulated: VerifyMobilePaymentResponse = {
         success: true,
         isVerified: true,
@@ -598,7 +605,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       const result = await verifyMobilePayment({
         sourcePhoneNumber : phoneDigits(telefonoPago),
         bankCode,
-        amount            : parseFloat(montoPagoM),
+        amount            : amountToVerify,
         paidOn,
         cci_rif           : cedulaPago.toUpperCase(),
       });
@@ -608,7 +615,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       if (result.isVerified) {
         const capture: PaymentCapture = {
           reference: result.reference ?? undefined,
-          amount: result.verifiedAmount ?? parseFloat(montoPagoM),
+          amount: result.verifiedAmount ?? amountToVerify,
           paidOn,
           bankCode: bankCode || undefined,
           sourcePhone: phoneDigits(telefonoPago) || undefined,
@@ -624,7 +631,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
           payment: {
             method: 'mobile',
             reference: result.reference,
-            amount: result.verifiedAmount ?? parseFloat(montoPagoM),
+            amount: result.verifiedAmount ?? amountToVerify,
             paidOn,
             verifiedOn: result.verifiedOn,
             code: result.code,
@@ -644,7 +651,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
           message: result.message || 'No se encontró el pago con los datos proporcionados.',
           payment: {
             method: 'mobile',
-            amount: parseFloat(montoPagoM),
+            amount: amountToVerify,
             paidOn,
             code: result.code,
             message: result.message,
@@ -670,7 +677,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
         paymentVerified: false,
         code,
         message: msg,
-        payment: { method: 'mobile', amount: parseFloat(montoPagoM) || undefined, paidOn },
+        payment: { method: 'mobile', amount: amountToVerify || undefined, paidOn },
       });
     }
   }
@@ -706,9 +713,9 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
                ? 'Prefijo inválido o incompleto (11 dígitos)'
                : '',
 
-    amount : otpAmount.length > 0 && (isNaN(parseFloat(otpAmount)) || parseFloat(otpAmount) <= 0)
-               ? 'Ingresa un monto válido'
-               : !otpAmount ? 'Monto obligatorio' : '',
+    amount : parseVesAmount(otpAmount || annualVes) <= 0
+               ? 'Monto obligatorio'
+               : '',
   };
   const otpFormListo = !Object.values(otpErrors).some(e => e);
 
@@ -719,6 +726,8 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
     setOtpStep('requesting');
     setOtpError('');
 
+    const amountToDebit = parseVesAmount(otpAmount || annualVes);
+
     let succeeded = false;
     try {
       const resp = await sypagoRequestOtp({
@@ -726,7 +735,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
         documentNumber: otpDocNum,
         debtorBankCode: otpBankCode,
         debtorPhone   : phoneDigits(otpPhone),
-        amount        : parseFloat(otpAmount),
+        amount        : amountToDebit,
       });
       if (resp && resp.success === false) {
         throw new SypagoError({ message: resp.message || 'Error al solicitar OTP.', code: 'SYPAGO_ERROR' });
@@ -756,6 +765,9 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
 
     setOtpStep('confirming');
     setOtpError('');
+
+    const amountToConfirm = parseVesAmount(otpAmount || annualVes);
+
     try {
       const result = await sypagoConfirmOtp({
         documentType  : otpDocType,
@@ -763,7 +775,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
         debtorBankCode: otpBankCode,
         debtorPhone   : phoneDigits(otpPhone),
         debtorName    : otpName,
-        amount        : parseFloat(otpAmount),
+        amount        : amountToConfirm,
         otp           : otpCode.trim(),
         concept       : getCheckoutPaymentConcept(checkout),
       });
@@ -796,7 +808,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       setOtpStep('done');
       const capture: PaymentCapture = {
         transactionId: final.transaction_id,
-        amount: parseFloat(otpAmount),
+        amount: amountToConfirm,
         paidOn: TODAY_ISO,
         reference: final.ref_ibp || final.transaction_id,
         bankCode: otpBankCode || undefined,
@@ -816,7 +828,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
         payment: {
           method: 'otp',
           transactionId: final.transaction_id,
-          amount: parseFloat(otpAmount),
+          amount: amountToConfirm,
           paidOn: TODAY_ISO,
           reference: final.ref_ibp || final.transaction_id,
         },
@@ -835,7 +847,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
         paymentVerified: false,
         code: 'OTP_CONFIRM_ERROR',
         message: msg,
-        payment: { method: 'otp', amount: parseFloat(otpAmount) || undefined },
+        payment: { method: 'otp', amount: amountToConfirm || undefined },
       });
       // Liberar latch solo en error para permitir reintentar
       confirmInFlight.current = false;
@@ -1303,14 +1315,14 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
                 full
               >
                 <Input
-                  value={montoPagoM}
+                  value={hasLockedAmount ? (formatVesAmount(montoPagoM || annualVes) || montoPagoM) : montoPagoM}
                   onChange={(e) => {
                     if (hasLockedAmount) return;
                     setMontoM(e.target.value.replace(/[^0-9.]/g, ''));
                     setVerifyStatus('idle');
                     setPaymentVerified(false);
                   }}
-                  placeholder="198114.50"
+                  placeholder={formatVesAmount(annualVes) || "Bs 198.114,50"}
                   inputMode="decimal"
                   readOnly={hasLockedAmount}
                   className={hasLockedAmount ? 'bg-slate-50 text-slate-700 font-bold cursor-not-allowed' : ''}
@@ -1527,12 +1539,12 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
                     full
                   >
                     <Input
-                      value={otpAmount}
+                      value={hasLockedAmount ? (formatVesAmount(otpAmount || annualVes) || otpAmount) : otpAmount}
                       onChange={(e) => {
                         if (hasLockedAmount) return;
                         setOtpAmount(e.target.value.replace(/[^0-9.]/g, ''));
                       }}
-                      placeholder="198114.50"
+                      placeholder={formatVesAmount(annualVes) || "Bs 198.114,50"}
                       inputMode="decimal"
                       readOnly={hasLockedAmount}
                       className={hasLockedAmount ? 'bg-slate-50 text-slate-700 font-bold cursor-not-allowed' : ''}
@@ -1678,7 +1690,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
                       <dd className="text-slate-700">{otpName}</dd>
                       <dt className="text-slate-500 font-semibold">Monto</dt>
                       <dd className="font-bold text-emerald-700">
-                        Bs {parseFloat(otpAmount).toLocaleString('es-VE', { minimumFractionDigits: 2 })}
+                        {formatVesAmount(otpAmount || annualVes)}
                       </dd>
                     </dl>
                     <p className="text-[0.65rem] text-emerald-600/70 mt-2">
