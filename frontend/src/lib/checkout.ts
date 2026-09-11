@@ -96,6 +96,24 @@ export function hydrateCheckoutFromQueryParams(): boolean {
   const title = params.get('title') || params.get('titulo') || params.get('plan') || params.get('concepto') || 'Pago de Póliza';
   const referenceId = params.get('referenceId') || params.get('idOperacion') || params.get('cnpoliza') || undefined;
 
+  // Datos del asegurado (si es diferente al tomador)
+  let asegDocType = (params.get('asegDocType') || params.get('asegTipoDoc') || params.get('asegIcedula') || '').toUpperCase().trim();
+  let asegDocNumber = (params.get('asegDocNumber') || params.get('asegCedula') || params.get('asegCci_rif') || params.get('asegIdentificacion') || '').trim();
+
+  if (!asegDocType && asegDocNumber) {
+    const match = asegDocNumber.match(/^([VEJPGvejpg])[- ]?(\d+)$/);
+    if (match) {
+      asegDocType = match[1].toUpperCase();
+      asegDocNumber = match[2];
+    }
+  } else if (asegDocType && asegDocNumber) {
+    asegDocNumber = asegDocNumber.replace(/^[VEJPGvejpg][- ]?/, '');
+  }
+
+  const asegPhone = params.get('asegPhone') || params.get('asegTelefono') || params.get('asegXtelefono') || '';
+  const asegName = params.get('asegName') || params.get('asegNombre') || params.get('asegCliente') || '';
+  const asegEmail = params.get('asegEmail') || params.get('asegCorreo') || '';
+
   const store = useWizardStore.getState();
   if (hasGenericCheckout(store)) return true;
 
@@ -123,6 +141,22 @@ export function hydrateCheckoutFromQueryParams(): boolean {
     email: email || undefined,
   };
 
+  const tomadorPayload = {
+    documentType: docType || undefined,
+    documentNumber: docNumber || undefined,
+    phone: phone || undefined,
+    name: name || undefined,
+    email: email || undefined,
+  };
+
+  const aseguradoPayload = {
+    documentType: asegDocType || undefined,
+    documentNumber: asegDocNumber || undefined,
+    phone: asegPhone || undefined,
+    name: asegName || undefined,
+    email: asegEmail || undefined,
+  };
+
   store.setCheckout({
     data: checkout,
     rules: {
@@ -133,6 +167,8 @@ export function hydrateCheckoutFromQueryParams(): boolean {
     payload: {
       idOperacion: referenceId,
       source: 'sysip',
+      tomador: tomadorPayload,
+      asegurado: aseguradoPayload,
     },
   });
 
@@ -144,6 +180,17 @@ export function hydrateCheckoutFromQueryParams(): boolean {
       telefono: phone,
       email,
     });
+  }
+
+  if (asegDocNumber || asegPhone || asegName) {
+    store.setAsegurado({
+      tipoDoc: (asegDocType as 'V' | 'E' | 'J' | 'G' | 'P') || (docType as 'V' | 'E' | 'J' | 'G' | 'P') || 'V',
+      identificacion: asegDocNumber,
+      nombre: asegName,
+      telefono: asegPhone,
+      email: asegEmail,
+    });
+    store.setSameInsured(false);
   }
 
   store.setQuote(quoteFromCheckout(checkout), 'checkout-metadata');
