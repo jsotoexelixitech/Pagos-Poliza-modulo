@@ -467,24 +467,24 @@ export default function App() {
       <div>
         <main
           className={`flex-1 min-h-screen px-4 sm:px-6 lg:px-10 ${
-            genericCheckout ? 'pb-12' : 'pb-32 lg:pb-12'
-          } ${genericCheckout ? 'pt-10' : 'pt-[72px] lg:pt-10'}`}
+            embeddedCheckout ? 'pt-4 pb-6' : genericCheckout ? 'pt-10 pb-12' : 'pt-[72px] lg:pt-10 pb-32 lg:pb-12'
+          }`}
         >
           <div className="max-w-5xl mx-auto">
             {!genericCheckout && <TopStepper />}
 
             {!isSuccess && (
-              <header className="mb-8 animate-fade-in">
+              <header className="mb-6 animate-fade-in">
                 <div className="flex items-start justify-between gap-4 flex-wrap">
                   <div className="min-w-0">
                     <p className="text-[0.68rem] font-black tracking-[0.22em] gradient-text-indigo uppercase mb-2 inline-flex items-center gap-1.5">
                       <Sparkles size={11} className="text-indigo-500" />
                       {genericCheckout ? 'Pago' : 'Paso 05 · Checkout'}
                     </p>
-                    <h1 className="font-display text-3xl sm:text-[2.5rem] font-black text-slate-900 tracking-tight leading-tight">
+                    <h1 className="font-display text-2xl sm:text-3xl font-black text-slate-900 tracking-tight leading-tight">
                       {genericCheckout ? 'Realiza tu pago' : 'Confirma y paga'}
                     </h1>
-                    <p className="text-slate-500 text-sm mt-2 max-w-xl leading-relaxed">
+                    <p className="text-slate-500 text-xs sm:text-sm mt-1 max-w-xl leading-relaxed">
                       {embeddedCheckout
                         ? 'Al verificar el pago, tu sistema recibirá el resultado automáticamente.'
                         : genericCheckout
@@ -499,6 +499,19 @@ export default function App() {
                       </p>
                     )}
                   </div>
+                  {embeddedCheckout && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (typeof window !== 'undefined' && window.parent && window.parent !== window) {
+                          window.parent.postMessage({ type: 'PAGOS_CHECKOUT_CANCEL', event: 'payment.cancel' }, '*');
+                        }
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-white/90 hover:bg-white rounded-lg border border-slate-200/90 shadow-sm transition-all hover:shadow"
+                    >
+                      ✕ Cancelar y volver
+                    </button>
+                  )}
                 </div>
               </header>
             )}

@@ -52,6 +52,106 @@ export function hydrateCheckoutFromAccessToken(): boolean {
   return true;
 }
 
+/**
+ * Hidrata checkout desde query params (SysIP o integración vía iframe/URL).
+ * Soporta: embed, amount/totalVes, totalUsd, docType, docNumber/cedula, phone/telefono, name/nombre, title/plan, etc.
+ */
+export function hydrateCheckoutFromQueryParams(): boolean {
+  if (typeof window === 'undefined') return false;
+  const params = new URLSearchParams(window.location.search);
+
+  const rawVes = params.get('amount') || params.get('totalVes') || params.get('monto') || params.get('ves');
+  if (!rawVes) return false;
+
+  const totalVes = parseFloat(rawVes.replace(',', '.'));
+  if (!Number.isFinite(totalVes) || totalVes <= 0) return false;
+
+  const rawUsd = params.get('totalUsd') || params.get('usd') || params.get('dolares');
+  const parsedUsd = rawUsd ? parseFloat(rawUsd.replace(',', '.')) : NaN;
+  const totalUsd = Number.isFinite(parsedUsd) && parsedUsd > 0 ? parsedUsd : undefined;
+
+  const rawRate = params.get('exchangeRate') || params.get('tasa');
+  const parsedRate = rawRate ? parseFloat(rawRate.replace(',', '.')) : NaN;
+  const exchangeRate = Number.isFinite(parsedRate) && parsedRate > 0
+    ? parsedRate
+    : (totalUsd && totalUsd > 0 ? totalVes / totalUsd : undefined);
+
+  let docType = (params.get('docType') || params.get('tipoDoc') || params.get('icedula') || '').toUpperCase().trim();
+  let docNumber = (params.get('docNumber') || params.get('cedula') || params.get('cci_rif') || params.get('identificacion') || '').trim();
+
+  // Si docNumber viene con letra prefijo tipo V12345678 o V-12345678
+  if (!docType && docNumber) {
+    const match = docNumber.match(/^([VEJPGvejpg])[- ]?(\d+)$/);
+    if (match) {
+      docType = match[1].toUpperCase();
+      docNumber = match[2];
+    }
+  } else if (docType && docNumber) {
+    docNumber = docNumber.replace(/^[VEJPGvejpg][- ]?/, '');
+  }
+
+  const phone = params.get('phone') || params.get('telefono') || params.get('xtelefono') || '';
+  const name = params.get('name') || params.get('nombre') || params.get('xcliente') || '';
+  const email = params.get('email') || params.get('correo') || '';
+  const title = params.get('title') || params.get('titulo') || params.get('plan') || params.get('concepto') || 'Pago de Póliza';
+  const referenceId = params.get('referenceId') || params.get('idOperacion') || params.get('cnpoliza') || undefined;
+
+  const store = useWizardStore.getState();
+  if (hasGenericCheckout(store)) return true;
+
+  const checkout: CheckoutData = {
+    title,
+    subtitle: referenceId ? `Referencia: ${referenceId}` : undefined,
+    referenceId,
+    totalVes,
+    totalUsd,
+    exchangeRate,
+    lines: [
+      {
+        label: title,
+        amountVes: totalVes,
+        amountUsd: totalUsd,
+      },
+    ],
+  };
+
+  const payer = {
+    documentType: docType || undefined,
+    documentNumber: docNumber || undefined,
+    phone: phone || undefined,
+    name: name || undefined,
+    email: email || undefined,
+  };
+
+  store.setCheckout({
+    data: checkout,
+    rules: {
+      requirePayment: true,
+      autoRedirect: false,
+    },
+    payer: Object.values(payer).some(Boolean) ? payer : null,
+    payload: {
+      idOperacion: referenceId,
+      source: 'sysip',
+    },
+  });
+
+  if (docNumber || phone || name || email) {
+    store.setTomador({
+      tipoDoc: (docType as 'V' | 'E' | 'J' | 'G' | 'P') || 'V',
+      identificacion: docNumber,
+      nombre: name,
+      telefono: phone,
+      email,
+    });
+  }
+
+  store.setQuote(quoteFromCheckout(checkout), 'checkout-metadata');
+  store.setQuoteState('ready');
+  store.goTo(5);
+  return true;
+}
+
 /** Activo cuando la sesión trae un checkout con monto válido. */
 export function hasGenericCheckout(
   state: Pick<WizardState, 'checkout'>,
@@ -64,13 +164,28 @@ export function hasGenericCheckout(
 export function isGenericCheckoutMode(
   state: Pick<WizardState, 'checkout'>,
 ): boolean {
-  return hasGenericCheckout(state) || isStandaloneGenericCheckoutSession();
+  if (hasGenericCheckout(state) || isStandaloneGenericCheckoutSession()) return true;
+  if (typeof window !== 'undefined') {
+    const params = new URLSearchParams(window.location.search);
+    const rawVes = params.get('amount') || params.get('totalVes') || params.get('monto') || params.get('ves');
+    if (rawVes && parseFloat(rawVes.replace(',', '.')) > 0) return true;
+  }
+  return false;
 }
 
-/** Checkout embebido vía metadata SSO (iframe — sin botón Continuar). */
+/** Checkout embebido vía metadata SSO o query params (iframe — sin botón Continuar). */
 export function isEmbeddedMetadataCheckout(
   state: Pick<WizardState, 'checkout'>,
 ): boolean {
+  if (typeof window !== 'undefined') {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('embed') === 'true' || params.get('embedded') === 'true') {
+      return true;
+    }
+    if (window.parent !== window && hasGenericCheckout(state)) {
+      return true;
+    }
+  }
   if (!isGenericCheckoutMode(state)) return false;
   if (typeof window === 'undefined') return true;
   // Bridge (?sid=) puede usar onSuccess.emit; metadata SSO no controla el flujo del cliente.

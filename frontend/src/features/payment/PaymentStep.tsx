@@ -242,17 +242,6 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Prellenar pagador desde checkout.payer
-  useEffect(() => {
-    if (!checkoutPayer) return;
-    if (checkoutPayer.phone) setOtpPhone(formatTelefono(checkoutPayer.phone));
-    if (checkoutPayer.documentType) setOtpDocType(checkoutPayer.documentType);
-    if (checkoutPayer.documentNumber) setOtpDocNum(checkoutPayer.documentNumber);
-    if (checkoutPayer.name) setOtpName(checkoutPayer.name);
-  // Solo al montar con datos de sesión
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   // ── Campos compartidos ────────────────────────────────────────────────
   const [bankCode,    setBankCode]    = useState('');
   const [bankLabel,   setBankLabel]   = useState('');
@@ -307,26 +296,40 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       message: notification.message,
       payment: mergePaymentNotifyFields(capture, notification.payment),
     });
-    if (genericCheckout) {
-      // Avisa al portal padre (iframe Autocasco) aunque falle el redirect.
+    if (genericCheckout || (typeof window !== 'undefined' && window.parent !== window)) {
+      // Avisa al portal padre (SysIP / Autocasco) aunque falle el redirect.
       try {
-        if (window.parent && window.parent !== window) {
+        if (typeof window !== 'undefined' && window.parent && window.parent !== window) {
           const idOperacion =
             checkoutPayload?.idOperacion
             || checkout?.referenceId
             || null;
-          window.parent.postMessage(
-            {
-              type: 'payment.success',
-              event: 'payment.success',
-              paymentVerified: true,
-              status: 'ok',
-              code: notification.code,
-              idOperacion,
-              referenceId: idOperacion,
-            },
-            '*',
-          );
+          const ref =
+            capture.reference
+            || (notification.payment as { reference?: string } | undefined)?.reference
+            || '';
+          const successPayload = {
+            type: 'PAGOS_CHECKOUT_SUCCESS',
+            event: 'payment.success',
+            paymentVerified: true,
+            status: 'ok',
+            ref,
+            reference: ref,
+            code: notification.code,
+            message: notification.message,
+            method: capture.method || paymentMethod,
+            bankCode: capture.bankCode || bankCode,
+            amount: capture.amount ?? (annualVes > 0 ? annualVes : undefined),
+            idOperacion,
+            referenceId: idOperacion,
+            capture,
+          };
+          window.parent.postMessage(successPayload, '*');
+          // También el formato anterior por compatibilidad con Autocasco
+          window.parent.postMessage({
+            ...successPayload,
+            type: 'payment.success',
+          }, '*');
         }
       } catch {
         /* ignore */
@@ -372,6 +375,38 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
     setPaymentVerified(false);
     confirmInFlight.current = false;
   }, [paymentMethod, setPaymentVerified]);
+
+  // Prellenar pagador desde checkoutPayer o tomador (SysIP o checkout genérico)
+  useEffect(() => {
+    if (checkoutPayer) {
+      if (checkoutPayer.phone) {
+        setOtpPhone(formatTelefono(checkoutPayer.phone));
+        setTelPago(formatTelefono(checkoutPayer.phone));
+      }
+      if (checkoutPayer.documentType) setOtpDocType(checkoutPayer.documentType);
+      if (checkoutPayer.documentNumber) setOtpDocNum(checkoutPayer.documentNumber);
+      if (checkoutPayer.name) setOtpName(checkoutPayer.name);
+      if (checkoutPayer.documentType && checkoutPayer.documentNumber) {
+        setCedulaPago(formatCedulaRif(`${checkoutPayer.documentType}${checkoutPayer.documentNumber}`));
+      } else if (checkoutPayer.documentNumber) {
+        setCedulaPago(formatCedulaRif(checkoutPayer.documentNumber));
+      }
+      if (!fechaPagoM) setFechaM(TODAY_ISO);
+    } else if (tomador && tomador.identificacion) {
+      if (tomador.telefono) {
+        setOtpPhone(formatTelefono(tomador.telefono));
+        setTelPago(formatTelefono(tomador.telefono));
+      }
+      if (tomador.tipoDoc) setOtpDocType(tomador.tipoDoc);
+      if (tomador.identificacion) setOtpDocNum(tomador.identificacion);
+      if (tomador.nombre) setOtpName(`${tomador.nombre} ${tomador.apellido || ''}`.trim());
+      const doc = `${tomador.tipoDoc || 'V'}${tomador.identificacion}`.replace(/\s/g, '');
+      setCedulaPago(formatCedulaRif(doc));
+      if (!fechaPagoM) setFechaM(TODAY_ISO);
+    }
+  // Solo al montar con datos de sesión
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checkoutPayer]);
 
   // QA RCV: prellenar pago móvil desde tomador para auto-verificación.
   useEffect(() => {
