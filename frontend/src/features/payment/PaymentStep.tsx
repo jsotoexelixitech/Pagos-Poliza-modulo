@@ -7,7 +7,6 @@ import {
   Smartphone, Lock, ShieldCheck, KeyRound, Landmark,
   Check, Receipt, Sparkles, Loader2, BadgeCheck, AlertTriangle,
   CheckCircle2, XCircle, RefreshCw, Send, ClipboardCheck,
-  User, Users,
 } from 'lucide-react';
 import { formatUsdShort, vesAnnual, formatVesAmount, parseVesAmount } from '../../lib/money';
 import { formatTelefono, phoneDigits, isCompletePhoneVe, PHONE_MASK_MAX_LENGTH } from '../../lib/phone';
@@ -21,7 +20,6 @@ import {
   isPaymentBypassEnabled,
   scheduleGenericCheckoutReturn,
 } from '../../lib/checkout';
-import { cn } from '../../lib/utils';
 import { notifyClientCheckoutStatus, mergePaymentNotifyFields } from '../../lib/checkout-notify';
 import { isPaymentMethodEnabled, isPagoFraccionado, resolveCheckoutFrecuencia } from '../../lib/payment-methods';
 import { allowsEmitPending, isCanalPaymentMethodAllowed } from '../../lib/canal-visibility';
@@ -82,7 +80,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
     paymentMethod, setPaymentMethod,
     selectedPlan, quote, quoteState, vehicle,
     checkout, checkoutRules, checkoutPayer, checkoutPayload,
-    tomador, asegurado, sameInsured, rcv, funeral, metadataCanal, canalVisibility,
+    tomador, rcv, funeral, metadataCanal, canalVisibility,
     setQuote, setQuoteState,
     setPaymentVerified,
     setPaymentCapture,
@@ -263,31 +261,17 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
   const autoEmitStarted = useRef(false);
   const autoVerifyStarted = useRef(false);
 
-  // ── Selector de pagador (Tomador vs Asegurado) ────────────────────────
-  const [selectedPayer, setSelectedPayer] = useState<'tomador' | 'asegurado'>('tomador');
-
-  const tomadorProfile = useMemo(() => {
-    const rawTomador = (checkoutPayload?.tomador || {}) as Record<string, string>;
-    const docType = (rawTomador.documentType || tomador?.tipoDoc || checkoutPayer?.documentType || 'V').toUpperCase();
-    const docNum = (rawTomador.documentNumber || tomador?.identificacion || checkoutPayer?.documentNumber || '').replace(/\D/g, '');
-    const phone = rawTomador.phone || tomador?.telefono || checkoutPayer?.phone || '';
-    const name = rawTomador.name || (tomador?.nombre ? `${tomador.nombre} ${tomador.apellido || ''}`.trim() : checkoutPayer?.name || 'Tomador');
+  // ── Perfil por defecto para sugerir datos iniciales al abrir el checkout ──
+  const defaultProfile = useMemo(() => {
+    const rawPayer = (checkoutPayload?.tomador || checkoutPayload?.payer || {}) as Record<string, string>;
+    const docType = (rawPayer.documentType || tomador?.tipoDoc || checkoutPayer?.documentType || 'V').toUpperCase();
+    const docNum = (rawPayer.documentNumber || tomador?.identificacion || checkoutPayer?.documentNumber || '').replace(/\D/g, '');
+    const phone = rawPayer.phone || tomador?.telefono || checkoutPayer?.phone || '';
+    const name = rawPayer.name || (tomador?.nombre ? `${tomador.nombre} ${tomador.apellido || ''}`.trim() : checkoutPayer?.name || 'Tomador');
     const formattedDoc = docNum ? formatCedulaRif(`${docType}${docNum}`) : '';
     const formattedPhone = phone ? formatTelefono(phone) : '';
     return { docType, docNum, phone, formattedPhone, name, formattedDoc };
   }, [checkoutPayload, tomador, checkoutPayer]);
-
-  const aseguradoProfile = useMemo(() => {
-    const rawAseg = (checkoutPayload?.asegurado || {}) as Record<string, string>;
-    const hasAsegData = Boolean(rawAseg.documentNumber || (!sameInsured && asegurado?.identificacion));
-    const docType = (rawAseg.documentType || asegurado?.tipoDoc || (hasAsegData ? 'V' : tomadorProfile.docType)).toUpperCase();
-    const docNum = (rawAseg.documentNumber || asegurado?.identificacion || (hasAsegData ? '' : tomadorProfile.docNum)).replace(/\D/g, '');
-    const phone = rawAseg.phone || asegurado?.telefono || (hasAsegData ? '' : tomadorProfile.phone);
-    const name = rawAseg.name || (asegurado?.nombre ? `${asegurado.nombre} ${asegurado.apellido || ''}`.trim() : (hasAsegData ? 'Asegurado' : tomadorProfile.name));
-    const formattedDoc = docNum ? formatCedulaRif(`${docType}${docNum}`) : (hasAsegData ? '' : tomadorProfile.formattedDoc);
-    const formattedPhone = phone ? formatTelefono(phone) : (hasAsegData ? '' : tomadorProfile.formattedPhone);
-    return { docType, docNum, phone, formattedPhone, name, formattedDoc, hasDistinctData: hasAsegData };
-  }, [checkoutPayload, asegurado, sameInsured, tomadorProfile]);
 
   const triggerAutoEmit = async (capture: PaymentCapture) => {
     if (!onPaymentVerified || autoEmitStarted.current) return;
@@ -339,8 +323,12 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
             capture.reference
             || (notification.payment as { reference?: string } | undefined)?.reference
             || '';
-          const activeDoc = selectedPayer === 'tomador' ? tomadorProfile.formattedDoc : aseguradoProfile.formattedDoc;
-          const activePhone = selectedPayer === 'tomador' ? tomadorProfile.phone : aseguradoProfile.phone;
+          const activeDoc = paymentMethod === 'mobile'
+            ? cedulaPago
+            : (otpDocNum ? `${otpDocType}-${otpDocNum}` : defaultProfile.formattedDoc);
+          const activePhone = paymentMethod === 'mobile'
+            ? telefonoPago
+            : (otpPhone || defaultProfile.phone);
           const successPayload = {
             type: 'PAGOS_CHECKOUT_SUCCESS',
             event: 'payment.success',
@@ -356,7 +344,6 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
             idOperacion,
             referenceId: idOperacion,
             capture,
-            payerRole: selectedPayer,
             payerDoc: activeDoc,
             payerPhone: activePhone,
           };
@@ -407,43 +394,20 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
     confirmInFlight.current = false;
   }, [paymentMethod, setPaymentVerified]);
 
-  const handlePayerChange = (role: 'tomador' | 'asegurado') => {
-    setSelectedPayer(role);
-    const target = role === 'tomador' ? tomadorProfile : aseguradoProfile;
-    if (target.formattedPhone) {
-      setTelPago(target.formattedPhone);
-      setOtpPhone(target.formattedPhone);
-    }
-    if (target.docType) setOtpDocType(target.docType);
-    if (target.docNum) setOtpDocNum(target.docNum);
-    if (target.formattedDoc) {
-      setCedulaPago(target.formattedDoc);
-    }
-    if (target.name) {
-      setOtpName(target.name);
-    }
-    setFechaM(TODAY_ISO);
-    setVerifyStatus('idle');
-    setVerifyResult(null);
-    setVerifyError('');
-    setOtpStep('form');
-    setOtpError('');
-    setPaymentVerified(false);
-  };
-
-  // Prellenar pagador desde tomador o asegurado (según selección o sesión)
+  // Prellenar datos iniciales sugeridos si los campos están vacíos
   useEffect(() => {
-    const target = selectedPayer === 'tomador' ? tomadorProfile : aseguradoProfile;
-    if (target.formattedPhone && (!telefonoPago || isEmbedded)) {
-      setOtpPhone(target.formattedPhone);
-      setTelPago(target.formattedPhone);
+    if (defaultProfile.formattedPhone && !telefonoPago) {
+      setTelPago(defaultProfile.formattedPhone);
     }
-    if (target.docType && (!otpDocType || isEmbedded)) setOtpDocType(target.docType);
-    if (target.docNum && (!otpDocNum || isEmbedded)) setOtpDocNum(target.docNum);
-    if (target.formattedDoc && (!cedulaPago || isEmbedded)) setCedulaPago(target.formattedDoc);
-    if (target.name && (!otpName || isEmbedded)) setOtpName(target.name);
+    if (defaultProfile.formattedPhone && !otpPhone) {
+      setOtpPhone(defaultProfile.formattedPhone);
+    }
+    if (defaultProfile.docType && !otpDocType) setOtpDocType(defaultProfile.docType);
+    if (defaultProfile.docNum && !otpDocNum) setOtpDocNum(defaultProfile.docNum);
+    if (defaultProfile.formattedDoc && !cedulaPago) setCedulaPago(defaultProfile.formattedDoc);
+    if (defaultProfile.name && !otpName) setOtpName(defaultProfile.name);
     if (!fechaPagoM) setFechaM(TODAY_ISO);
-  }, [selectedPayer, tomadorProfile, aseguradoProfile, isEmbedded]);
+  }, [defaultProfile]);
 
   // QA RCV: prellenar pago móvil desde tomador para auto-verificación.
   useEffect(() => {
@@ -1083,78 +1047,6 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
           </span>
         </div>
 
-        {/* Selector Tomador / Asegurado (Modal embebido) */}
-        {isEmbedded && (
-          <div className="mb-5 p-4 rounded-2xl bg-gradient-to-br from-slate-50 via-indigo-50/20 to-slate-50 border border-slate-200/80 shadow-xs">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mb-3">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-indigo-100 text-indigo-700 grid place-items-center font-bold">
-                  <Users size={15} />
-                </div>
-                <div>
-                  <span className="text-xs font-bold text-slate-800">¿Quién realiza el pago?</span>
-                  <p className="text-[0.68rem] text-slate-500">
-                    Solo el tomador o el asegurado están autorizados para pagar la póliza
-                  </p>
-                </div>
-              </div>
-              <span className="self-start sm:self-auto px-2 py-0.5 rounded-full text-[0.65rem] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200/60">
-                {selectedPayer === 'tomador' ? 'Tomador seleccionado' : 'Asegurado seleccionado'}
-              </span>
-            </div>
-
-            {/* Segmented Switch Control */}
-            <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-200/70 rounded-xl border border-slate-200">
-              <button
-                type="button"
-                onClick={() => handlePayerChange('tomador')}
-                className={cn(
-                  "relative flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-xs font-bold transition-all duration-200 select-none cursor-pointer",
-                  selectedPayer === 'tomador'
-                    ? "bg-white text-indigo-700 shadow-sm border border-slate-200/80"
-                    : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
-                )}
-              >
-                <User size={15} className={selectedPayer === 'tomador' ? 'text-indigo-600' : 'text-slate-400'} />
-                <span className="truncate">Tomador</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handlePayerChange('asegurado')}
-                className={cn(
-                  "relative flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-xs font-bold transition-all duration-200 select-none cursor-pointer",
-                  selectedPayer === 'asegurado'
-                    ? "bg-white text-indigo-700 shadow-sm border border-slate-200/80"
-                    : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
-                )}
-              >
-                <ShieldCheck size={15} className={selectedPayer === 'asegurado' ? 'text-indigo-600' : 'text-slate-400'} />
-                <span className="truncate">Asegurado (Titular)</span>
-              </button>
-            </div>
-
-            {/* Resumen del pagador activo */}
-            <div className="mt-2.5 px-3 py-2 rounded-xl bg-white/80 border border-slate-200/60 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-[0.7rem] text-slate-600">
-              <div className="flex items-center gap-1.5 truncate">
-                <span className="font-semibold text-slate-800">
-                  {selectedPayer === 'tomador' ? (tomadorProfile.name || 'Tomador') : (aseguradoProfile.name || 'Asegurado')}
-                </span>
-                <span>•</span>
-                <span className="font-mono">
-                  {selectedPayer === 'tomador' ? tomadorProfile.formattedDoc : aseguradoProfile.formattedDoc}
-                </span>
-              </div>
-              <div className="flex items-center gap-1 font-mono text-slate-500">
-                <span>Tel:</span>
-                <span>
-                  {selectedPayer === 'tomador' ? (tomadorProfile.formattedPhone || 'No registrado') : (aseguradoProfile.formattedPhone || 'No registrado')}
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* ── PAGO MÓVIL ── */}
         {paymentMethod === 'mobile' && (
           <div className="animate-fade-in space-y-4">
@@ -1230,67 +1122,54 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
 
               <Field
                 label="Teléfono de origen"
-                hint={isEmbedded ? `Teléfono del ${selectedPayer === 'tomador' ? 'Tomador' : 'Asegurado'} · no modificable` : 'Número que realizó el pago'}
+                hint="Número que realizó el pago"
                 error={movErrors.telefono}
               >
                 <Input
                   value={telefonoPago}
                   onChange={(e) => {
-                    if (isEmbedded) return;
                     setTelPago(formatTelefono(e.target.value));
                     setVerifyStatus('idle');
                     setPaymentVerified(false);
                   }}
-                  readOnly={isEmbedded}
-                  tabIndex={isEmbedded ? -1 : undefined}
                   placeholder="04121234567"
                   type="tel"
                   inputMode="numeric"
                   maxLength={PHONE_MASK_MAX_LENGTH}
-                  className={isEmbedded ? 'bg-slate-100/90 text-slate-600 font-semibold cursor-not-allowed select-none pointer-events-none' : undefined}
                 />
               </Field>
 
               {/* fila 2: fecha */}
               <Field
                 label="Fecha del pago"
-                hint={isEmbedded ? 'Fecha de hoy · no modificable' : undefined}
                 error={movErrors.fecha}
               >
                 <Input
                   type="date"
                   value={fechaPagoM}
                   onChange={(e) => {
-                    if (isEmbedded) return;
                     setFechaM(e.target.value);
                     setVerifyStatus('idle');
                     setPaymentVerified(false);
                   }}
-                  readOnly={isEmbedded}
-                  tabIndex={isEmbedded ? -1 : undefined}
                   max={TODAY_ISO}
-                  className={isEmbedded ? 'bg-slate-100/90 text-slate-600 font-semibold cursor-not-allowed select-none pointer-events-none' : undefined}
                 />
               </Field>
 
               <Field
                 label="Cédula/RIF del titular"
-                hint={isEmbedded ? `Cédula/RIF del ${selectedPayer === 'tomador' ? 'Tomador' : 'Asegurado'} · no modificable` : 'Ej: V-12345678 (máx. 8 dígitos)'}
+                hint="Ej: V-12345678 (máx. 8 dígitos)"
                 error={movErrors.cedula}
               >
                 <Input
                   value={cedulaPago}
                   onChange={(e) => {
-                    if (isEmbedded) return;
                     setCedulaPago(formatCedulaRif(e.target.value));
                     setVerifyStatus('idle');
                     setPaymentVerified(false);
                   }}
-                  readOnly={isEmbedded}
-                  tabIndex={isEmbedded ? -1 : undefined}
                   placeholder="V-12345678"
                   maxLength={11}
-                  className={isEmbedded ? 'bg-slate-100/90 text-slate-600 font-semibold cursor-not-allowed select-none pointer-events-none' : undefined}
                 />
               </Field>
 
@@ -1447,34 +1326,27 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
                   {/* fila 1: documento · nombre */}
                   <Field
                     label="Documento del pagador"
-                    hint={isEmbedded ? `Documento del ${selectedPayer === 'tomador' ? 'Tomador' : 'Asegurado'} · no modificable` : "Tipo y número de cédula"}
+                    hint="Tipo y número de cédula"
                     error={otpErrors.docNum}
                   >
                     <div className="flex gap-2 w-full">
                       {/* Selector de tipo — ancho fijo, legible en móvil */}
                       <select
                         value={otpDocType}
-                        onChange={(e) => { if (!isEmbedded) setOtpDocType(e.target.value); }}
-                        disabled={isEmbedded}
-                        className={cn(
-                          "w-[4.5rem] shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer",
-                          isEmbedded && "bg-slate-100/90 text-slate-600 cursor-not-allowed select-none pointer-events-none"
-                        )}
+                        onChange={(e) => setOtpDocType(e.target.value)}
+                        className="w-[4.5rem] shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer"
                       >
                         {['V','E','J','G','P'].map(t => <option key={t} value={t}>{t}</option>)}
                       </select>
                       <Input
                         value={otpDocNum}
                         onChange={(e) => {
-                          if (isEmbedded) return;
                           setOtpDocNum(e.target.value.replace(/\D/g, ''));
                         }}
-                        readOnly={isEmbedded}
-                        tabIndex={isEmbedded ? -1 : undefined}
                         placeholder="12345678"
                         inputMode="numeric"
                         maxLength={10}
-                        className={cn("flex-1 min-w-0", isEmbedded && "bg-slate-100/90 text-slate-600 font-semibold cursor-not-allowed select-none pointer-events-none")}
+                        className="flex-1 min-w-0"
                       />
                     </div>
                   </Field>
@@ -1499,22 +1371,18 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
 
                   <Field
                     label="Teléfono del pagador"
-                    hint={isEmbedded ? `Teléfono del ${selectedPayer === 'tomador' ? 'Tomador' : 'Asegurado'} · no modificable` : "04XX · número en el banco"}
+                    hint="04XX · número en el banco"
                     error={otpErrors.phone}
                   >
                     <Input
                       value={otpPhone}
                       onChange={(e) => {
-                        if (isEmbedded) return;
                         setOtpPhone(formatTelefono(e.target.value));
                       }}
-                      readOnly={isEmbedded}
-                      tabIndex={isEmbedded ? -1 : undefined}
                       placeholder="04141234567"
                       type="tel"
                       inputMode="numeric"
                       maxLength={PHONE_MASK_MAX_LENGTH}
-                      className={isEmbedded ? 'bg-slate-100/90 text-slate-600 font-semibold cursor-not-allowed select-none pointer-events-none' : undefined}
                     />
                   </Field>
 
