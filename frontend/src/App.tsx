@@ -499,19 +499,6 @@ export default function App() {
                       </p>
                     )}
                   </div>
-                  {embeddedCheckout && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (typeof window !== 'undefined' && window.parent && window.parent !== window) {
-                          window.parent.postMessage({ type: 'PAGOS_CHECKOUT_CANCEL', event: 'payment.cancel' }, '*');
-                        }
-                      }}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-white/90 hover:bg-white rounded-lg border border-slate-200/90 shadow-sm transition-all hover:shadow"
-                    >
-                      ✕ Cancelar y volver
-                    </button>
-                  )}
                 </div>
               </header>
             )}

@@ -16,9 +16,11 @@ import { isExelixiCatalogProduct } from '../../lib/product';
 import {
   getCheckoutPaymentConcept,
   isGenericCheckoutMode,
+  isEmbeddedMetadataCheckout,
   isPaymentBypassEnabled,
   scheduleGenericCheckoutReturn,
 } from '../../lib/checkout';
+import { cn } from '../../lib/utils';
 import { notifyClientCheckoutStatus, mergePaymentNotifyFields } from '../../lib/checkout-notify';
 import { isPaymentMethodEnabled, isPagoFraccionado, resolveCheckoutFrecuencia } from '../../lib/payment-methods';
 import { allowsEmitPending, isCanalPaymentMethodAllowed } from '../../lib/canal-visibility';
@@ -86,6 +88,8 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
   } = useWizardStore();
 
   const genericCheckout = isGenericCheckoutMode({ checkout });
+  const embeddedCheckout = isEmbeddedMetadataCheckout({ checkout });
+  const isEmbedded = embeddedCheckout || (typeof window !== 'undefined' && (new URLSearchParams(window.location.search).get('embed') === 'true' || window.parent !== window));
   const emitPendingMode = allowsEmitPending(canalVisibility, metadataCanal);
   const bridgeChained = typeof window !== 'undefined'
     && Boolean(new URLSearchParams(window.location.search).get('sid'));
@@ -1099,37 +1103,69 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
                 />
               </Field>
 
-              <Field label="Teléfono de origen" hint="Número que realizó el pago" error={movErrors.telefono}>
+              <Field
+                label="Teléfono de origen"
+                hint={isEmbedded ? 'Dato cargado desde la póliza · no modificable' : 'Número que realizó el pago'}
+                error={movErrors.telefono}
+              >
                 <Input
                   value={telefonoPago}
-                  onChange={(e) => { setTelPago(formatTelefono(e.target.value)); setVerifyStatus('idle'); setPaymentVerified(false); }}
+                  onChange={(e) => {
+                    if (isEmbedded) return;
+                    setTelPago(formatTelefono(e.target.value));
+                    setVerifyStatus('idle');
+                    setPaymentVerified(false);
+                  }}
+                  readOnly={isEmbedded}
+                  tabIndex={isEmbedded ? -1 : undefined}
                   placeholder="04121234567"
                   type="tel"
                   inputMode="numeric"
                   maxLength={PHONE_MASK_MAX_LENGTH}
+                  className={isEmbedded ? 'bg-slate-100/90 text-slate-600 font-semibold cursor-not-allowed select-none pointer-events-none' : undefined}
                 />
               </Field>
 
               {/* fila 2: fecha */}
-              <Field label="Fecha del pago" error={movErrors.fecha}>
+              <Field
+                label="Fecha del pago"
+                hint={isEmbedded ? 'Fecha de hoy · no modificable' : undefined}
+                error={movErrors.fecha}
+              >
                 <Input
                   type="date"
                   value={fechaPagoM}
-                  onChange={(e) => { setFechaM(e.target.value); setVerifyStatus('idle'); setPaymentVerified(false); }}
+                  onChange={(e) => {
+                    if (isEmbedded) return;
+                    setFechaM(e.target.value);
+                    setVerifyStatus('idle');
+                    setPaymentVerified(false);
+                  }}
+                  readOnly={isEmbedded}
+                  tabIndex={isEmbedded ? -1 : undefined}
                   max={TODAY_ISO}
+                  className={isEmbedded ? 'bg-slate-100/90 text-slate-600 font-semibold cursor-not-allowed select-none pointer-events-none' : undefined}
                 />
               </Field>
 
-              <Field label="Cédula/RIF del titular" hint="Ej: V-12345678 (máx. 8 dígitos)" error={movErrors.cedula}>
+              <Field
+                label="Cédula/RIF del titular"
+                hint={isEmbedded ? 'Titular de la póliza · no modificable' : 'Ej: V-12345678 (máx. 8 dígitos)'}
+                error={movErrors.cedula}
+              >
                 <Input
                   value={cedulaPago}
                   onChange={(e) => {
+                    if (isEmbedded) return;
                     setCedulaPago(formatCedulaRif(e.target.value));
                     setVerifyStatus('idle');
                     setPaymentVerified(false);
                   }}
+                  readOnly={isEmbedded}
+                  tabIndex={isEmbedded ? -1 : undefined}
                   placeholder="V-12345678"
                   maxLength={11}
+                  className={isEmbedded ? 'bg-slate-100/90 text-slate-600 font-semibold cursor-not-allowed select-none pointer-events-none' : undefined}
                 />
               </Field>
 
@@ -1284,24 +1320,36 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {/* fila 1: documento · nombre */}
-                  <Field label="Documento del pagador" hint="Tipo y número de cédula"
-                    error={otpErrors.docNum}>
+                  <Field
+                    label="Documento del pagador"
+                    hint={isEmbedded ? "Titular de la póliza · no modificable" : "Tipo y número de cédula"}
+                    error={otpErrors.docNum}
+                  >
                     <div className="flex gap-2 w-full">
                       {/* Selector de tipo — ancho fijo, legible en móvil */}
                       <select
                         value={otpDocType}
-                        onChange={(e) => setOtpDocType(e.target.value)}
-                        className="w-[4.5rem] shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer"
+                        onChange={(e) => { if (!isEmbedded) setOtpDocType(e.target.value); }}
+                        disabled={isEmbedded}
+                        className={cn(
+                          "w-[4.5rem] shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer",
+                          isEmbedded && "bg-slate-100/90 text-slate-600 cursor-not-allowed select-none pointer-events-none"
+                        )}
                       >
                         {['V','E','J','G','P'].map(t => <option key={t} value={t}>{t}</option>)}
                       </select>
                       <Input
                         value={otpDocNum}
-                        onChange={(e) => setOtpDocNum(e.target.value.replace(/\D/g, ''))}
+                        onChange={(e) => {
+                          if (isEmbedded) return;
+                          setOtpDocNum(e.target.value.replace(/\D/g, ''));
+                        }}
+                        readOnly={isEmbedded}
+                        tabIndex={isEmbedded ? -1 : undefined}
                         placeholder="12345678"
                         inputMode="numeric"
                         maxLength={10}
-                        className="flex-1 min-w-0"
+                        className={cn("flex-1 min-w-0", isEmbedded && "bg-slate-100/90 text-slate-600 font-semibold cursor-not-allowed select-none pointer-events-none")}
                       />
                     </div>
                   </Field>
@@ -1324,15 +1372,24 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
                     />
                   </Field>
 
-                  <Field label="Teléfono del pagador" hint="04XX · número en el banco"
-                    error={otpErrors.phone}>
+                  <Field
+                    label="Teléfono del pagador"
+                    hint={isEmbedded ? "Teléfono registrado en la póliza · no modificable" : "04XX · número en el banco"}
+                    error={otpErrors.phone}
+                  >
                     <Input
                       value={otpPhone}
-                      onChange={(e) => setOtpPhone(formatTelefono(e.target.value))}
+                      onChange={(e) => {
+                        if (isEmbedded) return;
+                        setOtpPhone(formatTelefono(e.target.value));
+                      }}
+                      readOnly={isEmbedded}
+                      tabIndex={isEmbedded ? -1 : undefined}
                       placeholder="04141234567"
                       type="tel"
                       inputMode="numeric"
                       maxLength={PHONE_MASK_MAX_LENGTH}
+                      className={isEmbedded ? 'bg-slate-100/90 text-slate-600 font-semibold cursor-not-allowed select-none pointer-events-none' : undefined}
                     />
                   </Field>
 
