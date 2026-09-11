@@ -520,6 +520,8 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
     : (selectedPlan?.name ?? 'Plan no seleccionado');
   const displaySubtitle = genericCheckout ? checkout!.subtitle : null;
 
+  const isEmisionPoliza = isEmbedded || checkoutPayload?.source === 'sysip' || !genericCheckout;
+
   // ── Validaciones pago móvil ───────────────────────────────────────────
   const movErrors = {
     banco    : !bankCode                                          ? 'Selecciona el banco'                : '',
@@ -528,7 +530,9 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       : !isCompletePhoneVe(telefonoPago)
         ? 'Prefijo inválido o incompleto (11 dígitos)'
         : '',
-    cedula   : validateCedulaRif(cedulaPago),
+    cedula   : isEmisionPoliza
+      ? (!cedulaPago.trim() ? 'La cédula/RIF es obligatoria' : '')
+      : validateCedulaRif(cedulaPago),
     monto    : !montoPagoM                                        ? 'El monto es obligatorio'            : isNaN(parseFloat(montoPagoM)) || parseFloat(montoPagoM) <= 0 ? 'Monto inválido' : '',
     fecha    : !fechaPagoM                                        ? 'La fecha es obligatoria'            : fechaPagoM > TODAY_ISO ? 'La fecha no puede ser futura' : '',
   };
@@ -684,9 +688,11 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
   // Mismo patrón que pago móvil: errores de formato mientras escribe,
   // errores de campo vacío visibles siempre (sin gate de "touched").
   const otpErrors = {
-    docNum : otpDocNum.length > 0 && !/^\d{5,10}$/.test(otpDocNum)
-               ? 'Solo dígitos, entre 5 y 10 caracteres'
-               : !otpDocNum ? 'Número de documento obligatorio' : '',
+    docNum : isEmisionPoliza
+      ? (!otpDocNum.trim() ? 'Número de documento obligatorio' : '')
+      : (otpDocNum.length > 0 && !/^\d{5,10}$/.test(otpDocNum)
+          ? 'Solo dígitos, entre 5 y 10 caracteres'
+          : !otpDocNum ? 'Número de documento obligatorio' : ''),
 
     name   : otpName.length > 0 && otpName.trim().split(/\s+/).filter(Boolean).length < 2
                ? 'Ingresa nombre y apellido'
@@ -1096,7 +1102,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
                 type="button"
                 onClick={() => handlePayerChange('tomador')}
                 className={cn(
-                  "relative flex flex-col sm:flex-row items-center justify-center gap-1.5 sm:gap-2 py-2.5 px-3 rounded-lg text-xs font-bold transition-all duration-200 select-none cursor-pointer",
+                  "relative flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-xs font-bold transition-all duration-200 select-none cursor-pointer",
                   selectedPayer === 'tomador'
                     ? "bg-white text-indigo-700 shadow-sm border border-slate-200/80"
                     : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
@@ -1104,21 +1110,13 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
               >
                 <User size={15} className={selectedPayer === 'tomador' ? 'text-indigo-600' : 'text-slate-400'} />
                 <span className="truncate">Tomador</span>
-                {tomadorProfile.formattedDoc && (
-                  <span className={cn(
-                    "text-[0.65rem] px-1.5 py-0.5 rounded font-mono hidden md:inline-block",
-                    selectedPayer === 'tomador' ? "bg-indigo-50 text-indigo-600" : "text-slate-500"
-                  )}>
-                    {tomadorProfile.formattedDoc}
-                  </span>
-                )}
               </button>
 
               <button
                 type="button"
                 onClick={() => handlePayerChange('asegurado')}
                 className={cn(
-                  "relative flex flex-col sm:flex-row items-center justify-center gap-1.5 sm:gap-2 py-2.5 px-3 rounded-lg text-xs font-bold transition-all duration-200 select-none cursor-pointer",
+                  "relative flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-xs font-bold transition-all duration-200 select-none cursor-pointer",
                   selectedPayer === 'asegurado'
                     ? "bg-white text-indigo-700 shadow-sm border border-slate-200/80"
                     : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
@@ -1126,14 +1124,6 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
               >
                 <ShieldCheck size={15} className={selectedPayer === 'asegurado' ? 'text-indigo-600' : 'text-slate-400'} />
                 <span className="truncate">Asegurado (Titular)</span>
-                {aseguradoProfile.formattedDoc && (
-                  <span className={cn(
-                    "text-[0.65rem] px-1.5 py-0.5 rounded font-mono hidden md:inline-block",
-                    selectedPayer === 'asegurado' ? "bg-indigo-50 text-indigo-600" : "text-slate-500"
-                  )}>
-                    {aseguradoProfile.formattedDoc}
-                  </span>
-                )}
               </button>
             </div>
 
