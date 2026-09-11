@@ -361,11 +361,6 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
             payerPhone: activePhone,
           };
           window.parent.postMessage(successPayload, '*');
-          // También el formato anterior por compatibilidad con Autocasco
-          window.parent.postMessage({
-            ...successPayload,
-            type: 'payment.success',
-          }, '*');
         }
       } catch {
         /* ignore */
