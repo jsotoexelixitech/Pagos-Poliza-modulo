@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 import './lib/bridge'
-import { hydrateCheckoutFromAccessToken } from './lib/checkout'
+import { hydrateCheckoutFromAccessToken, hydrateCheckoutFromQueryParams } from './lib/checkout'
 import { NexusGuard } from './nexus/NexusGuard'
 import { applyExelixiWizardHandoff } from './lib/exelixi-catalog'
 import { applyExelixiBranding } from './lib/exelixi-branding'
@@ -14,7 +14,7 @@ import { PagosConfigPanel } from './config/PagosConfigPanel'
 // Identidad Exélixi (colores + favicon) solo si el flujo activo es el catálogo.
 applyExelixiBranding('Pagos');
 
-hydrateCheckoutFromAccessToken();
+hydrateCheckoutFromAccessToken() || hydrateCheckoutFromQueryParams();
 
 function ExelixiHandoffBootstrap({ children }: { children: ReactNode }) {
   useEffect(() => {
@@ -30,6 +30,12 @@ function ExelixiHandoffBootstrap({ children }: { children: ReactNode }) {
 // /config (dev) o /pagos/config (prod con prefijo Apache)
 const isConfigRoute = /\/config\/?$/.test(window.location.pathname);
 
+const isEmbedMode = typeof window !== 'undefined' && (
+  new URLSearchParams(window.location.search).get('embed') === 'true' ||
+  new URLSearchParams(window.location.search).get('embedded') === 'true' ||
+  (window.parent !== window && Boolean(new URLSearchParams(window.location.search).get('amount')))
+);
+
 const appTree = (
   <ExelixiHandoffBootstrap>
     <App />
@@ -40,11 +46,8 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     {isConfigRoute ? (
       <PagosConfigPanel />
-    ) : import.meta.env.DEV ? (
-      // En DEV se omite NexusGuard para agilizar el desarrollo local sin SSO.
-      // El token Nexus no se valida en el servidor si NEXUS_AUTH_ENABLED=false (.env).
-      // Si necesitas probar el flujo de auth completo, pon VITE_FORCE_NEXUS_GUARD=true
-      // en .env.local y condicion: !import.meta.env.DEV || import.meta.env.VITE_FORCE_NEXUS_GUARD
+    ) : import.meta.env.DEV || isEmbedMode ? (
+      // En DEV o en modo embebido (iframe SysIP) se omite NexusGuard
       appTree
     ) : (
       <NexusGuard recheckInterval={30}>{appTree}</NexusGuard>

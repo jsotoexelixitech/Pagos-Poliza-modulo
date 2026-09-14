@@ -1,3 +1,5 @@
+import type { CanalVisibility } from '../lib/canal-visibility';
+
 export type DocType = 'cedula' | 'licencia' | 'certificado' | 'rif';
 
 /** Producto de seguro que se está suscribiendo en el flujo. */
@@ -97,6 +99,8 @@ export interface Plan {
   sumaAsegurada: number;
   /** Sufijo opcional para la suma asegurada (ej. "/unidad") */
   sumaAseguradaUnit?: string;
+  /** Producto Sis2000 — usado para visibilidad de canal y reglas de pago */
+  cproducto?: string;
 }
 
 export type PaymentMethod = 'card' | 'transfer' | 'mobile' | 'otp' | 'domiciliacion';
@@ -336,4 +340,6 @@ export interface WizardState {
   checkoutPayer: CheckoutPayer | null;
   /** Metadata canal SSO (cproductor, cramo, etc.) — igual que emisión. */
   metadataCanal: Record<string, unknown> | null;
+  /** Reglas de visibilidad del canal (SysIP / nest-api). */
+  canalVisibility: CanalVisibility | null;
 }

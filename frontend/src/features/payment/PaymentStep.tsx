@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { useWizardStore } from '../../store/wizardStore';
 import { Field, Input } from '../../components/ui/FormField';
 import { BankSearchSelect } from '../../components/ui/BankSearchSelect';
@@ -8,7 +8,7 @@ import {
   Check, Receipt, Sparkles, Loader2, BadgeCheck, AlertTriangle,
   CheckCircle2, XCircle, RefreshCw, Send, ClipboardCheck,
 } from 'lucide-react';
-import { formatUsdShort, vesAnnual } from '../../lib/money';
+import { formatUsdShort, vesAnnual, formatVesAmount, parseVesAmount } from '../../lib/money';
 import { formatTelefono, phoneDigits, isCompletePhoneVe, PHONE_MASK_MAX_LENGTH } from '../../lib/phone';
 import { formatCedulaRif, validateCedulaRif } from '../../lib/cedula-rif';
 import { useProductConfig } from '../../hooks/useProductConfig';
@@ -16,11 +16,13 @@ import { isExelixiCatalogProduct } from '../../lib/product';
 import {
   getCheckoutPaymentConcept,
   isGenericCheckoutMode,
+  isEmbeddedMetadataCheckout,
   isPaymentBypassEnabled,
   scheduleGenericCheckoutReturn,
 } from '../../lib/checkout';
-import { notifyClientCheckoutStatus } from '../../lib/checkout-notify';
-import { isPaymentMethodEnabled, isPagoFraccionado } from '../../lib/payment-methods';
+import { notifyClientCheckoutStatus, mergePaymentNotifyFields } from '../../lib/checkout-notify';
+import { isPaymentMethodEnabled, isPagoFraccionado, resolveCheckoutFrecuencia } from '../../lib/payment-methods';
+import { allowsEmitPending, isCanalPaymentMethodAllowed } from '../../lib/canal-visibility';
 import {
   releaseEmissionPopupSlots,
   reserveEmissionPopupSlots,
@@ -78,19 +80,32 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
     paymentMethod, setPaymentMethod,
     selectedPlan, quote, quoteState, vehicle,
     checkout, checkoutRules, checkoutPayer, checkoutPayload,
-    tomador, rcv, funeral, metadataCanal,
+    tomador, rcv, funeral, metadataCanal, canalVisibility,
     setQuote, setQuoteState,
     setPaymentVerified,
     setPaymentCapture,
   } = useWizardStore();
 
   const genericCheckout = isGenericCheckoutMode({ checkout });
+  const embeddedCheckout = isEmbeddedMetadataCheckout({ checkout });
+  const isEmbedded = embeddedCheckout || (typeof window !== 'undefined' && (new URLSearchParams(window.location.search).get('embed') === 'true' || window.parent !== window));
+  const emitPendingMode = allowsEmitPending(canalVisibility, metadataCanal);
+  const bridgeChained = typeof window !== 'undefined'
+    && Boolean(new URLSearchParams(window.location.search).get('sid'));
   const qaMobileBypass = isPaymentBypassEnabled();
   // Piloto Exélixi o QA RCV: el pago móvil se simula (sin conexión bancaria real).
   const mobilePaymentSimulated = !genericCheckout && (isExelixiCatalogProduct() || qaMobileBypass);
 
   const producto = new URLSearchParams(window.location.search).get('product') as 'rcv' | 'funerario' ?? 'rcv';
   const { config } = useProductConfig(EMPRESA_ID, producto, 'pagos');
+
+  const frecuenciaCode = resolveCheckoutFrecuencia({
+    checkoutPayload,
+    metadataCanal,
+    rcvFrecuencia: rcv?.frecuencia,
+    funeralFrecuencia: funeral?.frecuencia,
+    preferWizardFrecuencia: bridgeChained && !genericCheckout,
+  });
 
   const pagoFraccionado = isPagoFraccionado({
     fraccionado:
@@ -101,12 +116,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       checkoutPayload?.forma_pago ??
       checkoutPayload?.formaPago ??
       metadataCanal?.forma_pago,
-    frecuencia:
-      checkoutPayload?.ifrecuencia ??
-      checkoutPayload?.frecuencia ??
-      metadataCanal?.ifrecuencia ??
-      metadataCanal?.frecuencia ??
-      (producto === 'funerario' ? funeral?.frecuencia : rcv?.frecuencia),
+    frecuencia: frecuenciaCode,
   });
 
   /**
@@ -137,7 +147,25 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
   );
   const [firstCuotaCapture, setFirstCuotaCapture] = useState<PaymentCapture | null>(null);
 
+  /**
+   * Bridge hidrata el store de forma async (tras el primer render).
+   * Si useState inicializó en 'domiciliar' porque aún no había rules/payload,
+   * al aparecer requireFirstThenDomiciliar hay que volver a 'cobro' (salvo que
+   * la 1ª cuota ya se haya cobrado en esta sesión).
+   */
+  useEffect(() => {
+    if (!requireFirstThenDomiciliar) return;
+    if (firstCuotaCapture) return;
+    if (fraccionPhase !== 'cobro') {
+      setFraccionPhase('cobro');
+    }
+  }, [requireFirstThenDomiciliar, firstCuotaCapture, fraccionPhase]);
+
   const availableMethods = PAYMENT_OPTIONS.filter(opt => {
+    // Domiciliación solo para fraccionado (M/T/S). Anual/contado: pago móvil u OTP.
+    if (opt.method === 'domiciliacion' && !pagoFraccionado) {
+      return false;
+    }
     if (requireFirstThenDomiciliar) {
       if (fraccionPhase === 'cobro') {
         return opt.method === 'mobile' || opt.method === 'otp';
@@ -145,17 +173,12 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       return opt.method === 'domiciliacion';
     }
     if (pagoFraccionado) return opt.method === 'domiciliacion';
-    // QA / piloto: pago móvil simulado. OTP queda oculto; domiciliación sí se ofrece.
+    // QA / piloto: pago móvil simulado (sin OTP ni domiciliación en anual).
     if (mobilePaymentSimulated) {
-      return opt.method === 'mobile' || opt.method === 'domiciliacion';
+      return opt.method === 'mobile';
     }
     if (!isPaymentMethodEnabled(opt.method, config?.metodos)) return false;
-    // En flujo anual, domiciliación NO se ofrece por defecto.
-    // Solo se muestra si el checkout genérico la lista explícitamente en methods.
-    // El caso fraccionado ya está cubierto arriba (línea `if (pagoFraccionado)`).
-    if (opt.method === 'domiciliacion') {
-      return !!(genericCheckout && checkoutRules?.methods?.includes('domiciliacion'));
-    }
+    if (!isCanalPaymentMethodAllowed(opt.method, canalVisibility, metadataCanal)) return false;
     if (genericCheckout && checkoutRules?.methods?.length) {
       return checkoutRules.methods.includes(opt.method);
     }
@@ -178,7 +201,6 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       setPaymentMethod('domiciliacion');
     }
   }, [requireFirstThenDomiciliar, fraccionPhase, paymentMethod, setPaymentMethod]);
-
   /** Tras 1º cuota en fraccionado: no cerrar checkout; pasar a domiciliar. */
   function completeFirstCuotaOrFinish(capture: PaymentCapture) {
     if (requireFirstThenDomiciliar && fraccionPhase === 'cobro') {
@@ -223,17 +245,6 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Prellenar pagador desde checkout.payer
-  useEffect(() => {
-    if (!checkoutPayer) return;
-    if (checkoutPayer.phone) setOtpPhone(formatTelefono(checkoutPayer.phone));
-    if (checkoutPayer.documentType) setOtpDocType(checkoutPayer.documentType);
-    if (checkoutPayer.documentNumber) setOtpDocNum(checkoutPayer.documentNumber);
-    if (checkoutPayer.name) setOtpName(checkoutPayer.name);
-  // Solo al montar con datos de sesión
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   // ── Campos compartidos ────────────────────────────────────────────────
   const [bankCode,    setBankCode]    = useState('');
   const [bankLabel,   setBankLabel]   = useState('');
@@ -249,6 +260,18 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
   const [verifyError,  setVerifyError]  = useState<string>('');
   const autoEmitStarted = useRef(false);
   const autoVerifyStarted = useRef(false);
+
+  // ── Perfil por defecto para sugerir datos iniciales al abrir el checkout ──
+  const defaultProfile = useMemo(() => {
+    const rawPayer = (checkoutPayload?.tomador || checkoutPayload?.payer || {}) as Record<string, string>;
+    const docType = (rawPayer.documentType || tomador?.tipoDoc || checkoutPayer?.documentType || 'V').toUpperCase();
+    const docNum = (rawPayer.documentNumber || tomador?.identificacion || checkoutPayer?.documentNumber || '').replace(/\D/g, '');
+    const phone = rawPayer.phone || tomador?.telefono || checkoutPayer?.phone || '';
+    const name = rawPayer.name || (tomador?.nombre ? `${tomador.nombre} ${tomador.apellido || ''}`.trim() : checkoutPayer?.name || 'Tomador');
+    const formattedDoc = docNum ? formatCedulaRif(`${docType}${docNum}`) : '';
+    const formattedPhone = phone ? formatTelefono(phone) : '';
+    return { docType, docNum, phone, formattedPhone, name, formattedDoc };
+  }, [checkoutPayload, tomador, checkoutPayer]);
 
   const triggerAutoEmit = async (capture: PaymentCapture) => {
     if (!onPaymentVerified || autoEmitStarted.current) return;
@@ -286,9 +309,49 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       paymentVerified: true,
       code: notification.code,
       message: notification.message,
-      payment: notification.payment,
+      payment: mergePaymentNotifyFields(capture, notification.payment),
     });
-    if (genericCheckout) {
+    if (genericCheckout || (typeof window !== 'undefined' && window.parent !== window)) {
+      // Avisa al portal padre (SysIP / Autocasco) aunque falle el redirect.
+      try {
+        if (typeof window !== 'undefined' && window.parent && window.parent !== window) {
+          const idOperacion =
+            checkoutPayload?.idOperacion
+            || checkout?.referenceId
+            || null;
+          const ref =
+            capture.reference
+            || (notification.payment as { reference?: string } | undefined)?.reference
+            || '';
+          const activeDoc = paymentMethod === 'mobile'
+            ? cedulaPago
+            : (otpDocNum ? `${otpDocType}-${otpDocNum}` : defaultProfile.formattedDoc);
+          const activePhone = paymentMethod === 'mobile'
+            ? telefonoPago
+            : (otpPhone || defaultProfile.phone);
+          const successPayload = {
+            type: 'PAGOS_CHECKOUT_SUCCESS',
+            event: 'payment.success',
+            paymentVerified: true,
+            status: 'ok',
+            ref,
+            reference: ref,
+            code: notification.code,
+            message: notification.message,
+            method: capture.method || paymentMethod,
+            bankCode: capture.bankCode || bankCode,
+            amount: capture.amount ?? (annualVes > 0 ? annualVes : undefined),
+            idOperacion,
+            referenceId: idOperacion,
+            capture,
+            payerDoc: activeDoc,
+            payerPhone: activePhone,
+          };
+          window.parent.postMessage(successPayload, '*');
+        }
+      } catch {
+        /* ignore */
+      }
       scheduleGenericCheckoutReturn({ checkoutPayload, checkoutRules });
     }
   }
@@ -328,6 +391,21 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
     confirmInFlight.current = false;
   }, [paymentMethod, setPaymentVerified]);
 
+  // Prellenar datos iniciales sugeridos si los campos están vacíos
+  useEffect(() => {
+    if (defaultProfile.formattedPhone && !telefonoPago) {
+      setTelPago(defaultProfile.formattedPhone);
+    }
+    if (defaultProfile.formattedPhone && !otpPhone) {
+      setOtpPhone(defaultProfile.formattedPhone);
+    }
+    if (defaultProfile.docType && !otpDocType) setOtpDocType(defaultProfile.docType);
+    if (defaultProfile.docNum && !otpDocNum) setOtpDocNum(defaultProfile.docNum);
+    if (defaultProfile.formattedDoc && !cedulaPago) setCedulaPago(defaultProfile.formattedDoc);
+    if (defaultProfile.name && !otpName) setOtpName(defaultProfile.name);
+    if (!fechaPagoM) setFechaM(TODAY_ISO);
+  }, [defaultProfile]);
+
   // QA RCV: prellenar pago móvil desde tomador para auto-verificación.
   useEffect(() => {
     if (!mobilePaymentSimulated || !qaMobileBypass || genericCheckout) return;
@@ -355,11 +433,17 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
   // No es editable por el usuario: es el monto exacto a pagar (prima anual a tasa BCV).
   // Esto evita que el cliente coloque un monto menor al cotizado.
   useEffect(() => {
+    if (genericCheckout && checkout?.totalVes) {
+      const vesStr = checkout.totalVes.toFixed(2);
+      setMontoM(vesStr);
+      setOtpAmount(vesStr);
+      return;
+    }
     if (quoteState !== 'ready' || !quote) return;
     const vesStr = vesAnnual(quote).toFixed(2);
     setMontoM(vesStr);
     setOtpAmount(vesStr);
-  }, [quoteState, quote]);
+  }, [quoteState, quote, genericCheckout, checkout?.totalVes]);
 
   // Countdown para reenvío de OTP
   useEffect(() => {
@@ -398,6 +482,8 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
     : (selectedPlan?.name ?? 'Plan no seleccionado');
   const displaySubtitle = genericCheckout ? checkout!.subtitle : null;
 
+  const isEmisionPoliza = isEmbedded || checkoutPayload?.source === 'sysip' || !genericCheckout;
+
   // ── Validaciones pago móvil ───────────────────────────────────────────
   const movErrors = {
     banco    : !bankCode                                          ? 'Selecciona el banco'                : '',
@@ -406,8 +492,10 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       : !isCompletePhoneVe(telefonoPago)
         ? 'Prefijo inválido o incompleto (11 dígitos)'
         : '',
-    cedula   : validateCedulaRif(cedulaPago),
-    monto    : !montoPagoM                                        ? 'El monto es obligatorio'            : isNaN(parseFloat(montoPagoM)) || parseFloat(montoPagoM) <= 0 ? 'Monto inválido' : '',
+    cedula   : isEmisionPoliza
+      ? (!cedulaPago.trim() ? 'La cédula/RIF es obligatoria' : '')
+      : validateCedulaRif(cedulaPago),
+    monto    : parseVesAmount(montoPagoM || annualVes) <= 0 ? 'El monto es obligatorio' : '',
     fecha    : !fechaPagoM                                        ? 'La fecha es obligatoria'            : fechaPagoM > TODAY_ISO ? 'La fecha no puede ser futura' : '',
   };
   const pagoMovilListo = Object.values(movErrors).every(e => !e) && isCompletePhoneVe(telefonoPago);
@@ -422,11 +510,12 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
 
     // Solo se envía la fecha (YYYY-MM-DD) — la nueva API no requiere hora
     const paidOn = fechaPagoM;
+    const amountToVerify = parseVesAmount(montoPagoM || annualVes);
 
     // Piloto Exélixi / QA RCV: simula la verificación sin llamar a ningún banco.
     if (mobilePaymentSimulated) {
       await new Promise((r) => setTimeout(r, 900));
-      const simAmount = parseFloat(montoPagoM);
+      const simAmount = amountToVerify;
       const simulated: VerifyMobilePaymentResponse = {
         success: true,
         isVerified: true,
@@ -452,7 +541,19 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       if (!completeFirstCuotaOrFinish(capture)) return;
       setPaymentVerified(true);
       setPaymentCapture(capture);
-      await triggerAutoEmit(capture);
+      await handlePaymentSuccessActions(capture, {
+        code: simulated.code || 'SIMULATED',
+        message: simulated.message || 'Pago simulado',
+        payment: {
+          method: 'mobile',
+          reference: simulated.reference,
+          amount: simAmount,
+          paidOn,
+          verifiedOn: simulated.verifiedOn,
+          code: simulated.code,
+          message: simulated.message,
+        },
+      });
       return;
     }
 
@@ -460,7 +561,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       const result = await verifyMobilePayment({
         sourcePhoneNumber : phoneDigits(telefonoPago),
         bankCode,
-        amount            : parseFloat(montoPagoM),
+        amount            : amountToVerify,
         paidOn,
         cci_rif           : cedulaPago.toUpperCase(),
       });
@@ -470,7 +571,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       if (result.isVerified) {
         const capture: PaymentCapture = {
           reference: result.reference ?? undefined,
-          amount: result.verifiedAmount ?? parseFloat(montoPagoM),
+          amount: result.verifiedAmount ?? amountToVerify,
           paidOn,
           bankCode: bankCode || undefined,
           sourcePhone: phoneDigits(telefonoPago) || undefined,
@@ -486,7 +587,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
           payment: {
             method: 'mobile',
             reference: result.reference,
-            amount: result.verifiedAmount ?? parseFloat(montoPagoM),
+            amount: result.verifiedAmount ?? amountToVerify,
             paidOn,
             verifiedOn: result.verifiedOn,
             code: result.code,
@@ -506,7 +607,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
           message: result.message || 'No se encontró el pago con los datos proporcionados.',
           payment: {
             method: 'mobile',
-            amount: parseFloat(montoPagoM),
+            amount: amountToVerify,
             paidOn,
             code: result.code,
             message: result.message,
@@ -532,7 +633,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
         paymentVerified: false,
         code,
         message: msg,
-        payment: { method: 'mobile', amount: parseFloat(montoPagoM) || undefined, paidOn },
+        payment: { method: 'mobile', amount: amountToVerify || undefined, paidOn },
       });
     }
   }
@@ -550,9 +651,11 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
   // Mismo patrón que pago móvil: errores de formato mientras escribe,
   // errores de campo vacío visibles siempre (sin gate de "touched").
   const otpErrors = {
-    docNum : otpDocNum.length > 0 && !/^\d{5,10}$/.test(otpDocNum)
-               ? 'Solo dígitos, entre 5 y 10 caracteres'
-               : !otpDocNum ? 'Número de documento obligatorio' : '',
+    docNum : isEmisionPoliza
+      ? (!otpDocNum.trim() ? 'Número de documento obligatorio' : '')
+      : (otpDocNum.length > 0 && !/^\d{5,10}$/.test(otpDocNum)
+          ? 'Solo dígitos, entre 5 y 10 caracteres'
+          : !otpDocNum ? 'Número de documento obligatorio' : ''),
 
     name   : otpName.length > 0 && otpName.trim().split(/\s+/).filter(Boolean).length < 2
                ? 'Ingresa nombre y apellido'
@@ -566,9 +669,9 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
                ? 'Prefijo inválido o incompleto (11 dígitos)'
                : '',
 
-    amount : otpAmount.length > 0 && (isNaN(parseFloat(otpAmount)) || parseFloat(otpAmount) <= 0)
-               ? 'Ingresa un monto válido'
-               : !otpAmount ? 'Monto obligatorio' : '',
+    amount : parseVesAmount(otpAmount || annualVes) <= 0
+               ? 'Monto obligatorio'
+               : '',
   };
   const otpFormListo = !Object.values(otpErrors).some(e => e);
 
@@ -579,6 +682,8 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
     setOtpStep('requesting');
     setOtpError('');
 
+    const amountToDebit = parseVesAmount(otpAmount || annualVes);
+
     let succeeded = false;
     try {
       const resp = await sypagoRequestOtp({
@@ -586,7 +691,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
         documentNumber: otpDocNum,
         debtorBankCode: otpBankCode,
         debtorPhone   : phoneDigits(otpPhone),
-        amount        : parseFloat(otpAmount),
+        amount        : amountToDebit,
       });
       if (resp && resp.success === false) {
         throw new SypagoError({ message: resp.message || 'Error al solicitar OTP.', code: 'SYPAGO_ERROR' });
@@ -615,6 +720,9 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
 
     setOtpStep('confirming');
     setOtpError('');
+
+    const amountToConfirm = parseVesAmount(otpAmount || annualVes);
+
     try {
       const result = await sypagoConfirmOtp({
         documentType  : otpDocType,
@@ -622,7 +730,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
         debtorBankCode: otpBankCode,
         debtorPhone   : phoneDigits(otpPhone),
         debtorName    : otpName,
-        amount        : parseFloat(otpAmount),
+        amount        : amountToConfirm,
         otp           : otpCode.trim(),
         concept       : getCheckoutPaymentConcept(checkout),
       });
@@ -655,10 +763,12 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       setOtpStep('done');
       const capture: PaymentCapture = {
         transactionId: final.transaction_id,
-        amount: parseFloat(otpAmount),
+        amount: amountToConfirm,
         paidOn: TODAY_ISO,
         reference: final.ref_ibp || final.transaction_id,
         bankCode: otpBankCode || undefined,
+        sourcePhone: phoneDigits(otpPhone) || undefined,
+        cci_rif: otpDocNum ? `${otpDocType}${otpDocNum}` : undefined,
         method: 'otp',
       };
       if (!completeFirstCuotaOrFinish(capture)) {
@@ -673,7 +783,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
         payment: {
           method: 'otp',
           transactionId: final.transaction_id,
-          amount: parseFloat(otpAmount),
+          amount: amountToConfirm,
           paidOn: TODAY_ISO,
           reference: final.ref_ibp || final.transaction_id,
         },
@@ -692,7 +802,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
         paymentVerified: false,
         code: 'OTP_CONFIRM_ERROR',
         message: msg,
-        payment: { method: 'otp', amount: parseFloat(otpAmount) || undefined },
+        payment: { method: 'otp', amount: amountToConfirm || undefined },
       });
       // Liberar latch solo en error para permitir reintentar
       confirmInFlight.current = false;
@@ -710,12 +820,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
     };
     setPaymentVerified(true);
     setPaymentCapture(merged);
-    await triggerAutoEmit(merged);
-    await notifyClientCheckoutStatus({
-      checkout,
-      checkoutRules,
-      checkoutPayload,
-      paymentVerified: true,
+    await handlePaymentSuccessActions(merged, {
       code: capture.sypagoAfiliacionId ? 'DOMICILIACION_ACTIVA' : 'DOMICILIACION_AUTORIZADA',
       message: requireFirstThenDomiciliar
         ? (capture.sypagoAfiliacionId
@@ -750,8 +855,17 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       <p className="text-slate-500 text-sm leading-relaxed -mt-2">
         {genericCheckout
           ? 'Selecciona el método de pago y confirma la operación. La conexión está cifrada de extremo a extremo.'
-          : 'Confirma el método de pago y emite la póliza. La operación está cifrada de extremo a extremo.'}
+          : emitPendingMode
+            ? 'Registra el pago si el cliente ya pagó, o emite la póliza con recibo pendiente de cobro.'
+            : 'Confirma el método de pago y emite la póliza. La operación está cifrada de extremo a extremo.'}
       </p>
+
+      {emitPendingMode && !genericCheckout && (
+        <div className="rounded-xl border border-indigo-200 bg-indigo-50/80 px-4 py-3 text-sm text-indigo-900">
+          <strong>Emisión pendiente.</strong> Este gestor puede emitir sin verificar el pago en línea.
+          Usa el botón <em>Emitir como pendiente</em> al final del paso.
+        </div>
+      )}
 
       {/* Total bar */}
       <div className="rounded-2xl border-2 border-indigo-200 bg-gradient-to-r from-indigo-50/80 via-violet-50/40 to-fuchsia-50/30 p-5 flex items-center justify-between flex-wrap gap-4 relative overflow-hidden">
@@ -827,20 +941,6 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
           )}
         </div>
       </div>
-
-      {genericCheckout && checkout!.lines && checkout!.lines.length > 0 && (
-        <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-2">
-          <p className="text-[0.65rem] font-bold uppercase tracking-wider text-slate-400">Detalle</p>
-          {checkout!.lines!.map((line, idx) => (
-            <div key={idx} className="flex justify-between text-sm gap-4">
-              <span className="text-slate-600">{line.label}</span>
-              <span className="font-semibold text-slate-900 tabular-nums shrink-0">
-                Bs {line.amountVes.toLocaleString('es-VE', { minimumFractionDigits: 2 })}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
 
       {/* Selector de método */}
       <div>
@@ -1002,10 +1102,18 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
                 />
               </Field>
 
-              <Field label="Teléfono de origen" hint="Número que realizó el pago" error={movErrors.telefono}>
+              <Field
+                label="Teléfono de origen"
+                hint="Número que realizó el pago"
+                error={movErrors.telefono}
+              >
                 <Input
                   value={telefonoPago}
-                  onChange={(e) => { setTelPago(formatTelefono(e.target.value)); setVerifyStatus('idle'); setPaymentVerified(false); }}
+                  onChange={(e) => {
+                    setTelPago(formatTelefono(e.target.value));
+                    setVerifyStatus('idle');
+                    setPaymentVerified(false);
+                  }}
                   placeholder="04121234567"
                   type="tel"
                   inputMode="numeric"
@@ -1014,16 +1122,27 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
               </Field>
 
               {/* fila 2: fecha */}
-              <Field label="Fecha del pago" error={movErrors.fecha}>
+              <Field
+                label="Fecha del pago"
+                error={movErrors.fecha}
+              >
                 <Input
                   type="date"
                   value={fechaPagoM}
-                  onChange={(e) => { setFechaM(e.target.value); setVerifyStatus('idle'); setPaymentVerified(false); }}
+                  onChange={(e) => {
+                    setFechaM(e.target.value);
+                    setVerifyStatus('idle');
+                    setPaymentVerified(false);
+                  }}
                   max={TODAY_ISO}
                 />
               </Field>
 
-              <Field label="Cédula/RIF del titular" hint="Ej: V-12345678 (máx. 8 dígitos)" error={movErrors.cedula}>
+              <Field
+                label="Cédula/RIF del titular"
+                hint="Ej: V-12345678 (máx. 8 dígitos)"
+                error={movErrors.cedula}
+              >
                 <Input
                   value={cedulaPago}
                   onChange={(e) => {
@@ -1052,14 +1171,14 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
                 full
               >
                 <Input
-                  value={montoPagoM}
+                  value={hasLockedAmount ? (formatVesAmount(montoPagoM || annualVes) || montoPagoM) : montoPagoM}
                   onChange={(e) => {
                     if (hasLockedAmount) return;
                     setMontoM(e.target.value.replace(/[^0-9.]/g, ''));
                     setVerifyStatus('idle');
                     setPaymentVerified(false);
                   }}
-                  placeholder="198114.50"
+                  placeholder={formatVesAmount(annualVes) || "Bs 198.114,50"}
                   inputMode="decimal"
                   readOnly={hasLockedAmount}
                   className={hasLockedAmount ? 'bg-slate-50 text-slate-700 font-bold cursor-not-allowed' : ''}
@@ -1187,8 +1306,11 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {/* fila 1: documento · nombre */}
-                  <Field label="Documento del pagador" hint="Tipo y número de cédula"
-                    error={otpErrors.docNum}>
+                  <Field
+                    label="Documento del pagador"
+                    hint="Tipo y número de cédula"
+                    error={otpErrors.docNum}
+                  >
                     <div className="flex gap-2 w-full">
                       {/* Selector de tipo — ancho fijo, legible en móvil */}
                       <select
@@ -1200,7 +1322,9 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
                       </select>
                       <Input
                         value={otpDocNum}
-                        onChange={(e) => setOtpDocNum(e.target.value.replace(/\D/g, ''))}
+                        onChange={(e) => {
+                          setOtpDocNum(e.target.value.replace(/\D/g, ''));
+                        }}
                         placeholder="12345678"
                         inputMode="numeric"
                         maxLength={10}
@@ -1227,11 +1351,16 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
                     />
                   </Field>
 
-                  <Field label="Teléfono del pagador" hint="04XX · número en el banco"
-                    error={otpErrors.phone}>
+                  <Field
+                    label="Teléfono del pagador"
+                    hint="04XX · número en el banco"
+                    error={otpErrors.phone}
+                  >
                     <Input
                       value={otpPhone}
-                      onChange={(e) => setOtpPhone(formatTelefono(e.target.value))}
+                      onChange={(e) => {
+                        setOtpPhone(formatTelefono(e.target.value));
+                      }}
                       placeholder="04141234567"
                       type="tel"
                       inputMode="numeric"
@@ -1255,12 +1384,12 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
                     full
                   >
                     <Input
-                      value={otpAmount}
+                      value={hasLockedAmount ? (formatVesAmount(otpAmount || annualVes) || otpAmount) : otpAmount}
                       onChange={(e) => {
                         if (hasLockedAmount) return;
                         setOtpAmount(e.target.value.replace(/[^0-9.]/g, ''));
                       }}
-                      placeholder="198114.50"
+                      placeholder={formatVesAmount(annualVes) || "Bs 198.114,50"}
                       inputMode="decimal"
                       readOnly={hasLockedAmount}
                       className={hasLockedAmount ? 'bg-slate-50 text-slate-700 font-bold cursor-not-allowed' : ''}
@@ -1403,7 +1532,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
                       <dd className="text-slate-700">{otpName}</dd>
                       <dt className="text-slate-500 font-semibold">Monto</dt>
                       <dd className="font-bold text-emerald-700">
-                        Bs {parseFloat(otpAmount).toLocaleString('es-VE', { minimumFractionDigits: 2 })}
+                        {formatVesAmount(otpAmount || annualVes)}
                       </dd>
                     </dl>
                     <p className="text-[0.65rem] text-emerald-600/70 mt-2">

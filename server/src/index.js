@@ -29,7 +29,7 @@ const nexusAuth   = require('./middleware/nexusAuth');
 
 const app = express();
 
-const PORT = parseInt(process.env.PORT, 10) || 4003;
+const PORT = parseInt(process.env.PORT, 10) || 4005;
 const CORS_ORIGINS = (process.env.CORS_ORIGINS || '*').split(',').map(s => s.trim());
 
 app.use(cors({
@@ -99,7 +99,8 @@ app.post('/api/exelixi/emit',   nexusAuth, _proxyToEmision);
 // Producto Funerario (personas, ramo 9): cotización y emisión viven en emisión.
 app.post('/api/personas/:path(*)', nexusAuth, _proxyToEmision);
 app.get('/api/personas/:path(*)',  nexusAuth, _proxyToEmision);
-// Catálogos INMA (para mostrar datos del vehículo en el checkout)
+// Catálogos INMA y visibilidad de canal (proxy hacia emisión / nest-api)
+app.get('/api/catalogo/canal-visibility', nexusAuth, _proxyToEmision);
 app.get('/api/catalogo/:path(*)', _proxyToEmision);
 app.get('/api/valrep/:path(*)',   _proxyToEmision);
 app.post('/api/valrep/validate-vehicle', nexusAuth, _proxyToEmision);

@@ -15,14 +15,14 @@
 
 const axios = require('axios');
 
-const DEFAULT_TIMEOUT    = 20_000;
+const DEFAULT_TIMEOUT = 20_000;
 const DEFAULT_DEST_PHONE = '04143966962';
 const DEFAULT_DEST_BANCO = '0171';
-const DEFAULT_BASE_URL   = 'https://apisys2000.lamundialdeseguros.com';
+const DEFAULT_BASE_URL = 'https://apisys2000.lamundialdeseguros.com';
 
-const PATH_MERITOP   = '/api/v1/bancamiga/meritop/find-mobile-pay';
-const PATH_EXTERNAL  = '/api/v1/external/payments/bancoActivo/find-mobile-pay';
-const PATH_PAYMENTS  = '/api/v1/payments/bancoActivo/find-mobile-pay';
+const PATH_MERITOP = '/api/v1/bancamiga/meritop/find-mobile-pay';
+const PATH_EXTERNAL = '/api/v1/external/payments/bancoActivo/find-mobile-pay';
+const PATH_PAYMENTS = '/api/v1/payments/bancoActivo/find-mobile-pay';
 
 const RESULT_CODES = {
   B000: 'Transacción encontrada (pago ya usado por el cliente)',
@@ -32,12 +32,12 @@ const RESULT_CODES = {
   B004: 'Error de conexión con el Gateway',
   B005: 'Error de conexión Gateway-AS400',
   B010: 'Transacción encontrada y disponible',
-  701:  'Faltan parámetros requeridos',
-  750:  'Número de teléfono inválido',
-  751:  'Código de banco inválido',
-  752:  'Monto inválido',
-  753:  'Fecha de pago inválida',
-  210:  'Error interno del proveedor',
+  701: 'Faltan parámetros requeridos',
+  750: 'Número de teléfono inválido',
+  751: 'Código de banco inválido',
+  752: 'Monto inválido',
+  753: 'Fecha de pago inválida',
+  210: 'Error interno del proveedor',
 };
 
 /** Resuelve rutas a probar (env explícita → meritop → external → payments). */
@@ -59,6 +59,8 @@ function _isFastifyRouteNotFound(status, data) {
 }
 
 function _getConfig() {
+
+  // Obtiene el host de sysip desde el .env
   const baseUrl = (process.env.LAMUNDIAL_PAYMENTS_URL || DEFAULT_BASE_URL).replace(/\/$/, '');
 
   if (/:3002(?:\/|$)/.test(baseUrl)) {
@@ -70,13 +72,13 @@ function _getConfig() {
 
   return {
     baseUrl,
-    paths    : _resolvePaths(),
-    apiKey   : (process.env.LAMUNDIAL_PAYMENTS_API_KEY || '').trim(),
+    paths: _resolvePaths(),
+    apiKey: (process.env.LAMUNDIAL_PAYMENTS_API_KEY || '').trim(),
     destPhone: process.env.LAMUNDIAL_PAYMENTS_DEST_PHONE || DEFAULT_DEST_PHONE,
     destBanco: process.env.LAMUNDIAL_PAYMENTS_DEST_BANCO || DEFAULT_DEST_BANCO,
-    timeout  : Number(process.env.LAMUNDIAL_PAYMENTS_TIMEOUT || DEFAULT_TIMEOUT),
-    enabled  : process.env.LAMUNDIAL_PAYMENTS_ENABLED !== 'false',
-    mock     : process.env.LAMUNDIAL_PAYMENTS_MOCK === 'true',
+    timeout: Number(process.env.LAMUNDIAL_PAYMENTS_TIMEOUT || DEFAULT_TIMEOUT),
+    enabled: process.env.LAMUNDIAL_PAYMENTS_ENABLED !== 'false',
+    mock: process.env.LAMUNDIAL_PAYMENTS_MOCK === 'true',
   };
 }
 
@@ -84,13 +86,13 @@ function _mockResponse({ amount }) {
   const ref = 'REF' + Date.now().toString().slice(-9);
   const verifiedOn = new Date().toISOString();
   return {
-    isVerified    : true,
-    reference     : ref,
+    isVerified: true,
+    reference: ref,
     verifiedAmount: amount,
     verifiedOn,
-    message       : 'Transacción encontrada y disponible [MODO PRUEBA]',
-    code          : 'B010',
-    raw           : { isVerified: true, bankReference: ref, verifiedAmount: amount, verifiedOn },
+    message: 'Transacción encontrada y disponible [MODO PRUEBA]',
+    code: 'B010',
+    raw: { isVerified: true, bankReference: ref, verifiedAmount: amount, verifiedOn },
   };
 }
 
@@ -114,12 +116,12 @@ function _pickFields(inner, amount, fmovimiento) {
 
   return {
     isVerified,
-    reference     : pick('bankReference', 'bankreference', 'NroReferencia', 'reference', 'referencia') ?? null,
+    reference: pick('bankReference', 'bankreference', 'NroReferencia', 'reference', 'referencia') ?? null,
     verifiedAmount: pick('verifiedAmount', 'verifiedamount', 'Amount', 'monto', 'amount') ?? amount,
-    verifiedOn    : pick('verifiedOn', 'verifiedon', 'FechaMovimiento', 'fmovimiento') ?? fmovimiento,
-    message       : pick('message') ?? 'Pago verificado',
-    code          : baCode,
-    raw           : inner,
+    verifiedOn: pick('verifiedOn', 'verifiedon', 'FechaMovimiento', 'fmovimiento') ?? fmovimiento,
+    message: pick('message') ?? 'Pago verificado',
+    code: baCode,
+    raw: inner,
   };
 }
 
@@ -144,10 +146,10 @@ async function verifyMobilePayment({ sourcePhoneNumber, bankCode, amount, paidOn
   const fmovimiento = String(paidOn).split('T')[0];
   const payload = {
     xtelefono,
-    cbanco_ref   : String(bankCode).trim(),
-    cbanco_dest  : destBanco,
-    mmonto       : Number(parseFloat(amount).toFixed(2)),
-    cci_rif      : cci_rif ? String(cci_rif).trim() : '',
+    cbanco_ref: String(bankCode).trim(),
+    cbanco_dest: destBanco,
+    mmonto: Number(parseFloat(amount).toFixed(2)),
+    cci_rif: cci_rif ? String(cci_rif).trim() : '',
     telefono_dest: destPhone,
     fmovimiento,
   };
@@ -191,7 +193,7 @@ async function verifyMobilePayment({ sourcePhoneNumber, bankCode, amount, paidOn
 
     const statusOk = d.status === true || d.success === true;
     if (lastRes.status >= 400 || !statusOk) {
-      const errMsg  = d.message || d.error || `Error HTTP ${lastRes.status}`;
+      const errMsg = d.message || d.error || `Error HTTP ${lastRes.status}`;
       const errCode = d.code || String(lastRes.status);
       throw Object.assign(
         new Error(RESULT_CODES[errCode] || errMsg),

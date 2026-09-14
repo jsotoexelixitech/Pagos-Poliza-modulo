@@ -26,8 +26,20 @@ import { applyWizardStepFromUrl, defaultStepForModule, stepToModuleOrder } from 
 import {
   isStandaloneGenericCheckoutSession,
   isValidCheckoutInput,
+  parseCheckoutRules,
   quoteFromCheckout,
 } from './checkout';
+import { getSsoMetadataFromBrowser } from './sso-metadata';
+import type { CanalVisibility } from './canal-visibility';
+import { resolveEntityFromMetadata, visibilityMatchesEntity } from './canal-visibility';
+import type { CheckoutPayer } from '../types';
+
+const CANAL_META_KEYS = [
+  'centidad', 'citem', 'cproducto', 'cramo', 'cproductor',
+  'ccanalalt', 'cscanalalt', 'ccanalalt_in', 'cscanalalt_in',
+  'xform', 'xproducto', 'cgestor', 'ifrecuencia', 'frecuencia',
+  'fraccionado', 'forma_pago',
+] as const;
 
 // ── Configuración por puerto (dev local) o hostname (HTTPS sslip.io) ───────
 const PORT_TO_ORDER: Record<string, number> = {
@@ -58,6 +70,10 @@ const HOST_TO_ORDER: Record<string, number> = {
   'form.200-75-131-138.sslip.io': 2,
   'emision.200-75-131-138.sslip.io': 3,
   'pagos.200-75-131-138.sslip.io': 4,
+  'ocr.exelixitech.com': 1,
+  'formulario.exelixitech.com': 2,
+  'emision.exelixitech.com': 3,
+  'pagos.exelixitech.com': 4,
 };
 
 // sessionStorage key usada por api.ts de cada módulo para inyectar el token
@@ -74,6 +90,10 @@ const HOST_TO_TOKEN_KEY: Record<string, string> = {
   'form.200-75-131-138.sslip.io': 'nexus_access_token_formulario',
   'emision.200-75-131-138.sslip.io': 'nexus_access_token_emision',
   'pagos.200-75-131-138.sslip.io': 'nexus_access_token_pagos',
+  'ocr.exelixitech.com': 'nexus_access_token_ocr',
+  'formulario.exelixitech.com': 'nexus_access_token_formulario',
+  'emision.exelixitech.com': 'nexus_access_token_emision',
+  'pagos.exelixitech.com': 'nexus_access_token_pagos',
 };
 
 function matchPathPrefix<T>(rules: [string, T][]): T | null {
@@ -254,16 +274,74 @@ function makeBridge(): BridgeAPI {
     if (!data || typeof data !== 'object') return;
     const filtered: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(data)) {
-      if (!HYDRATE_EXCLUDE.has(k)) filtered[k] = v;
+      // Evita dejar keys Nexus crudas (rules/payload/payer) que no usa el store.
+      if (
+        HYDRATE_EXCLUDE.has(k)
+        || k === 'rules'
+        || k === 'payload'
+        || k === 'payer'
+        || k === 'canalVisibility'
+      ) {
+        continue;
+      }
+      filtered[k] = v;
     }
     const set = (useWizardStore as unknown as { setState: (p: Partial<Record<string, unknown>>) => void }).setState;
     set(filtered);
 
+    const store = useWizardStore.getState();
+
+    const canalMeta: Record<string, unknown> = {
+      ...(getSsoMetadataFromBrowser() || {}),
+      ...(store.metadataCanal || {}),
+    };
+    if (data.metadataCanal && typeof data.metadataCanal === 'object') {
+      Object.assign(canalMeta, data.metadataCanal as Record<string, unknown>);
+    }
+    for (const key of CANAL_META_KEYS) {
+      if (data[key] != null && data[key] !== '') {
+        canalMeta[key] = data[key];
+      }
+    }
+    if (Object.keys(canalMeta).length > 0) {
+      store.setMetadataCanal(canalMeta);
+    }
+
+    const activeEntity = resolveEntityFromMetadata(canalMeta);
+    if (
+      data.canalVisibility
+      && typeof data.canalVisibility === 'object'
+      && visibilityMatchesEntity(data.canalVisibility as CanalVisibility, activeEntity)
+    ) {
+      store.setCanalVisibility(data.canalVisibility as CanalVisibility);
+    }
+
     const checkout = data.checkout;
     if (isValidCheckoutInput(checkout)) {
-      const { setQuote, setQuoteState } = useWizardStore.getState();
-      setQuote(quoteFromCheckout(checkout), 'checkout-session');
-      setQuoteState('ready');
+      // Forma canónica del store O metadata Nexus (rules/payload/payer) como en SSO.
+      // Si la sesión bridge no trae rules/payload, conservar lo que ya hidrató el token.
+      const rulesFromSession = parseCheckoutRules(
+        data.checkoutRules ?? data.rules,
+      );
+      const payloadRaw = data.checkoutPayload ?? data.payload;
+      const payloadFromSession =
+        payloadRaw && typeof payloadRaw === 'object'
+          ? (payloadRaw as Record<string, unknown>)
+          : null;
+      const payerRaw = data.checkoutPayer ?? data.payer;
+      const payerFromSession =
+        payerRaw && typeof payerRaw === 'object'
+          ? (payerRaw as CheckoutPayer)
+          : null;
+
+      store.setCheckout({
+        data: checkout,
+        rules: rulesFromSession ?? store.checkoutRules,
+        payer: payerFromSession ?? store.checkoutPayer,
+        payload: payloadFromSession ?? store.checkoutPayload,
+      });
+      store.setQuote(quoteFromCheckout(checkout), 'checkout-session');
+      store.setQuoteState('ready');
     }
   };
 
@@ -301,6 +379,7 @@ function makeBridge(): BridgeAPI {
       }
       // eslint-disable-next-line no-console
       console.info('[bridge] hydrated session', sid);
+      window.dispatchEvent(new CustomEvent('bridge-hydrated'));
     } catch (e) {
       // eslint-disable-next-line no-console
       console.warn('[bridge] hydrate failed', e);

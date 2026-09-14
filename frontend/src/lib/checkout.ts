@@ -5,43 +5,10 @@ import type {
   WizardState,
 } from '../types';
 import { useWizardStore } from '../store/wizardStore';
+import { effectiveCanalVisibility } from './canal-visibility';
+import { getSsoMetadataFromBrowser } from './sso-metadata';
 
-function decodeTokenPayload(token: string): Record<string, unknown> | null {
-  try {
-    const payloadBase64 = token.split('.')[1];
-    if (!payloadBase64) return null;
-    const payloadStr = atob(
-      payloadBase64.replace(/-/g, '+').replace(/_/g, '/'),
-    );
-    return JSON.parse(payloadStr) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-}
-
-function getAccessTokenFromBrowser(): string | null {
-  if (typeof window === 'undefined') return null;
-  return (
-    sessionStorage.getItem('nexus_access_token_pagos') ||
-    sessionStorage.getItem('nexus_access_token') ||
-    new URLSearchParams(window.location.search).get('nexus_token')
-  );
-}
-
-/** Metadata SSO del token en URL/storage (sin bridge ?sid=). */
-export function getSsoMetadataFromBrowser(): Record<string, unknown> | null {
-  if (typeof window === 'undefined') return null;
-  if (new URLSearchParams(window.location.search).get('sid')) return null;
-
-  const token = getAccessTokenFromBrowser();
-  if (!token) return null;
-
-  const payload = decodeTokenPayload(token);
-  const meta = payload?.metadata;
-  return meta && typeof meta === 'object'
-    ? (meta as Record<string, unknown>)
-    : null;
-}
+export { getSsoMetadataFromBrowser } from './sso-metadata';
 
 /** Sesión Pagos standalone con checkout en metadata (antes de hidratar el store). */
 export function isStandaloneGenericCheckoutSession(): boolean {
@@ -50,7 +17,10 @@ export function isStandaloneGenericCheckoutSession(): boolean {
   return isValidCheckoutInput(meta.checkout);
 }
 
-/** Hidrata checkout desde nexus_token antes del primer render de React. */
+/**
+ * Hidrata checkout desde nexus_token antes del primer render de React.
+ * Si ya hay checkout en el store (p. ej. bridge hidrató la sesión), no pisa.
+ */
 export function hydrateCheckoutFromAccessToken(): boolean {
   const meta = getSsoMetadataFromBrowser();
   if (!meta) return false;
@@ -59,10 +29,13 @@ export function hydrateCheckoutFromAccessToken(): boolean {
   const store = useWizardStore.getState();
 
   if (Object.keys(canal).length > 0) {
-    store.setMetadataCanal(canal);
+    store.setMetadataCanal({ ...(store.metadataCanal || {}), ...canal });
   }
 
   if (!isValidCheckoutInput(checkout)) return false;
+
+  // Bridge (?sid=) puede llegar después y sobrescribir; no pisar si ya hay checkout.
+  if (hasGenericCheckout(store)) return true;
 
   store.setCheckout({
     data: checkout,
@@ -73,6 +46,153 @@ export function hydrateCheckoutFromAccessToken(): boolean {
         ? (opaque as Record<string, unknown>)
         : null,
   });
+  store.setQuote(quoteFromCheckout(checkout), 'checkout-metadata');
+  store.setQuoteState('ready');
+  store.goTo(5);
+  return true;
+}
+
+/**
+ * Hidrata checkout desde query params (SysIP o integración vía iframe/URL).
+ * Soporta: embed, amount/totalVes, totalUsd, docType, docNumber/cedula, phone/telefono, name/nombre, title/plan, etc.
+ */
+export function hydrateCheckoutFromQueryParams(): boolean {
+  if (typeof window === 'undefined') return false;
+  const params = new URLSearchParams(window.location.search);
+
+  const rawVes = params.get('amount') || params.get('totalVes') || params.get('monto') || params.get('ves');
+  if (!rawVes) return false;
+
+  const totalVes = parseFloat(rawVes.replace(',', '.'));
+  if (!Number.isFinite(totalVes) || totalVes <= 0) return false;
+
+  const rawUsd = params.get('totalUsd') || params.get('usd') || params.get('dolares');
+  const parsedUsd = rawUsd ? parseFloat(rawUsd.replace(',', '.')) : NaN;
+  const totalUsd = Number.isFinite(parsedUsd) && parsedUsd > 0 ? parsedUsd : undefined;
+
+  const rawRate = params.get('exchangeRate') || params.get('tasa');
+  const parsedRate = rawRate ? parseFloat(rawRate.replace(',', '.')) : NaN;
+  const exchangeRate = Number.isFinite(parsedRate) && parsedRate > 0
+    ? parsedRate
+    : (totalUsd && totalUsd > 0 ? totalVes / totalUsd : undefined);
+
+  let docType = (params.get('docType') || params.get('tipoDoc') || params.get('icedula') || '').toUpperCase().trim();
+  let docNumber = (params.get('docNumber') || params.get('cedula') || params.get('cci_rif') || params.get('identificacion') || '').trim();
+
+  // Si docNumber viene con letra prefijo tipo V12345678 o V-12345678
+  if (!docType && docNumber) {
+    const match = docNumber.match(/^([VEJPGvejpg])[- ]?(\d+)$/);
+    if (match) {
+      docType = match[1].toUpperCase();
+      docNumber = match[2];
+    }
+  } else if (docType && docNumber) {
+    docNumber = docNumber.replace(/^[VEJPGvejpg][- ]?/, '');
+  }
+
+  const phone = params.get('phone') || params.get('telefono') || params.get('xtelefono') || '';
+  const name = params.get('name') || params.get('nombre') || params.get('xcliente') || '';
+  const email = params.get('email') || params.get('correo') || '';
+  const title = params.get('title') || params.get('titulo') || params.get('plan') || params.get('concepto') || 'Pago de Póliza';
+  const referenceId = params.get('referenceId') || params.get('idOperacion') || params.get('cnpoliza') || undefined;
+
+  // Datos del asegurado (si es diferente al tomador)
+  let asegDocType = (params.get('asegDocType') || params.get('asegTipoDoc') || params.get('asegIcedula') || '').toUpperCase().trim();
+  let asegDocNumber = (params.get('asegDocNumber') || params.get('asegCedula') || params.get('asegCci_rif') || params.get('asegIdentificacion') || '').trim();
+
+  if (!asegDocType && asegDocNumber) {
+    const match = asegDocNumber.match(/^([VEJPGvejpg])[- ]?(\d+)$/);
+    if (match) {
+      asegDocType = match[1].toUpperCase();
+      asegDocNumber = match[2];
+    }
+  } else if (asegDocType && asegDocNumber) {
+    asegDocNumber = asegDocNumber.replace(/^[VEJPGvejpg][- ]?/, '');
+  }
+
+  const asegPhone = params.get('asegPhone') || params.get('asegTelefono') || params.get('asegXtelefono') || '';
+  const asegName = params.get('asegName') || params.get('asegNombre') || params.get('asegCliente') || '';
+  const asegEmail = params.get('asegEmail') || params.get('asegCorreo') || '';
+
+  const store = useWizardStore.getState();
+  if (hasGenericCheckout(store)) return true;
+
+  const checkout: CheckoutData = {
+    title,
+    subtitle: referenceId ? `Referencia: ${referenceId}` : undefined,
+    referenceId,
+    totalVes,
+    totalUsd,
+    exchangeRate,
+    lines: [
+      {
+        label: title,
+        amountVes: totalVes,
+        amountUsd: totalUsd,
+      },
+    ],
+  };
+
+  const payer = {
+    documentType: docType || undefined,
+    documentNumber: docNumber || undefined,
+    phone: phone || undefined,
+    name: name || undefined,
+    email: email || undefined,
+  };
+
+  const tomadorPayload = {
+    documentType: docType || undefined,
+    documentNumber: docNumber || undefined,
+    phone: phone || undefined,
+    name: name || undefined,
+    email: email || undefined,
+  };
+
+  const aseguradoPayload = {
+    documentType: asegDocType || undefined,
+    documentNumber: asegDocNumber || undefined,
+    phone: asegPhone || undefined,
+    name: asegName || undefined,
+    email: asegEmail || undefined,
+  };
+
+  store.setCheckout({
+    data: checkout,
+    rules: {
+      requirePayment: true,
+      autoRedirect: false,
+    },
+    payer: Object.values(payer).some(Boolean) ? payer : null,
+    payload: {
+      idOperacion: referenceId,
+      source: 'sysip',
+      tomador: tomadorPayload,
+      asegurado: aseguradoPayload,
+    },
+  });
+
+  if (docNumber || phone || name || email) {
+    store.setTomador({
+      tipoDoc: (docType as 'V' | 'E' | 'J' | 'G' | 'P') || 'V',
+      identificacion: docNumber,
+      nombre: name,
+      telefono: phone,
+      email,
+    });
+  }
+
+  if (asegDocNumber || asegPhone || asegName) {
+    store.setAsegurado({
+      tipoDoc: (asegDocType as 'V' | 'E' | 'J' | 'G' | 'P') || (docType as 'V' | 'E' | 'J' | 'G' | 'P') || 'V',
+      identificacion: asegDocNumber,
+      nombre: asegName,
+      telefono: asegPhone,
+      email: asegEmail,
+    });
+    store.setSameInsured(false);
+  }
+
   store.setQuote(quoteFromCheckout(checkout), 'checkout-metadata');
   store.setQuoteState('ready');
   store.goTo(5);
@@ -91,13 +211,28 @@ export function hasGenericCheckout(
 export function isGenericCheckoutMode(
   state: Pick<WizardState, 'checkout'>,
 ): boolean {
-  return hasGenericCheckout(state) || isStandaloneGenericCheckoutSession();
+  if (hasGenericCheckout(state) || isStandaloneGenericCheckoutSession()) return true;
+  if (typeof window !== 'undefined') {
+    const params = new URLSearchParams(window.location.search);
+    const rawVes = params.get('amount') || params.get('totalVes') || params.get('monto') || params.get('ves');
+    if (rawVes && parseFloat(rawVes.replace(',', '.')) > 0) return true;
+  }
+  return false;
 }
 
-/** Checkout embebido vía metadata SSO (iframe — sin botón Continuar). */
+/** Checkout embebido vía metadata SSO o query params (iframe — sin botón Continuar). */
 export function isEmbeddedMetadataCheckout(
   state: Pick<WizardState, 'checkout'>,
 ): boolean {
+  if (typeof window !== 'undefined') {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('embed') === 'true' || params.get('embedded') === 'true') {
+      return true;
+    }
+    if (window.parent !== window && hasGenericCheckout(state)) {
+      return true;
+    }
+  }
   if (!isGenericCheckoutMode(state)) return false;
   if (typeof window === 'undefined') return true;
   // Bridge (?sid=) puede usar onSuccess.emit; metadata SSO no controla el flujo del cliente.
@@ -233,9 +368,18 @@ export function parseCheckoutRules(raw: unknown): CheckoutRules | null {
 
 /** ¿Exige pago verificado antes de continuar? */
 export function requiresPaymentBeforeContinue(
-  state: Pick<WizardState, 'checkout' | 'checkoutRules'>,
+  state: Pick<WizardState, 'checkout' | 'checkoutRules' | 'canalVisibility' | 'metadataCanal'>,
   funeralFlow: boolean,
 ): boolean {
+  const canal = effectiveCanalVisibility(state.canalVisibility, state.metadataCanal);
+  const canalRequired = canal?.ui
+    ? canal.ui.mostrarPasoPago
+      && canal.ui.requierePagoVerificado
+    : null;
+
+  if (canalRequired === false) return false;
+  if (canalRequired === true) return true;
+
   if (hasGenericCheckout(state)) {
     return state.checkoutRules?.requirePayment !== false;
   }

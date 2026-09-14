@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useWizardStore } from './store/wizardStore';
 import { TopStepper } from './components/TopStepper';
 import { TopProgressBar } from './components/TopProgressBar';
@@ -19,6 +19,8 @@ import {
   requiresPaymentBeforeContinue,
 } from './lib/checkout';
 import { useNexusTokenMetadata } from './hooks/useNexusTokenMetadata';
+import { useCanalVisibility } from './hooks/useCanalVisibility';
+import { shouldShowPaymentStep, allowsEmitPending, labelTipoEmision, effectiveCanalVisibility } from './lib/canal-visibility';
 import { toast } from './store/toastStore';
 import {
   emissionPdfHint,
@@ -26,14 +28,16 @@ import {
   releaseEmissionPopupSlots,
   reserveEmissionPopupSlots,
 } from './lib/openEmissionPdfs';
-import { Zap, ShieldCheck, Sparkles } from 'lucide-react';
+import { Zap, ShieldCheck, Sparkles, Loader2 } from 'lucide-react';
 import type { PaymentEmitContext } from './types';
 
 export default function App() {
   useNexusTokenMetadata();
+  useCanalVisibility();
   const store = useWizardStore();
-  const { step, goTo, setPolicy } = store;
+  const { step, goTo, setPolicy, canalVisibility, metadataCanal } = store;
   const [emitting, setEmitting] = useState(false);
+  const skipPaymentEmittedRef = useRef(false);
 
   const isSuccess = step === 6;
   const funeralFlow = isFunerario();
@@ -42,22 +46,29 @@ export default function App() {
   const genericCheckout = isGenericCheckoutMode(store);
   const embeddedCheckout = isEmbeddedMetadataCheckout(store);
   const paymentRequired = requiresPaymentBeforeContinue(store, funeralFlow);
+  const hidePaymentStep = shouldShowPaymentStep(canalVisibility, metadataCanal) === false;
+  const emitPendingMode = allowsEmitPending(canalVisibility, metadataCanal);
+  const tipoEmisionLabel = labelTipoEmision(
+    effectiveCanalVisibility(canalVisibility, metadataCanal)?.tipoEmision,
+  );
 
   /** Funerario legacy: emitir sin bloquear por verificación bancaria. */
   const canEmitFuneral = funeralFlow && !genericCheckout && !emitting;
-  /** RCV legacy: exige pago verificado salvo bypass QA. */
+  const canEmitWithOptionalPayment =
+    !paymentRequired || store.paymentVerified || emitPendingMode;
+  /** RCV legacy: exige pago verificado salvo emisión pendiente (tipoEmision emit). */
   const canEmitRcv =
     rcvFlow &&
     !exelixiFlow &&
     !genericCheckout &&
     !emitting &&
-    (!paymentRequired || store.paymentVerified);
-  /** Exélixi catálogo: emite vía product-emission tras pago (o bypass QA). */
+    canEmitWithOptionalPayment;
+  /** Exélixi catálogo: emite vía product-emission tras pago (o bypass QA / emit pendiente). */
   const canEmitExelixi =
     exelixiFlow &&
     !genericCheckout &&
     !emitting &&
-    (!paymentRequired || store.paymentVerified);
+    canEmitWithOptionalPayment;
   /** Checkout genérico: respeta rules.requirePayment. */
   const canCompleteGeneric =
     genericCheckout &&
@@ -201,7 +212,8 @@ export default function App() {
   async function handleContinuarExelixi(paymentCtx?: PaymentEmitContext) {
     const snap = useWizardStore.getState();
     const verified = paymentCtx?.paymentVerified ?? snap.paymentVerified;
-    if (paymentRequired && !verified) {
+    const pendingEmit = allowsEmitPending(snap.canalVisibility, snap.metadataCanal);
+    if (paymentRequired && !verified && !pendingEmit) {
       toast.warning(
         'Pago pendiente',
         'Verifica o confirma el pago con el banco antes de emitir.',
@@ -225,7 +237,8 @@ export default function App() {
   async function handleContinuarRcv(paymentCtx?: PaymentEmitContext) {
     const snap = useWizardStore.getState();
     const verified = paymentCtx?.paymentVerified ?? snap.paymentVerified;
-    if (paymentRequired && !verified) {
+    const pendingEmit = allowsEmitPending(snap.canalVisibility, snap.metadataCanal);
+    if (paymentRequired && !verified && !pendingEmit) {
       toast.warning(
         'Pago pendiente',
         'Verifica o confirma el pago con el banco antes de continuar.',
@@ -332,13 +345,28 @@ export default function App() {
     void handleContinuarRcv();
   }
 
+  function handleEmitPending() {
+    if (exelixiFlow) {
+      void handleContinuarExelixi();
+      return;
+    }
+    void handleContinuarRcv();
+  }
+
+  const showEmitPendingButton =
+    emitPendingMode && !store.paymentVerified && !genericCheckout && !funeralFlow;
+  const canEmitPendingNow =
+    showEmitPendingButton && (exelixiFlow ? canEmitExelixi : canEmitRcv);
+
   const primaryDisabled = genericCheckout
     ? !canCompleteGeneric
     : exelixiFlow
       ? !canEmitExelixi
       : funeralFlow
         ? !canEmitFuneral
-        : !canEmitRcv;
+        : showEmitPendingButton
+          ? !store.paymentVerified || !canEmitRcv
+          : !canEmitRcv;
 
   const pendingPaymentHint = store.paymentMethod === 'domiciliacion'
     ? 'Autoriza la domiciliación para continuar'
@@ -400,6 +428,33 @@ export default function App() {
     }
   }
 
+  useEffect(() => {
+    if (!hidePaymentStep || genericCheckout || emitting || step !== 5 || isSuccess) return;
+    if (skipPaymentEmittedRef.current) return;
+    skipPaymentEmittedRef.current = true;
+
+    if (exelixiFlow) {
+      void handleContinuarExelixi();
+      return;
+    }
+    if (funeralFlow) {
+      void handleEmitir();
+      return;
+    }
+    if (rcvFlow) {
+      void handleContinuarRcv();
+    }
+  }, [
+    hidePaymentStep,
+    genericCheckout,
+    emitting,
+    step,
+    isSuccess,
+    exelixiFlow,
+    funeralFlow,
+    rcvFlow,
+  ]);
+
   return (
     <div className="min-h-screen relative">
       <WelcomeSplash />
@@ -412,30 +467,37 @@ export default function App() {
       <div>
         <main
           className={`flex-1 min-h-screen px-4 sm:px-6 lg:px-10 ${
-            genericCheckout ? 'pb-12' : 'pb-32 lg:pb-12'
-          } ${genericCheckout ? 'pt-10' : 'pt-[72px] lg:pt-10'}`}
+            embeddedCheckout ? 'pt-4 pb-6' : genericCheckout ? 'pt-10 pb-12' : 'pt-[72px] lg:pt-10 pb-32 lg:pb-12'
+          }`}
         >
           <div className="max-w-5xl mx-auto">
             {!genericCheckout && <TopStepper />}
 
             {!isSuccess && (
-              <header className="mb-8 animate-fade-in">
+              <header className="mb-6 animate-fade-in">
                 <div className="flex items-start justify-between gap-4 flex-wrap">
                   <div className="min-w-0">
                     <p className="text-[0.68rem] font-black tracking-[0.22em] gradient-text-indigo uppercase mb-2 inline-flex items-center gap-1.5">
                       <Sparkles size={11} className="text-indigo-500" />
                       {genericCheckout ? 'Pago' : 'Paso 05 · Checkout'}
                     </p>
-                    <h1 className="font-display text-3xl sm:text-[2.5rem] font-black text-slate-900 tracking-tight leading-tight">
+                    <h1 className="font-display text-2xl sm:text-3xl font-black text-slate-900 tracking-tight leading-tight">
                       {genericCheckout ? 'Realiza tu pago' : 'Confirma y paga'}
                     </h1>
-                    <p className="text-slate-500 text-sm mt-2 max-w-xl leading-relaxed">
+                    <p className="text-slate-500 text-xs sm:text-sm mt-1 max-w-xl leading-relaxed">
                       {embeddedCheckout
                         ? 'Al verificar el pago, tu sistema recibirá el resultado automáticamente.'
                         : genericCheckout
                           ? 'Revisa el detalle y confirma el método de pago.'
-                          : 'Una conexión cifrada protege la operación de extremo a extremo.'}
+                          : emitPendingMode
+                            ? 'Puedes registrar el pago ahora o emitir la póliza con recibo pendiente de cobro.'
+                            : 'Una conexión cifrada protege la operación de extremo a extremo.'}
                     </p>
+                    {tipoEmisionLabel && (
+                      <p className="text-[0.65rem] font-bold uppercase tracking-wider text-indigo-600 mt-2">
+                        Tipo de emisión: {tipoEmisionLabel}
+                      </p>
+                    )}
                   </div>
                 </div>
               </header>
@@ -444,54 +506,89 @@ export default function App() {
             <section className="surface-card overflow-hidden step-enter">
               <div className="p-6 sm:p-8 lg:p-10">
                 {!isSuccess && (
-                  <PaymentStep
-                    onPaymentVerified={
-                      exelixiFlow && !genericCheckout
-                        ? handleContinuarExelixi
-                        : rcvFlow && !genericCheckout
-                          ? handleContinuarRcv
-                          : undefined
-                    }
-                  />
+                  hidePaymentStep ? (
+                    <div className="flex flex-col items-center justify-center gap-4 py-16 text-center">
+                      <Loader2 className="h-10 w-10 animate-spin text-indigo-500" />
+                      <p className="text-slate-600 font-medium">
+                        {emitting
+                          ? 'Emitiendo póliza sin paso de pago…'
+                          : 'Preparando emisión según configuración del canal…'}
+                      </p>
+                    </div>
+                  ) : (
+                    <PaymentStep
+                      onPaymentVerified={
+                        exelixiFlow && !genericCheckout
+                          ? handleContinuarExelixi
+                          : rcvFlow && !genericCheckout
+                            ? handleContinuarRcv
+                            : undefined
+                      }
+                    />
+                  )
                 )}
                 {isSuccess && <SuccessStep />}
               </div>
 
-              {!isSuccess && !embeddedCheckout && (
+              {!isSuccess && !embeddedCheckout && !hidePaymentStep && (
                 <div className="hidden md:flex items-center justify-between gap-4 px-8 lg:px-10 py-5 border-t border-slate-100/80 bg-gradient-to-b from-slate-50/50 to-white/40 backdrop-blur-sm">
                   <div className="flex items-center gap-2 text-xs text-slate-500">
                     <ShieldCheck size={13} className="text-emerald-500" />
                     <span className="font-medium">Cifrado de extremo a extremo · TLS 1.3</span>
                   </div>
                 <div className="flex flex-col items-end gap-1.5">
-                  {paymentRequired && !store.paymentVerified && (
+                  {emitPendingMode && !store.paymentVerified && (
+                    <p className="text-[0.65rem] font-semibold text-indigo-700">
+                      Opcional: verifica el pago o emite con recibo pendiente
+                    </p>
+                  )}
+                  {paymentRequired && !store.paymentVerified && !emitPendingMode && (
                     <p className="text-[0.65rem] font-semibold text-amber-700">
                       {pendingPaymentHint}
                     </p>
                   )}
-                  <Button
-                    variant="primary"
-                    onClick={handlePrimaryAction}
-                    disabled={primaryDisabled}
-                    className="min-w-[180px]"
-                    title={
-                      paymentRequired && !store.paymentVerified
-                        ? pendingPaymentHint
-                        : undefined
-                    }
-                  >
-                    {emitting ? (
-                      <>
-                        <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin-slow" />
-                        {primaryLabel}
-                      </>
-                    ) : (
-                      <>
-                        <Zap size={15} fill="currentColor" />
-                        {primaryLabel}
-                      </>
+                  <div className="flex items-center gap-2">
+                    {showEmitPendingButton && (
+                      <Button
+                        variant="secondary"
+                        onClick={handleEmitPending}
+                        disabled={!canEmitPendingNow}
+                        className="min-w-[180px]"
+                      >
+                        {emitting ? (
+                          <>
+                            <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-indigo-400/40 border-t-indigo-600 animate-spin-slow" />
+                            Emitiendo…
+                          </>
+                        ) : (
+                          'Emitir como pendiente'
+                        )}
+                      </Button>
                     )}
-                  </Button>
+                    <Button
+                      variant="primary"
+                      onClick={handlePrimaryAction}
+                      disabled={primaryDisabled}
+                      className="min-w-[180px]"
+                      title={
+                        paymentRequired && !store.paymentVerified && !emitPendingMode
+                          ? pendingPaymentHint
+                          : undefined
+                      }
+                    >
+                      {emitting && !showEmitPendingButton ? (
+                        <>
+                          <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin-slow" />
+                          {primaryLabel}
+                        </>
+                      ) : (
+                        <>
+                          <Zap size={15} fill="currentColor" />
+                          {primaryLabel}
+                        </>
+                      )}
+                    </Button>
+                  </div>
                 </div>
                 </div>
               )}
@@ -510,12 +607,27 @@ export default function App() {
         </main>
       </div>
 
-      {!isSuccess && !embeddedCheckout && (
+      {!isSuccess && !embeddedCheckout && !hidePaymentStep && (
         <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 px-4 py-3 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-[0_-8px_24px_rgba(15,23,42,0.08)]">
-          {paymentRequired && !store.paymentVerified && (
+          {emitPendingMode && !store.paymentVerified && (
+            <p className="text-[0.65rem] font-semibold text-indigo-700 text-center mb-2">
+              Opcional: verifica el pago o emite con recibo pendiente
+            </p>
+          )}
+          {paymentRequired && !store.paymentVerified && !emitPendingMode && (
             <p className="text-[0.65rem] font-semibold text-amber-700 text-center mb-2">
               {pendingPaymentHint}
             </p>
+          )}
+          {showEmitPendingButton && (
+            <Button
+              variant="secondary"
+              className="w-full mb-2"
+              onClick={handleEmitPending}
+              disabled={!canEmitPendingNow}
+            >
+              {emitting ? 'Emitiendo…' : 'Emitir como pendiente'}
+            </Button>
           )}
           <Button
             variant="primary"
@@ -523,7 +635,7 @@ export default function App() {
             onClick={handlePrimaryAction}
             disabled={primaryDisabled}
             title={
-              paymentRequired && !store.paymentVerified
+              paymentRequired && !store.paymentVerified && !emitPendingMode
                 ? pendingPaymentHint
                 : undefined
             }
