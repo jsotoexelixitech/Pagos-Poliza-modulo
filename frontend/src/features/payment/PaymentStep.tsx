@@ -1054,6 +1054,7 @@ export function PaymentStep({
           </div>
         </div>
       ) : (
+      <>
       <div>
         <p className="text-[0.7rem] font-black text-slate-500 uppercase tracking-widest mb-3 inline-flex items-center gap-1.5">
           <Sparkles size={11} className="text-indigo-500" />
@@ -1640,6 +1641,7 @@ export function PaymentStep({
           />
         </div>
       </div>
+      </>
       )}
 
       {/* Trust badges */}
