@@ -33,8 +33,7 @@ import { useProductConfig } from './hooks/useProductConfig';
 import { useUiFlags } from './lib/ui-flags';
 import { getProductId } from './lib/product';
 import { shouldSkipTarjetaPayment, shouldUseTarjetaPublicApi } from './lib/rcv-tarjeta-flow';
-import { TarjetaEmitScreen } from './features/activacion-tarjeta/TarjetaEmitScreen';
-import { TarjetaSuccessScreen } from './features/activacion-tarjeta/TarjetaSuccessScreen';
+import { TarjetaFlowBackdrop } from './features/activacion-tarjeta/TarjetaFlowBackdrop';
 
 const EMPRESA_ID = Number(import.meta.env.VITE_EMPRESA_ID ?? 1);
 
@@ -54,7 +53,7 @@ export default function App() {
   const embeddedCheckout = isEmbeddedMetadataCheckout(store);
   const paymentRequired = requiresPaymentBeforeContinue(store, funeralFlow);
   const tarjetaFarmaciaPaid = rcvFlow && shouldSkipTarjetaPayment(store.metadataCanal);
-  const tarjetaLmLayout =
+  const tarjetaFlowBackdrop =
     shouldUseTarjetaPublicApi() && rcvFlow && !exelixiFlow && !genericCheckout && !funeralFlow;
   const funeralApproved = isFuneralApprovedCheckout(store);
 
@@ -452,39 +451,11 @@ export default function App() {
     await handleContinuarFunerario();
   }
 
-  if (tarjetaLmLayout && isSuccess) {
-    return (
-      <>
-        <Toaster />
-        <TarjetaSuccessScreen />
-      </>
-    );
-  }
-
-  if (tarjetaLmLayout && !isSuccess) {
-    return (
-      <>
-        <Toaster />
-        <TarjetaEmitScreen
-          farmaciaPaid={tarjetaFarmaciaPaid}
-          actionLabel={primaryLabel}
-          onAction={handlePrimaryAction}
-          disabled={primaryDisabled}
-          loading={emitting}
-        >
-          <PaymentStep
-            onPaymentVerified={handleContinuarRcv}
-          />
-        </TarjetaEmitScreen>
-      </>
-    );
-  }
-
-  return (
+  const appBody = (
     <div className="min-h-screen relative">
-      <WelcomeSplash />
+      {!tarjetaFlowBackdrop && <WelcomeSplash />}
       <Toaster />
-      <AuroraBackground />
+      {!tarjetaFlowBackdrop && <AuroraBackground />}
       <div className="lg:hidden">
         {!genericCheckout && <TopProgressBar />}
       </div>
@@ -633,6 +604,16 @@ export default function App() {
       )}
     </div>
   );
+
+  if (tarjetaFlowBackdrop) {
+    return (
+      <TarjetaFlowBackdrop variant={isSuccess ? 'exito' : 'emitir'}>
+        {appBody}
+      </TarjetaFlowBackdrop>
+    );
+  }
+
+  return appBody;
 }
 
 async function maybeRegisterDomiciliacion(
