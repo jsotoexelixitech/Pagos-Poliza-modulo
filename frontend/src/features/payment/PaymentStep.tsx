@@ -14,6 +14,7 @@ import { formatCedulaRif, validateCedulaRif } from '../../lib/cedula-rif';
 import { useProductConfig } from '../../hooks/useProductConfig';
 import { isExelixiCatalogProduct, getProductConfig } from '../../lib/product';
 import {
+  getCuotasByFrecuencia,
   resolveFrecuenciaAmounts,
   resolveWizardFrecuenciaCode,
   resolveRcvQuoteBasis,
@@ -137,6 +138,9 @@ export function PaymentStep({
       (producto === 'funerario' ? funeral?.frecuencia : rcv?.frecuencia),
   });
 
+  /** Domiciliación SyPago: solo pago fraccionado o más de 1 cuota (M/T/S/C…), no anual. */
+  const offerDomiciliacion = pagoFraccionado || getCuotasByFrecuencia(frecuenciaCode) > 1;
+
   const requireFirstThenDomiciliar = (() => {
     if (!pagoFraccionado) return false;
     if (
@@ -183,11 +187,17 @@ export function PaymentStep({
       return opt.method === 'domiciliacion';
     }
     if (pagoFraccionado) return opt.method === 'domiciliacion';
+    if (opt.method === 'domiciliacion') {
+      if (genericCheckout && checkoutRules?.methods?.length) {
+        return checkoutRules.methods.includes('domiciliacion');
+      }
+      if (!offerDomiciliacion) return false;
+      return isPaymentMethodEnabled(opt.method, config?.metodos);
+    }
     if (mobilePaymentSimulated) {
-      return opt.method === 'mobile' || opt.method === 'domiciliacion';
+      return opt.method === 'mobile';
     }
     if (!isPaymentMethodEnabled(opt.method, config?.metodos)) return false;
-    if (opt.method === 'domiciliacion') return true;
     if (genericCheckout && checkoutRules?.methods?.length) {
       return checkoutRules.methods.includes(opt.method);
     }

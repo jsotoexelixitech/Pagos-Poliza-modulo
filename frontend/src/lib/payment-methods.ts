@@ -8,7 +8,7 @@ type MetodoConfigEntry = {
 
 /**
  * Indica si un método debe mostrarse según config Nexus (array o objeto legacy).
- * Sin config: todos los métodos del UI están disponibles (p. ej. mobile + otp + domiciliacion).
+ * Sin config: mobile y otp disponibles; domiciliación la filtra PaymentStep (solo fraccionado).
  */
 export function isPaymentMethodEnabled(
   method: PaymentMethod,
