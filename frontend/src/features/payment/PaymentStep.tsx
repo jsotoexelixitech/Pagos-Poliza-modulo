@@ -946,20 +946,6 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
         </div>
       </div>
 
-      {genericCheckout && checkout!.lines && checkout!.lines.length > 0 && (
-        <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-2">
-          <p className="text-[0.65rem] font-bold uppercase tracking-wider text-slate-400">Detalle</p>
-          {checkout!.lines!.map((line, idx) => (
-            <div key={idx} className="flex justify-between text-sm gap-4">
-              <span className="text-slate-600">{line.label}</span>
-              <span className="font-semibold text-slate-900 tabular-nums shrink-0">
-                Bs {line.amountVes.toLocaleString('es-VE', { minimumFractionDigits: 2 })}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-
       {/* Selector de método */}
       <div>
         <p className="text-[0.7rem] font-black text-slate-500 uppercase tracking-widest mb-3 inline-flex items-center gap-1.5">

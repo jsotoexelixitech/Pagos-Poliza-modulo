@@ -15,9 +15,9 @@ export default defineConfig(({ mode }) => {
   const tunnel = env.VITE_HMR_TUNNEL === '1' || env.VITE_HMR_TUNNEL === 'true'
   const base = resolveAppBase(env)
 
-  // Backend de pagos. Por defecto 4003 (puerto real en el servidor). Override
+  // Backend de pagos. Por defecto 4005 (puerto real en el servidor). Override
   // con VITE_PAGOS_API si en local corre en otro puerto (p.ej. 3001).
-  const pagosApi = env.VITE_PAGOS_API || 'http://localhost:4003'
+  const pagosApi = env.VITE_PAGOS_API || 'http://localhost:4005'
 
   // Mismo mapa de proxy para el dev server (`vite`) y para `vite preview`
   // (producción sirve el build con preview, que NO hereda `server.proxy`).
