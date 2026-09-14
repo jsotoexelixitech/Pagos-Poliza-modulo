@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { useWizardStore } from './store/wizardStore';
 import { TopStepper } from './components/TopStepper';
 import { TopProgressBar } from './components/TopProgressBar';
@@ -32,8 +32,7 @@ import type { PaymentEmitContext } from './types';
 import { useProductConfig } from './hooks/useProductConfig';
 import { useUiFlags } from './lib/ui-flags';
 import { getProductId } from './lib/product';
-import { shouldSkipTarjetaPayment, shouldUseTarjetaPublicApi } from './lib/rcv-tarjeta-flow';
-import { TarjetaFlowBackdrop } from './features/activacion-tarjeta/TarjetaFlowBackdrop';
+import { shouldSkipTarjetaPayment } from './lib/rcv-tarjeta-flow';
 
 const EMPRESA_ID = Number(import.meta.env.VITE_EMPRESA_ID ?? 1);
 
@@ -53,11 +52,9 @@ export default function App() {
   const embeddedCheckout = isEmbeddedMetadataCheckout(store);
   const paymentRequired = requiresPaymentBeforeContinue(store, funeralFlow);
   const tarjetaFarmaciaPaid = rcvFlow && shouldSkipTarjetaPayment(store.metadataCanal);
-  const tarjetaFlowBackdrop =
-    shouldUseTarjetaPublicApi() && rcvFlow && !exelixiFlow && !genericCheckout && !funeralFlow;
   const funeralApproved = isFuneralApprovedCheckout(store);
 
-  /** Funerario legacy: emitir sin bloquear por verificación bancaria. */
+  /** Funerario legacy: emitir sin bloquear por verificaci├│n bancaria. */
   const canEmitFuneral = funeralFlow && !genericCheckout && !emitting;
   /** RCV legacy: exige pago verificado salvo bypass QA. */
   const canEmitRcv =
@@ -66,19 +63,19 @@ export default function App() {
     !genericCheckout &&
     !emitting &&
     (!paymentRequired || store.paymentVerified);
-  /** Exélixi catálogo: emite vía product-emission tras pago (o bypass QA). */
+  /** Ex├®lixi cat├ílogo: emite v├¡a product-emission tras pago (o bypass QA). */
   const canEmitExelixi =
     exelixiFlow &&
     !genericCheckout &&
     !emitting &&
     (!paymentRequired || store.paymentVerified);
-  /** Checkout genérico: respeta rules.requirePayment. */
+  /** Checkout gen├®rico: respeta rules.requirePayment. */
   const canCompleteGeneric =
     genericCheckout &&
     !emitting &&
     (!paymentRequired || store.paymentVerified);
 
-  /** Estado para emisión RCV — lee el store fresco (evita race tras verificar pago). */
+  /** Estado para emisi├│n RCV ÔÇö lee el store fresco (evita race tras verificar pago). */
   function buildRcvEmitState(paymentCtx?: PaymentEmitContext) {
     const snap = useWizardStore.getState();
     const paymentVerified = paymentCtx?.paymentVerified ?? snap.paymentVerified;
@@ -110,7 +107,7 @@ export default function App() {
     };
   }
 
-  /** Estado para emisión funerario — incluye pago verificado para ingreso de caja. */
+  /** Estado para emisi├│n funerario ÔÇö incluye pago verificado para ingreso de caja. */
   function buildFuneralEmitState(paymentCtx?: PaymentEmitContext) {
     const snap = useWizardStore.getState();
     const paymentVerified = paymentCtx?.paymentVerified ?? snap.paymentVerified;
@@ -182,8 +179,8 @@ export default function App() {
     });
 
     toast.success(
-      '¡Póliza emitida!',
-      `Número ${result.policy.cnpoliza}${emissionPdfHint(openResult)}`,
+      '┬íP├│liza emitida!',
+      `N├║mero ${result.policy.cnpoliza}${emissionPdfHint(openResult)}`,
       6000,
     );
 
@@ -192,14 +189,14 @@ export default function App() {
     const meta = result.policy.metadata as { collectionError?: string; collectionSkipped?: string } | undefined;
     if (meta?.collectionError) {
       toast.warning(
-        'Póliza emitida — cobro pendiente',
-        `La póliza se creó pero el recibo no se activó: ${meta.collectionError}`,
+        'P├│liza emitida ÔÇö cobro pendiente',
+        `La p├│liza se cre├│ pero el recibo no se activ├│: ${meta.collectionError}`,
         10000,
       );
     } else if (meta?.collectionSkipped) {
       toast.warning(
-        'Póliza emitida — cobro omitido',
-        'El recibo quedó pendiente; verifica que el pago esté registrado en el banco.',
+        'P├│liza emitida ÔÇö cobro omitido',
+        'El recibo qued├│ pendiente; verifica que el pago est├® registrado en el banco.',
         8000,
       );
     }
@@ -207,7 +204,7 @@ export default function App() {
     goTo(6);
   }
 
-  /** Estado para emisión Exélixi genérica (product-builder + nest-api). */
+  /** Estado para emisi├│n Ex├®lixi gen├®rica (product-builder + nest-api). */
   function buildExelixiEmitState(paymentCtx?: PaymentEmitContext) {
     const snap = useWizardStore.getState();
     const paymentVerified = paymentCtx?.paymentVerified ?? snap.paymentVerified;
@@ -215,8 +212,8 @@ export default function App() {
     const builder = readStoredBuilderProduct();
     const branch = builder?.branch ?? '';
     const hasVehicle = branch === 'AUTOMOVIL' || branch === 'RCV_OBLIGATORIO';
-    // Solo envía los formularios del ramo: sin vehículo en personas/patrimonial,
-    // sin asegurado/beneficiario extra si los toggles están apagados (como La Mundial).
+    // Solo env├¡a los formularios del ramo: sin veh├¡culo en personas/patrimonial,
+    // sin asegurado/beneficiario extra si los toggles est├ín apagados (como La Mundial).
     return {
       product: 'exelixi-catalog' as const,
       builderProduct: builder,
@@ -317,8 +314,8 @@ export default function App() {
         return;
       }
       toast.warning(
-        'Emisión no configurada',
-        'El checkout no incluye datos para emitir póliza.',
+        'Emisi├│n no configurada',
+        'El checkout no incluye datos para emitir p├│liza.',
       );
       return;
     }
@@ -336,7 +333,7 @@ export default function App() {
             payload: store.checkoutPayload,
           }),
         });
-        toast.success('Pago registrado', 'Notificación enviada correctamente.', 5000);
+        toast.success('Pago registrado', 'Notificaci├│n enviada correctamente.', 5000);
         goTo(6);
       } catch {
         toast.error('Error', 'No se pudo notificar al sistema origen.');
@@ -358,7 +355,7 @@ export default function App() {
       return;
     }
 
-    toast.success('Pago completado', 'Operación registrada correctamente.', 5000);
+    toast.success('Pago completado', 'Operaci├│n registrada correctamente.', 5000);
     goTo(6);
   }
 
@@ -388,21 +385,21 @@ export default function App() {
 
   const primaryLabel = genericCheckout
     ? (emitting
-      ? 'Emitiendo póliza...'
+      ? 'Emitiendo p├│liza...'
       : funeralFlow && store.paymentVerified
-        ? 'Emitir póliza'
+        ? 'Emitir p├│liza'
         : 'Continuar')
     : exelixiFlow
       ? store.paymentVerified
-        ? (emitting ? 'Emitiendo póliza Exélixi...' : 'Emitir póliza')
+        ? (emitting ? 'Emitiendo p├│liza Ex├®lixi...' : 'Emitir p├│liza')
         : (emitting ? 'Emitiendo...' : 'Verificar pago para emitir')
       : funeralFlow
-      ? (emitting ? 'Emitiendo póliza...' : 'Emitir póliza')
+      ? (emitting ? 'Emitiendo p├│liza...' : 'Emitir p├│liza')
       : store.paymentVerified
         ? (emitting
           ? 'Emitiendo y activando recibo...'
-          : (store.policy ? 'Reemitir póliza' : 'Emitir póliza'))
-        : (emitting ? 'Emitiendo póliza...' : 'Verificar pago para emitir');
+          : (store.policy ? 'Reemitir p├│liza' : 'Emitir p├│liza'))
+        : (emitting ? 'Emitiendo p├│liza...' : 'Verificar pago para emitir');
 
   async function handleContinuarFunerario(paymentCtx?: PaymentEmitContext) {
     const snap = useWizardStore.getState();
@@ -426,8 +423,8 @@ export default function App() {
     }
     if (!approved && !snap.funeral?.aceptaTerminos) {
       toast.warning(
-        'Términos pendientes',
-        'Debes aceptar los términos en el cuestionario de salud.',
+        'T├®rminos pendientes',
+        'Debes aceptar los t├®rminos en el cuestionario de salud.',
       );
       return;
     }
@@ -451,11 +448,11 @@ export default function App() {
     await handleContinuarFunerario();
   }
 
-  const appBody = (
+  return (
     <div className="min-h-screen relative">
-      {!tarjetaFlowBackdrop && <WelcomeSplash />}
+      <WelcomeSplash />
       <Toaster />
-      {!tarjetaFlowBackdrop && <AuroraBackground />}
+      <AuroraBackground />
       <div className="lg:hidden">
         {!genericCheckout && <TopProgressBar />}
       </div>
@@ -476,14 +473,14 @@ export default function App() {
                     <p className="text-[0.68rem] font-black tracking-[0.22em] gradient-text-indigo uppercase mb-2 inline-flex items-center gap-1.5">
                       <Sparkles size={11} className="text-indigo-500" />
                       {funeralApproved
-                        ? 'Paso 05 · Checkout'
+                        ? 'Paso 05 ┬À Checkout'
                         : genericCheckout
                           ? 'Pago'
-                          : 'Paso 05 · Checkout'}
+                          : 'Paso 05 ┬À Checkout'}
                     </p>
                     <h1 className="font-display text-[1.7rem] sm:text-[2.5rem] font-black text-slate-900 tracking-tight leading-tight">
                       {tarjetaFarmaciaPaid
-                        ? 'Emitir póliza'
+                        ? 'Emitir p├│liza'
                         : funeralApproved
                           ? 'Confirma y paga'
                           : genericCheckout
@@ -492,14 +489,14 @@ export default function App() {
                     </h1>
                     <p className="text-slate-500 text-sm mt-2 max-w-xl leading-relaxed">
                       {tarjetaFarmaciaPaid
-                        ? 'El pago quedó registrado con tu factura de farmacia. Solo falta emitir la póliza.'
+                        ? 'El pago qued├│ registrado con tu factura de farmacia. Solo falta emitir la p├│liza.'
                         : funeralApproved
-                          ? 'Una conexión cifrada protege la operación de extremo a extremo.'
+                          ? 'Una conexi├│n cifrada protege la operaci├│n de extremo a extremo.'
                           : embeddedCheckout
-                            ? 'Al verificar el pago, tu sistema recibirá el resultado automáticamente.'
+                            ? 'Al verificar el pago, tu sistema recibir├í el resultado autom├íticamente.'
                             : genericCheckout
-                              ? 'Revisa el detalle y confirma el método de pago.'
-                              : 'Una conexión cifrada protege la operación de extremo a extremo.'}
+                              ? 'Revisa el detalle y confirma el m├®todo de pago.'
+                              : 'Una conexi├│n cifrada protege la operaci├│n de extremo a extremo.'}
                     </p>
                   </div>
                 </div>
@@ -531,7 +528,7 @@ export default function App() {
                 <div className="hidden md:flex items-center justify-between gap-4 px-8 lg:px-10 py-5 border-t border-slate-100/80 bg-gradient-to-b from-slate-50/50 to-white/40 backdrop-blur-sm">
                   <div className="flex items-center gap-2 text-xs text-slate-500">
                     <ShieldCheck size={13} className="text-emerald-500" />
-                    <span className="font-medium">Cifrado de extremo a extremo · TLS 1.3</span>
+                    <span className="font-medium">Cifrado de extremo a extremo ┬À TLS 1.3</span>
                   </div>
                 <div className="flex flex-col items-end gap-1.5">
                   {paymentRequired && !store.paymentVerified && (
@@ -570,7 +567,7 @@ export default function App() {
                 <div className="hidden md:flex items-center gap-2 px-8 lg:px-10 py-5 border-t border-slate-100/80 bg-gradient-to-b from-slate-50/50 to-white/40">
                   <ShieldCheck size={13} className="text-emerald-500" />
                   <span className="text-xs text-slate-500 font-medium">
-                    Cifrado de extremo a extremo · TLS 1.3
+                    Cifrado de extremo a extremo ┬À TLS 1.3
                   </span>
                 </div>
               )}
@@ -604,16 +601,6 @@ export default function App() {
       )}
     </div>
   );
-
-  if (tarjetaFlowBackdrop) {
-    return (
-      <TarjetaFlowBackdrop variant={isSuccess ? 'exito' : 'emitir'}>
-        {appBody}
-      </TarjetaFlowBackdrop>
-    );
-  }
-
-  return appBody;
 }
 
 async function maybeRegisterDomiciliacion(
@@ -641,23 +628,23 @@ async function maybeRegisterDomiciliacion(
     });
     if (res.estado === 'ACTIVA') {
       toast.success(
-        'Domiciliación activada',
-        res.sypagoMensaje || 'La cuenta quedó afiliada a SyPago para el cobro de recibos.',
+        'Domiciliaci├│n activada',
+        res.sypagoMensaje || 'La cuenta qued├│ afiliada a SyPago para el cobro de recibos.',
         7000,
       );
     } else {
       toast.warning(
-        'Afiliación no activada',
-        res.sypagoMensaje || 'SyPago no activó la domiciliación. Revisa los datos bancarios.',
+        'Afiliaci├│n no activada',
+        res.sypagoMensaje || 'SyPago no activ├│ la domiciliaci├│n. Revisa los datos bancarios.',
         9000,
       );
     }
   } catch (err) {
     toast.warning(
-      'Póliza emitida — domiciliación pendiente',
+      'P├│liza emitida ÔÇö domiciliaci├│n pendiente',
       err instanceof Error
         ? err.message
-        : 'No se pudo afiliar la cuenta. Puedes registrarla luego en el módulo de domiciliación.',
+        : 'No se pudo afiliar la cuenta. Puedes registrarla luego en el m├│dulo de domiciliaci├│n.',
       10000,
     );
   }
@@ -669,29 +656,29 @@ function handleEmissionError(err: unknown) {
     switch (err.code) {
       case 'LAMUNDIAL_PLATE_ALREADY_INSURED':
         toast.warning(
-          'Vehículo con póliza vigente',
-          'La Mundial detectó que la placa o el serial de carrocería ya tienen una póliza activa.',
+          'Veh├¡culo con p├│liza vigente',
+          'La Mundial detect├│ que la placa o el serial de carrocer├¡a ya tienen una p├│liza activa.',
           8000,
         );
         return;
       case 'PERSONAS_DUPLICATE':
         toast.warning(
-          'Póliza vigente',
-          err.message || 'Ya existe una póliza funeraria activa para este asegurado.',
+          'P├│liza vigente',
+          err.message || 'Ya existe una p├│liza funeraria activa para este asegurado.',
           8000,
         );
         return;
       case 'PERSONAS_VALIDATION_ERROR':
         toast.warning(
-          'Emisión no disponible',
+          'Emisi├│n no disponible',
           err.message,
           8000,
         );
         return;
       case 'NEST_API_COUNTER_COLLISION':
         toast.error(
-          'Contador de pólizas desfasado',
-          'Sis2000 generó un número de póliza que ya existe. Avisa a soporte para sincronizar el contador POL_VEH.',
+          'Contador de p├│lizas desfasado',
+          'Sis2000 gener├│ un n├║mero de p├│liza que ya existe. Avisa a soporte para sincronizar el contador POL_VEH.',
           9000,
         );
         return;
@@ -701,29 +688,29 @@ function handleEmissionError(err: unknown) {
       case 'LAMUNDIAL_SP_OUTDATED':
         toast.error(
           'Servicio temporalmente no disponible',
-          'La Mundial está revisando el servicio. Inténtalo en unos minutos.',
+          'La Mundial est├í revisando el servicio. Int├®ntalo en unos minutos.',
           7000,
         );
         return;
       case 'LAMUNDIAL_UNAUTHORIZED':
       case 'LAMUNDIAL_APIKEY_MISSING':
         toast.error(
-          'Configuración pendiente',
-          'La integración con La Mundial no está disponible. Avisa a soporte.',
+          'Configuraci├│n pendiente',
+          'La integraci├│n con La Mundial no est├í disponible. Avisa a soporte.',
           7000,
         );
         return;
       case 'LAMUNDIAL_NETWORK':
-        toast.error('Sin conexión con La Mundial', 'Verifica tu red e inténtalo de nuevo.', 6000);
+        toast.error('Sin conexi├│n con La Mundial', 'Verifica tu red e int├®ntalo de nuevo.', 6000);
         return;
       default:
-        toast.error('No pudimos emitir la póliza', err.message, 7000);
+        toast.error('No pudimos emitir la p├│liza', err.message, 7000);
         return;
     }
   }
   toast.error(
-    'No pudimos emitir la póliza',
-    'Ocurrió un error inesperado. Verifica tu conexión e inténtalo de nuevo.',
+    'No pudimos emitir la p├│liza',
+    'Ocurri├│ un error inesperado. Verifica tu conexi├│n e int├®ntalo de nuevo.',
     6000,
   );
 }
