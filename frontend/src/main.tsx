@@ -7,7 +7,13 @@ import { hydrateCheckoutFromAccessToken } from './lib/checkout'
 import { NexusGuard } from './nexus/NexusGuard'
 import { applyExelixiWizardHandoff } from './lib/exelixi-catalog'
 import { applyExelixiBranding } from './lib/exelixi-branding'
-import { hydrateTarjetaHandoff, hydrateTarjetaMetadataCanal, isTarjetaRcvFlow, markTarjetaPublicSession } from './lib/rcv-tarjeta-flow'
+import {
+  applyTarjetaFarmaciaPaymentSkip,
+  hydrateTarjetaHandoff,
+  hydrateTarjetaMetadataCanal,
+  isTarjetaRcvFlow,
+  markTarjetaPublicSession,
+} from './lib/rcv-tarjeta-flow'
 import { useWizardStore } from './store/wizardStore'
 
 import { PagosConfigPanel } from './config/PagosConfigPanel'
@@ -19,6 +25,7 @@ if (isTarjetaRcvFlow()) {
   markTarjetaPublicSession();
   hydrateTarjetaHandoff();
   hydrateTarjetaMetadataCanal();
+  applyTarjetaFarmaciaPaymentSkip();
 }
 
 hydrateCheckoutFromAccessToken();
@@ -30,6 +37,7 @@ function ExelixiHandoffBootstrap({ children }: { children: ReactNode }) {
       (useWizardStore as unknown as { setState: (p: Record<string, unknown>) => void }).setState(partial);
     };
     applyExelixiWizardHandoff(setState, goTo);
+    applyTarjetaFarmaciaPaymentSkip();
   }, []);
   return children;
 }

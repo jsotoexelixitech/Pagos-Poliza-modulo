@@ -7,6 +7,7 @@ import type {
 } from '../types';
 import { useWizardStore } from '../store/wizardStore';
 import { decodeNexusTokenMetadata, getNexusToken } from './nexus-token-client';
+import { shouldSkipTarjetaPayment } from './rcv-tarjeta-flow';
 
 const NEXUS_TOKEN_KEY = 'nexus_access_token_pagos';
 
@@ -366,9 +367,10 @@ export function completeCheckoutOnSuccess(opts: {
 
 /** ¿Exige pago verificado antes de continuar? */
 export function requiresPaymentBeforeContinue(
-  state: Pick<WizardState, 'checkout' | 'checkoutRules'>,
+  state: Pick<WizardState, 'checkout' | 'checkoutRules' | 'metadataCanal'>,
   funeralFlow: boolean,
 ): boolean {
+  if (shouldSkipTarjetaPayment(state.metadataCanal)) return false;
   if (hasGenericCheckout(state)) {
     return state.checkoutRules?.requirePayment !== false;
   }

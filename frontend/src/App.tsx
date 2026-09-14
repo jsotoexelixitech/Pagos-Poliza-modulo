@@ -32,6 +32,7 @@ import type { PaymentEmitContext } from './types';
 import { useProductConfig } from './hooks/useProductConfig';
 import { useUiFlags } from './lib/ui-flags';
 import { getProductId } from './lib/product';
+import { shouldSkipTarjetaPayment } from './lib/rcv-tarjeta-flow';
 
 const EMPRESA_ID = Number(import.meta.env.VITE_EMPRESA_ID ?? 1);
 
@@ -50,6 +51,7 @@ export default function App() {
   const genericCheckout = isGenericCheckoutMode(store);
   const embeddedCheckout = isEmbeddedMetadataCheckout(store);
   const paymentRequired = requiresPaymentBeforeContinue(store, funeralFlow);
+  const tarjetaFarmaciaPaid = rcvFlow && shouldSkipTarjetaPayment(store.metadataCanal);
   const funeralApproved = isFuneralApprovedCheckout(store);
 
   /** Funerario legacy: emitir sin bloquear por verificación bancaria. */
@@ -394,7 +396,9 @@ export default function App() {
       : funeralFlow
       ? (emitting ? 'Emitiendo póliza...' : 'Emitir póliza')
       : store.paymentVerified
-        ? (emitting ? 'Emitiendo y activando recibo...' : 'Reemitir póliza')
+        ? (emitting
+          ? 'Emitiendo y activando recibo...'
+          : (store.policy ? 'Reemitir póliza' : 'Emitir póliza'))
         : (emitting ? 'Emitiendo póliza...' : 'Verificar pago para emitir');
 
   async function handleContinuarFunerario(paymentCtx?: PaymentEmitContext) {
@@ -475,20 +479,24 @@ export default function App() {
                           : 'Paso 05 · Checkout'}
                     </p>
                     <h1 className="font-display text-[1.7rem] sm:text-[2.5rem] font-black text-slate-900 tracking-tight leading-tight">
-                      {funeralApproved
-                        ? 'Confirma y paga'
-                        : genericCheckout
-                          ? 'Realiza tu pago'
-                          : 'Confirma y paga'}
+                      {tarjetaFarmaciaPaid
+                        ? 'Emitir póliza'
+                        : funeralApproved
+                          ? 'Confirma y paga'
+                          : genericCheckout
+                            ? 'Realiza tu pago'
+                            : 'Confirma y paga'}
                     </h1>
                     <p className="text-slate-500 text-sm mt-2 max-w-xl leading-relaxed">
-                      {funeralApproved
-                        ? 'Una conexión cifrada protege la operación de extremo a extremo.'
-                        : embeddedCheckout
-                        ? 'Al verificar el pago, tu sistema recibirá el resultado automáticamente.'
-                        : genericCheckout
-                          ? 'Revisa el detalle y confirma el método de pago.'
-                          : 'Una conexión cifrada protege la operación de extremo a extremo.'}
+                      {tarjetaFarmaciaPaid
+                        ? 'El pago quedó registrado con tu factura de farmacia. Solo falta emitir la póliza.'
+                        : funeralApproved
+                          ? 'Una conexión cifrada protege la operación de extremo a extremo.'
+                          : embeddedCheckout
+                            ? 'Al verificar el pago, tu sistema recibirá el resultado automáticamente.'
+                            : genericCheckout
+                              ? 'Revisa el detalle y confirma el método de pago.'
+                              : 'Una conexión cifrada protege la operación de extremo a extremo.'}
                     </p>
                   </div>
                 </div>

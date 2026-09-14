@@ -38,7 +38,10 @@ import { getCheckoutPolicyRef } from '../../lib/domiciliacion';
 import { DomiciliacionForm } from './DomiciliacionForm';
 import { isFuneralApprovedCheckout, isFuneralPaymentLinkExpired } from '../../lib/funeral-approved-checkout';
 import {
+  applyTarjetaFarmaciaPaymentSkip,
   getTarjetaPlanCmoneda,
+  resolveTarjetaPaymentMeta,
+  shouldSkipTarjetaPayment,
   shouldUseTarjetaPublicApi,
   tarjetaQuoteShowsVes,
 } from '../../lib/rcv-tarjeta-flow';
@@ -541,6 +544,13 @@ export function PaymentStep({
     : null;
   const tarjetaVesPrimary = Boolean(tarjetaFlow && tarjetaQuoteShowsVes(tarjetaCmoneda));
   const tarjetaUsdOnly = Boolean(tarjetaFlow && !tarjetaVesPrimary);
+  const tarjetaFarmaciaPaid = shouldSkipTarjetaPayment(metadataCanal);
+  const tarjetaNfactura = String(resolveTarjetaPaymentMeta(metadataCanal).nfactura ?? '').trim();
+
+  useEffect(() => {
+    if (!tarjetaFlow) return;
+    applyTarjetaFarmaciaPaymentSkip();
+  }, [tarjetaFlow, metadataCanal?.nfactura, metadataCanal?.bfactura, metadataCanal?.skipPayment]);
 
   // ── Validaciones pago móvil ───────────────────────────────────────────
   const movErrors = {
@@ -920,7 +930,9 @@ export function PaymentStep({
         </div>
       )}
       <p className="text-slate-500 text-sm leading-relaxed -mt-2">
-        Confirma el método de pago y emite la póliza. La operación está cifrada de extremo a extremo.
+        {tarjetaFarmaciaPaid
+          ? 'Tu pago ya quedó registrado con la factura de farmacia. Revisa el resumen y emite la póliza.'
+          : 'Confirma el método de pago y emite la póliza. La operación está cifrada de extremo a extremo.'}
       </p>
 
       {/* Total bar */}
@@ -1025,7 +1037,23 @@ export function PaymentStep({
         </div>
       )}
 
-      {/* Selector de método */}
+      {tarjetaFarmaciaPaid ? (
+        <div className="rounded-2xl border-2 border-emerald-200 bg-gradient-to-br from-emerald-50 to-teal-50/40 p-5 flex items-start gap-3">
+          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 grid place-items-center text-white shadow-md shrink-0">
+            <BadgeCheck size={20} strokeWidth={2.2} />
+          </div>
+          <div className="min-w-0">
+            <p className="font-display font-bold text-emerald-900 text-base">Pago registrado en farmacia</p>
+            <p className="text-sm text-emerald-800/90 mt-1 leading-relaxed">
+              La factura fiscal
+              {tarjetaNfactura ? (
+                <> <span className="font-mono font-bold">{tarjetaNfactura}</span></>
+              ) : null}
+              {' '}fue validada. No debes pagar de nuevo en línea; continúa para emitir tu póliza RCV.
+            </p>
+          </div>
+        </div>
+      ) : (
       <div>
         <p className="text-[0.7rem] font-black text-slate-500 uppercase tracking-widest mb-3 inline-flex items-center gap-1.5">
           <Sparkles size={11} className="text-indigo-500" />
@@ -1612,6 +1640,7 @@ export function PaymentStep({
           />
         </div>
       </div>
+      )}
 
       {/* Trust badges */}
       <div className="flex items-center justify-center gap-6 flex-wrap pt-2 text-[0.7rem] text-slate-500">

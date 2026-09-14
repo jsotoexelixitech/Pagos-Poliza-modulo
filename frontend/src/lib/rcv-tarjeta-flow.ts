@@ -1,3 +1,4 @@
+import type { PaymentCapture } from '../types';
 import { useWizardStore } from '../store/wizardStore';
 import { readFlowHandoff } from './flow-handoff';
 
@@ -24,7 +25,65 @@ export function hydrateTarjetaMetadataCanal(): void {
   const stored = readTarjetaMetadataCanal();
   if (!stored?.cplan) return;
   const store = useWizardStore.getState();
-  store.setMetadataCanal({ ...(store.metadataCanal || {}), ...stored });
+  // Handoff (nfactura tras validate-bill) prevalece sobre sessionStorage de la tarjeta.
+  store.setMetadataCanal({ ...stored, ...(store.metadataCanal || {}) });
+}
+
+function isTruthyFlag(value: unknown): boolean {
+  return value === true || value === 1 || value === '1' || value === 'true';
+}
+
+/** Metadata tarjeta: sessionStorage + store (handoff emisión). */
+export function resolveTarjetaPaymentMeta(
+  metadataCanal?: Record<string, unknown> | null,
+): Record<string, unknown> {
+  const storeMeta = useWizardStore.getState().metadataCanal;
+  return {
+    ...(readTarjetaMetadataCanal() || {}),
+    ...(metadataCanal || {}),
+    ...(storeMeta || {}),
+  };
+}
+
+/**
+ * bfactura=1: pago en farmacia al validar factura OCR.
+ * Requiere nfactura en metadata (validate-bill OK).
+ */
+export function shouldSkipTarjetaPayment(
+  metadataCanal?: Record<string, unknown> | null,
+): boolean {
+  if (!shouldUseTarjetaPublicApi()) return false;
+  const meta = resolveTarjetaPaymentMeta(metadataCanal);
+  if (!isTruthyFlag(meta.skipPayment) && !isTruthyFlag(meta.bfactura)) return false;
+  return Boolean(String(meta.nfactura ?? '').trim());
+}
+
+export function buildTarjetaFarmaciaPaymentCapture(
+  metadataCanal?: Record<string, unknown> | null,
+): PaymentCapture | null {
+  const meta = resolveTarjetaPaymentMeta(metadataCanal);
+  const nfactura = String(meta.nfactura ?? '').trim();
+  if (!nfactura) return null;
+  return {
+    reference: nfactura,
+    method: 'mobile',
+    paidOn: new Date().toISOString().slice(0, 10),
+  };
+}
+
+/** Marca pago verificado cuando la factura farmacia ya fue validada en OCR. */
+export function applyTarjetaFarmaciaPaymentSkip(): boolean {
+  if (!shouldUseTarjetaPublicApi()) return false;
+  const store = useWizardStore.getState();
+  if (!shouldSkipTarjetaPayment(store.metadataCanal)) return false;
+  if (store.paymentVerified && store.paymentCapture?.reference) return true;
+
+  const capture = buildTarjetaFarmaciaPaymentCapture(store.metadataCanal);
+  if (!capture) return false;
+
+  store.setPaymentVerified(true);
+  store.setPaymentCapture(capture);
+  return true;
 }
 
 export type TarjetaPlanCurrencyKind = 'usd' | 'ves';
