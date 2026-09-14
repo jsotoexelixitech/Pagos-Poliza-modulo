@@ -60,14 +60,22 @@ export function shouldSkipTarjetaPayment(
 
 export function buildTarjetaFarmaciaPaymentCapture(
   metadataCanal?: Record<string, unknown> | null,
+  amountBs?: number | null,
 ): PaymentCapture | null {
   const meta = resolveTarjetaPaymentMeta(metadataCanal);
   const nfactura = String(meta.nfactura ?? '').trim();
   if (!nfactura) return null;
+  const amount =
+    amountBs != null && Number.isFinite(Number(amountBs)) && Number(amountBs) > 0
+      ? Number(amountBs)
+      : undefined;
   return {
     reference: nfactura,
+    xreferencia: nfactura,
     method: 'mobile',
+    tarjetaFarmacia: true,
     paidOn: new Date().toISOString().slice(0, 10),
+    ...(amount != null ? { amount } : {}),
   };
 }
 
@@ -78,7 +86,12 @@ export function applyTarjetaFarmaciaPaymentSkip(): boolean {
   if (!shouldSkipTarjetaPayment(store.metadataCanal)) return false;
   if (store.paymentVerified && store.paymentCapture?.reference) return true;
 
-  const capture = buildTarjetaFarmaciaPaymentCapture(store.metadataCanal);
+  const quote = store.quote;
+  const amountBs =
+    quote?.mprima != null && Number(quote.mprima) > 0
+      ? Number(quote.mprima)
+      : null;
+  const capture = buildTarjetaFarmaciaPaymentCapture(store.metadataCanal, amountBs);
   if (!capture) return false;
 
   store.setPaymentVerified(true);

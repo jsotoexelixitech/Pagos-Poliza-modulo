@@ -118,9 +118,13 @@ export type PaymentMethod = 'card' | 'transfer' | 'mobile' | 'otp' | 'domiciliac
 /** Datos del pago verificado para activar recibo en Sis2000 al emitir. */
 export interface PaymentCapture {
   reference?: string;
+  /** Alias Sis2000 / ingreso de caja (xreferencia). */
+  xreferencia?: string;
   transactionId?: string;
   amount?: number;
   paidOn?: string;
+  /** bfactura=1: pago en farmacia; referencia = nfactura fiscal. */
+  tarjetaFarmacia?: boolean;
   /** Método con el que se cobró la 1ª cuota / pago (mobile | otp | …). */
   method?: PaymentMethod;
   /** Código banco origen (cbanco_ref) usado en la verificación móvil. */
