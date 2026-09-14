@@ -1,49 +1,51 @@
 #!/bin/bash
 # =============================================================
-# deploy.sh — Despliegue Pagos-Poliza-modulo (PM2: pagos-api + pagos-web)
+# deploy.sh — Script de despliegue Pagos-Poliza-modulo
 #
 # Uso:
 #   bash scripts/deploy.sh develop
 #   bash scripts/deploy.sh qa
-#   SERVICE_DIR=~/exelixi/Pagos-Poliza-modulo bash scripts/deploy.sh develop
 # =============================================================
 
 set -euo pipefail
 
 BRANCH="${1:-develop}"
-SERVICE_DIR="${SERVICE_DIR:-/opt/services/Pagos-Poliza-modulo}"
-PM2_API="pagos-api"
-PM2_WEB="pagos-web"
+SERVICE_DIR="/opt/services/Pagos-Poliza-modulo"
+NGINX_DIR="/var/www/html/pagos/"
+PM2_APP="pagos-api"
 
 echo ""
 echo "=============================================="
 echo " 🚀 Deploy Pagos-Poliza-modulo"
 echo " Rama    : $BRANCH"
-echo " Frontend: pagos-web (vite preview :5184)"
 echo " Fecha   : $(date '+%Y-%m-%d %H:%M:%S')"
 echo "=============================================="
 echo ""
 
+# 1. Ir al directorio del servicio
 echo "📁 Navegando a $SERVICE_DIR..."
 cd "$SERVICE_DIR"
 
+# 2. Traer los últimos cambios
 echo "📥 git pull origin $BRANCH..."
 git pull origin "$BRANCH"
 
+# 3. Instalar dependencias (server + frontend)
 echo "📦 Instalando dependencias (npm run install:all)..."
 npm run install:all
 
+# 4. Compilar el frontend
 echo "🔨 Compilando frontend..."
-VITE_NEXUS_USE_MODULE_PROXY=1 bash scripts/build-cierrelmds.sh
+npm run build --prefix frontend
 
-echo "♻️  PM2: $PM2_API + $PM2_WEB..."
-unset PORT VITE_APP_BASE VITE_EMISSION_CONTINUE_BASE DATABASE_URL
-pm2 reload "$PM2_API"
-pm2 restart "$PM2_WEB"
+# 5. Copiar archivos compilados al directorio de Nginx
+echo "📋 Copiando dist/ → $NGINX_DIR"
+cp -r frontend/dist/* "$NGINX_DIR"
 
-sleep 2
-curl -s -o /dev/null -w "pagos-web /pagos/ → HTTP %{http_code}\n" http://127.0.0.1:5184/pagos/ || true
+# 6. Recargar la API sin downtime
+echo "♻️  Recargando proceso PM2: $PM2_APP..."
+pm2 reload "$PM2_APP"
 
 echo ""
-echo "✅ Deploy completado"
+echo "✅ Deploy completado exitosamente"
 echo "=============================================="
