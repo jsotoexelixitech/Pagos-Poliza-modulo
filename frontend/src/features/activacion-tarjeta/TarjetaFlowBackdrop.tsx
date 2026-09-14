@@ -6,22 +6,27 @@ type TarjetaFlowBackdropProps = {
   variant: 'emitir' | 'exito';
 };
 
-/** Imagen de fondo La Mundial — no altera el layout Exélixi, solo el backdrop. */
+/** Hero La Mundial a la derecha — no tapa el contenido de Pagos. */
 export function TarjetaFlowBackdrop({ children, variant }: TarjetaFlowBackdropProps) {
-  const src = publicAsset(
+  const heroSrc = publicAsset(
     variant === 'exito'
-      ? 'branding/tarjeta-fondo-exito.png'
-      : 'branding/tarjeta-fondo-emitir.png',
+      ? 'branding/tarjeta-hero-exito.png'
+      : 'branding/tarjeta-hero-emitir.png',
   );
 
   return (
-    <div className="relative min-h-screen">
+    <div className="relative min-h-screen bg-[#eceff3]">
       <div
-        className="pointer-events-none fixed inset-0 bg-cover bg-center"
+        className="pointer-events-none fixed bottom-0 right-0 z-0 hidden lg:block"
         aria-hidden
-        style={{ backgroundImage: `url(${src})` }}
-      />
-      <div className="pointer-events-none fixed inset-0 bg-[#eceff3]/86" aria-hidden />
+      >
+        <img
+          src={heroSrc}
+          alt=""
+          className="max-h-[min(85vh,720px)] w-auto max-w-[min(42vw,480px)] object-contain object-bottom"
+          draggable={false}
+        />
+      </div>
       <div className="relative z-[1]">{children}</div>
     </div>
   );
