@@ -17,6 +17,7 @@ import type {
   CheckoutRules,
   CheckoutPayer,
 } from '../types';
+import type { CanalVisibility } from '../lib/canal-visibility';
 
 const defaultDoc = (): DocumentState => ({ status: 'idle', progress: 0 });
 
@@ -112,6 +113,7 @@ interface WizardActions {
     payload?: Record<string, unknown> | null;
   }) => void;
   setMetadataCanal: (data: Record<string, unknown> | null) => void;
+  setCanalVisibility: (data: CanalVisibility | null) => void;
 }
 
 const initialState: WizardState = {
@@ -154,6 +156,7 @@ const initialState: WizardState = {
   checkoutPayload: null,
   checkoutPayer: null,
   metadataCanal: null,
+  canalVisibility: null,
   diligencia: null,
   funeralApprovedCheckout: false,
   funeralSubmissionId: undefined,
@@ -240,6 +243,8 @@ export const useWizardStore = create<WizardState & WizardActions>()((set) => ({
     }),
 
   setMetadataCanal: (metadataCanal) => set({ metadataCanal }),
+
+  setCanalVisibility: (canalVisibility) => set({ canalVisibility }),
 
   setPolicy: (policy) => set({ policy }),
 
