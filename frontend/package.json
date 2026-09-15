@@ -6,10 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:gcia": "tsc -b && vite build --mode production.gcia",
     "preview": "vite preview"
   },
   "dependencies": {
-    "@exelixi/shared": "file:../shared",
+    "@exelixi/shared": "file:../../shared",
     "@types/canvas-confetti": "^1.9.0",
     "axios": "^1.9.0",
     "canvas-confetti": "^1.9.3",

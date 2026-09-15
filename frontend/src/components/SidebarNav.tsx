@@ -4,6 +4,7 @@ import {
 } from 'lucide-react';
 import { useWizardStore } from '../store/wizardStore';
 import { publicAsset } from '../lib/app-base';
+import { formatQuoteUsdMoney, formatQuoteVesLabel, vesMonthly } from '../lib/money';
 
 export function SidebarNav() {
   const { step, tomador, vehicle, selectedPlan, paymentMethod, quote, quoteState, product: productType } = useWizardStore();
@@ -29,18 +30,17 @@ export function SidebarNav() {
   const precioDisplay = (() => {
     if (isQuoteLoading) return null;
     if (hasRealQuote && quote) {
-      const monthly = quote.mprimaext / 12;
-      return `$${monthly.toFixed(2)} / mes`;
+      return `${formatQuoteUsdMoney(quote.mprimaext / 12)} / mes`;
     }
     return selectedPlan?.price ?? null;
   })();
 
   const precioAnualDisplay = hasRealQuote && quote
-    ? `$${quote.mprimaext.toFixed(2)} / año`
+    ? `${formatQuoteUsdMoney(quote.mprimaext)} / año`
     : null;
 
   const bsDisplay = hasRealQuote && quote
-    ? `Bs ${(quote.mprima / 12).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / mes`
+    ? `${formatQuoteVesLabel(vesMonthly(quote))} / mes`
     : null;
   const methodLabels: Record<string, string> = {
     card: 'Tarjeta',

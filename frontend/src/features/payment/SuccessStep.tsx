@@ -1,13 +1,12 @@
 import { useWizardStore } from '../../store/wizardStore';
-import { Button } from '../../components/ui/Button';
 import { toast } from '../../store/toastStore';
 import { isGenericCheckoutMode } from '../../lib/checkout';
 import {
-  CheckCircle2, Download, RefreshCw, ShieldCheck,
-  Calendar, Copy, ExternalLink,
+  CheckCircle2, RefreshCw, ShieldCheck,
+  Calendar, Copy, ExternalLink, FileDown, Receipt,
 } from 'lucide-react';
-import { formatUsdShort } from '../../lib/money';
-import { openEmissionPdfs } from '../../lib/openEmissionPdfs';
+import { formatQuoteUsdMoney, formatQuoteVesLabel, formatQuoteTasaValue, resolveQuoteVesAmount } from '../../lib/money';
+import { diligenciaLabel } from '../../lib/diligencia';
 
 /**
  * Reinicio OCR desde cero: sin sid (nueva sesión bridge) + wizardStep=1.
@@ -56,7 +55,7 @@ function clearClientFlowState() {
 
 export function SuccessStep() {
   const {
-    policy, tomador, selectedPlan, checkout, paymentCapture, paymentMethod, reset,
+    policy, tomador, selectedPlan, checkout, paymentCapture, paymentMethod, reset, diligencia,
   } = useWizardStore();
 
   const genericCheckout = isGenericCheckoutMode({ checkout });
@@ -74,21 +73,8 @@ export function SuccessStep() {
     : new Date().toLocaleDateString('es-VE', { day: '2-digit', month: 'short', year: 'numeric' });
 
   const primaUsd = policy?.quote?.mprimaext;
-  const primaVes = policy?.quote?.mprima;
   const ptasa = policy?.quote?.ptasa;
-  const docsPayload = {
-    urlpoliza: pdfUrl,
-    url_club_arys: arysUrl,
-    url_conductor_habitual: conductorUrl,
-    url_ingreso_caja: ingresoCajaUrl,
-  };
-
-  const handleOpenDocuments = () => {
-    if (!hasDocuments) return;
-    const opened = openEmissionPdfs(docsPayload);
-    toast.success('Abriendo documentos', `${opened.length} archivo(s) en nuevas pestañas.`);
-  };
-
+  const primaVes = resolveQuoteVesAmount(primaUsd, ptasa, policy?.quote?.mprima);
   const copyPolicy = async () => {
     try {
       await navigator.clipboard.writeText(policyNum);
@@ -98,9 +84,6 @@ export function SuccessStep() {
     }
   };
 
-  const downloadPdf = () => {
-    handleOpenDocuments();
-  };
 
   /** QA — Emitir otra: OCR desde cero (Paso 01), sin reutilizar sid de la emisión anterior. */
   const emitAnotherPolicy = () => {
@@ -111,65 +94,131 @@ export function SuccessStep() {
 
   if (genericCheckout) {
     const paidAmount = paymentCapture?.amount ?? checkout?.totalVes ?? 0;
-    const paidUsd = checkout?.totalUsd ?? paidAmount;
+    const paidUsd = checkout?.totalUsd ?? 0;
+    const hasPolicy = Boolean(policy?.cnpoliza || policy?.urlpoliza);
+    const isDomiciliacion = paymentMethod === 'domiciliacion';
 
     return (
-      <div className="animate-fade-in py-2">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-emerald-50 border border-emerald-200 mb-4">
-            <CheckCircle2 size={28} className="text-emerald-600" strokeWidth={2.2} />
+      <div className="animate-fade-in py-1 sm:py-2">
+        <div className="text-center mb-6 sm:mb-8">
+          <div className="relative inline-flex mb-4">
+            <span className="absolute inset-0 rounded-full bg-emerald-400/25 blur-md" aria-hidden />
+            <div className="relative inline-flex items-center justify-center w-[4.25rem] h-[4.25rem] rounded-full bg-gradient-to-b from-emerald-50 to-emerald-100 border border-emerald-200 shadow-sm">
+              <CheckCircle2 size={32} className="text-emerald-600" strokeWidth={2.2} />
+            </div>
           </div>
-          <p className="text-[0.7rem] font-bold text-emerald-700 uppercase tracking-wider mb-2 inline-flex items-center gap-1.5">
-            <ShieldCheck size={11} />
-            Pago completado
+          <p className="text-[0.68rem] font-bold text-emerald-700 uppercase tracking-[0.16em] mb-2 inline-flex items-center gap-1.5">
+            <ShieldCheck size={12} />
+            {hasPolicy ? 'Pago y emisión' : 'Pago confirmado'}
           </p>
-          <h2 className="font-display text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight mb-2">
-            Operación registrada
+          <h2 className="font-display text-[1.65rem] sm:text-3xl font-bold text-slate-900 tracking-tight mb-2">
+            {hasPolicy
+              ? 'Tu póliza ya está lista'
+              : isDomiciliacion
+                ? 'Domiciliación autorizada'
+                : 'Pago registrado con éxito'}
           </h2>
-          <p className="text-slate-500 max-w-md mx-auto leading-relaxed text-sm">
-            {paymentMethod === 'domiciliacion'
-              ? 'Domiciliación autorizada. Tu sistema recibirá la confirmación y continuará con la emisión.'
-              : 'El pago fue confirmado. Tu sistema recibirá la notificación automáticamente.'}
+          <p className="text-slate-500 max-w-md mx-auto leading-relaxed text-sm px-2">
+            {hasPolicy
+              ? 'El cobro se acreditó y la póliza quedó emitida. Descarga el cuadro oficial cuando quieras.'
+              : isDomiciliacion
+                ? 'La autorización quedó registrada. La emisión continúa cuando el débito se confirme.'
+                : 'El cobro se acreditó correctamente. Conserva la referencia de esta operación.'}
           </p>
         </div>
 
-        <div className="max-w-2xl mx-auto mb-8">
-          <div className="rounded-2xl bg-white border border-slate-200 p-6 sm:p-7">
-            <div className="space-y-4">
+        <div className="max-w-lg mx-auto mb-6 sm:mb-8">
+          <div className="overflow-hidden rounded-3xl bg-white border border-slate-200/80 shadow-[0_20px_50px_-24px_rgba(15,26,90,0.35)]">
+            <div className="bg-indigo-700 px-5 sm:px-6 py-3.5 flex items-center justify-between gap-3">
+              <p className="text-white/90 text-[0.68rem] font-bold uppercase tracking-[0.16em] inline-flex items-center gap-2">
+                <Receipt size={13} />
+                Comprobante
+              </p>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-200 bg-white/10 px-2 py-0.5 rounded-full">
+                Acreditado
+              </span>
+            </div>
+
+            <div className="p-5 sm:p-6 space-y-5">
               <div>
-                <p className="text-[0.6rem] font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                <p className="text-[0.62rem] font-bold text-slate-400 uppercase tracking-widest mb-1">
                   Concepto
                 </p>
-                <p className="font-semibold text-slate-900 text-lg">{checkout?.title ?? 'Pago en línea'}</p>
+                <p className="font-semibold text-slate-900 text-lg leading-snug">
+                  {checkout?.title ?? 'Pago en línea'}
+                </p>
                 {checkout?.subtitle && (
                   <p className="text-sm text-slate-500 mt-1">{checkout.subtitle}</p>
                 )}
               </div>
-              <div className="pt-4 border-t border-slate-100 flex items-end justify-between gap-4 flex-wrap">
-                <div>
-                  <p className="text-[0.6rem] font-bold text-slate-500 uppercase tracking-widest mb-1.5">
-                    Monto pagado
-                  </p>
-                  <p className="font-display font-bold text-2xl text-slate-900 tabular-nums">
+
+              <div className="rounded-2xl bg-slate-50 border border-slate-100 px-4 py-3.5">
+                <p className="text-[0.62rem] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
+                  Monto pagado
+                </p>
+                <div className="flex items-end justify-between gap-3 flex-wrap">
+                  <p className="font-display font-bold text-2xl sm:text-[1.75rem] text-slate-900 tabular-nums leading-none">
                     Bs {paidAmount.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </p>
+                  {paidUsd > 0 && (
+                    <p className="font-display font-bold text-lg text-indigo-700 tabular-nums">
+                      {formatQuoteUsdMoney(paidUsd)}
+                    </p>
+                  )}
                 </div>
-                {paidUsd > 0 && (
-                  <p className="font-display font-bold text-xl text-slate-700 tabular-nums">
-                    {formatUsdShort(paidUsd)}
-                  </p>
-                )}
               </div>
+
               {paymentCapture?.reference && (
-                <div className="pt-4 border-t border-slate-100">
-                  <p className="text-[0.6rem] font-bold text-slate-500 uppercase tracking-widest mb-1.5">
-                    Referencia
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[0.62rem] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                      Referencia
+                    </p>
+                    <p className="font-mono font-bold text-slate-800 tracking-wide">
+                      {paymentCapture.reference}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {hasPolicy && (
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
+                  <p className="text-[0.62rem] font-bold text-emerald-700 uppercase tracking-widest mb-1">
+                    Número de póliza
                   </p>
-                  <p className="font-mono font-bold text-slate-800">{paymentCapture.reference}</p>
+                  <p className="font-mono font-bold text-lg text-slate-900 break-all mb-3">
+                    {policyNum}
+                  </p>
+                  {pdfUrl ? (
+                    <a
+                      href={pdfUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-indigo-700 text-white text-sm font-bold px-4 py-2.5 hover:bg-indigo-800 transition-colors"
+                    >
+                      <FileDown size={16} />
+                      Abrir cuadro de póliza
+                    </a>
+                  ) : null}
                 </div>
               )}
             </div>
+
+            <p className="px-5 sm:px-6 py-3 text-[11px] text-slate-400 border-t border-slate-100 bg-slate-50/80">
+              La Mundial de Seguros · operación verificada
+            </p>
           </div>
+        </div>
+
+        <div className="text-center mb-4">
+          <button
+            type="button"
+            onClick={emitAnotherPolicy}
+            className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-indigo-700 transition-colors font-semibold"
+          >
+            <RefreshCw size={13} />
+            Emitir otra póliza
+          </button>
         </div>
       </div>
     );
@@ -190,8 +239,16 @@ export function SuccessStep() {
           Tu póliza está activa
         </h2>
         <p className="text-slate-500 max-w-md mx-auto leading-relaxed text-sm">
-          La póliza fue emitida correctamente. Los documentos se abrieron en nuevas pestañas.
+          La póliza fue emitida correctamente.
+          {hasDocuments
+            ? ' Los documentos se abren automáticamente en nuevas pestañas al emitir.'
+            : ' Contacta soporte si necesitas el certificado digital.'}
         </p>
+        {(diligencia || tomador.itipoDiligencia) && (
+          <p className="mt-3 text-xs font-semibold text-indigo-700">
+            {diligenciaLabel(diligencia?.itipoDiligencia ?? tomador.itipoDiligencia ?? 'C')}
+          </p>
+        )}
       </div>
 
       <div className="max-w-2xl mx-auto mb-8">
@@ -235,20 +292,16 @@ export function SuccessStep() {
                     Prima anual emitida
                   </p>
                   <p className="font-display font-bold text-xl sm:text-2xl text-slate-900 leading-none tabular-nums">
-                    {formatUsdShort(primaUsd)}
+                    {formatQuoteUsdMoney(primaUsd)}
                   </p>
-                  {primaVes ? (
+                  {primaVes > 0 ? (
                     <p className="text-[0.65rem] font-semibold text-slate-600 mt-1 tabular-nums">
-                      Bs{' '}
-                      {primaVes.toLocaleString('es-VE', {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
+                      {formatQuoteVesLabel(primaVes)}
                     </p>
                   ) : null}
                   {ptasa ? (
                     <p className="text-[0.58rem] text-slate-500 mt-0.5 tabular-nums">
-                      Tasa BCV: {ptasa.toFixed(4)}
+                      Tasa BCV: {formatQuoteTasaValue(ptasa)}
                     </p>
                   ) : null}
                 </div>
@@ -272,71 +325,56 @@ export function SuccessStep() {
               ))}
             </div>
 
-            {pdfUrl ? (
-              <div className="pt-4 border-t border-slate-100">
-                <p className="text-[0.58rem] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                  Documento oficial
+            {(pdfUrl || conductorUrl || arysUrl || ingresoCajaUrl) ? (
+              <div className="pt-4 border-t border-slate-100 space-y-2">
+                <p className="text-[0.58rem] font-bold text-slate-500 uppercase tracking-wider mb-2">
+                  Documentos
                 </p>
-                <a
-                  href={pdfUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-[0.7rem] font-semibold text-indigo-600 hover:text-indigo-800 transition-colors break-all underline-offset-2 hover:underline"
-                >
-                  <ExternalLink size={11} className="shrink-0" />
-                  <span className="truncate">{pdfUrl}</span>
-                </a>
-              </div>
-            ) : null}
-
-            {conductorUrl ? (
-              <div className="pt-4 border-t border-slate-100">
-                <p className="text-[0.58rem] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                  Anexo Conductor Habitual
-                </p>
-                <a
-                  href={conductorUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-[0.7rem] font-semibold text-emerald-600 hover:text-emerald-800 transition-colors break-all underline-offset-2 hover:underline"
-                >
-                  <ExternalLink size={11} className="shrink-0" />
-                  <span className="truncate">{conductorUrl}</span>
-                </a>
-              </div>
-            ) : null}
-
-            {arysUrl ? (
-              <div className="pt-4 border-t border-slate-100">
-                <p className="text-[0.58rem] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                  Club Arys
-                </p>
-                <a
-                  href={arysUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-[0.7rem] font-semibold text-indigo-600 hover:text-indigo-800 transition-colors break-all underline-offset-2 hover:underline"
-                >
-                  <ExternalLink size={11} className="shrink-0" />
-                  <span className="truncate">{arysUrl}</span>
-                </a>
-              </div>
-            ) : null}
-
-            {ingresoCajaUrl ? (
-              <div className="pt-4 border-t border-slate-100">
-                <p className="text-[0.58rem] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                  Ingreso de caja
-                </p>
-                <a
-                  href={ingresoCajaUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-[0.7rem] font-semibold text-amber-700 hover:text-amber-900 transition-colors break-all underline-offset-2 hover:underline"
-                >
-                  <ExternalLink size={11} className="shrink-0" />
-                  <span className="truncate">{ingresoCajaUrl}</span>
-                </a>
+                {pdfUrl ? (
+                  <a
+                    href={pdfUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-3 rounded-xl border border-indigo-200 bg-indigo-50 px-3.5 py-2.5 text-indigo-900 hover:bg-indigo-100 transition-colors"
+                  >
+                    <FileDown size={16} className="shrink-0" />
+                    <span className="text-sm font-bold flex-1">Cuadro de póliza</span>
+                    <ExternalLink size={14} className="text-indigo-600" />
+                  </a>
+                ) : null}
+                {conductorUrl ? (
+                  <a
+                    href={conductorUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-slate-800 hover:bg-slate-100 transition-colors"
+                  >
+                    <ExternalLink size={16} className="shrink-0" />
+                    <span className="text-sm font-bold flex-1">Anexo conductor habitual</span>
+                  </a>
+                ) : null}
+                {arysUrl ? (
+                  <a
+                    href={arysUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-slate-800 hover:bg-slate-100 transition-colors"
+                  >
+                    <ExternalLink size={16} className="shrink-0" />
+                    <span className="text-sm font-bold flex-1">Club Arys</span>
+                  </a>
+                ) : null}
+                {ingresoCajaUrl ? (
+                  <a
+                    href={ingresoCajaUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-slate-800 hover:bg-slate-100 transition-colors"
+                  >
+                    <ExternalLink size={16} className="shrink-0" />
+                    <span className="text-sm font-bold flex-1">Ingreso de caja</span>
+                  </a>
+                ) : null}
               </div>
             ) : null}
 
@@ -366,19 +404,7 @@ export function SuccessStep() {
         </div>
       </div>
 
-      <div className="flex justify-center gap-3 flex-wrap mb-8">
-        <Button
-          variant="primary"
-          size="lg"
-          onClick={downloadPdf}
-          disabled={!hasDocuments}
-        >
-          <Download size={15} />
-          Descargar Documentos
-        </Button>
-      </div>
-
-      <div className="text-center">
+      <div className="text-center mb-8">
         <button
           type="button"
           onClick={emitAnotherPolicy}

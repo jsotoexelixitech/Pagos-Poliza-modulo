@@ -191,11 +191,9 @@ async function deliverCheckoutNotify({ tokenMetadata, tokenPayload, body }) {
     mergedPayload.referenceId ??
     null;
 
-  const paid = body.status === 'ok' || body.paymentVerified === true;
   const outbound = {
-    status: paid ? 'success' : 'failed',
-    success: paid,
-    paymentVerified: paid,
+    status: body.status === 'ok' ? 'ok' : 'error',
+    paymentVerified: Boolean(body.paymentVerified),
     idOperacion,
     code: body.code ?? null,
     message: body.message ?? null,

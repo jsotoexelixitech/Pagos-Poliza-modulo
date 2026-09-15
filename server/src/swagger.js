@@ -73,7 +73,6 @@ Todas las rutas \`/api/payments/*\` y \`/api/checkout/*\` requieren **\`Authoriz
       { name: 'Integración SSO', description: 'Webhook post-pago vía metadata.notifyUrl' },
       { name: 'Pago Móvil', description: 'Verificación de pago móvil interbancario via Meritop' },
       { name: 'Débito OTP', description: 'Débito bancario con OTP via SyPago' },
-      { name: 'Domiciliación', description: 'Afiliación de póliza al cobro automático de recibos via SyPago' },
       { name: 'Sistema',    description: 'Estado del servicio' },
     ],
     security: [

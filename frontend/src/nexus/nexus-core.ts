@@ -15,7 +15,7 @@ const MODULE_NEXUS_API: [string, string][] = [
   ['/pagos', '/pagos/nexus-api'],
 ];
 
-/** Producción GCIA — subdominios dedicados (sin prefijo /pagos/ en la URL). */
+/** Producción GCIA — subdominios (paridad con nexusqa en QA). */
 const PRODUCTION_GCIA_NEXUS_API = 'https://nexus-api.exelixitech.com';
 const PRODUCTION_GCIA_FRONT_HOSTS = new Set([
   'ocr.exelixitech.com',
@@ -28,6 +28,15 @@ function resolveProductionGciaNexusApi(): string | null {
   if (typeof window === 'undefined') return null;
   if (PRODUCTION_GCIA_FRONT_HOSTS.has(window.location.hostname)) {
     return PRODUCTION_GCIA_NEXUS_API;
+  }
+  return null;
+}
+
+/** QA: un solo host. Apache sirve /nexus-api; /pagos/nexus-api no existe. */
+function resolveQaNexusApi(): string | null {
+  if (typeof window === 'undefined') return null;
+  if (window.location.hostname === 'nexusqa.exelixitech.com') {
+    return `${window.location.origin}/nexus-api`;
   }
   return null;
 }
@@ -50,9 +59,34 @@ function useModuleProxyBuild(): boolean {
   return flag === '1' || flag === 'true';
 }
 
+function resolveSameOriginNexusApi(
+  trimmed: string,
+  moduleOnHttps: string | null,
+): string | null {
+  if (typeof window === 'undefined' || window.location.protocol !== 'https:') {
+    return null;
+  }
+  let configuredHost = '';
+  try {
+    if (trimmed && !INTERNAL_HTTP_RE.test(trimmed)) {
+      configuredHost = new URL(trimmed).hostname;
+    }
+  } catch {
+    /* ignore */
+  }
+  const pageHost = window.location.hostname;
+  if (!configuredHost || configuredHost !== pageHost) {
+    return moduleOnHttps ?? `${window.location.origin}/nexus-api`;
+  }
+  return null;
+}
+
 export function resolveNexusApiUrl(configured?: string): string {
-  const gciaProd = resolveProductionGciaNexusApi();
-  if (gciaProd) return gciaProd;
+  const productionGcia = resolveProductionGciaNexusApi();
+  if (productionGcia) return productionGcia;
+
+  const qaNexus = resolveQaNexusApi();
+  if (qaNexus) return qaNexus;
 
   const moduleOnHttps = resolveModuleNexusApiOnHttps();
   if (moduleOnHttps && useModuleProxyBuild()) {
@@ -60,13 +94,13 @@ export function resolveNexusApiUrl(configured?: string): string {
   }
 
   const trimmed = configured?.trim().replace(/\/$/, '') ?? '';
-  const pageIsHttps =
-    typeof window !== 'undefined' && window.location.protocol === 'https:';
+  const sameOrigin = resolveSameOriginNexusApi(trimmed, moduleOnHttps);
+  if (sameOrigin) return sameOrigin;
 
   if (trimmed && !INTERNAL_HTTP_RE.test(trimmed)) {
     return trimmed;
   }
-  if (pageIsHttps && typeof window !== 'undefined') {
+  if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
     return moduleOnHttps ?? `${window.location.origin}/nexus-api`;
   }
   if (trimmed) return trimmed;
@@ -88,19 +122,6 @@ export interface NexusVerifyResult {
 }
 
 export async function verifyNexusAccess(nexusApiUrl: string): Promise<NexusVerifyResult> {
-  // SSO delegate siempre manda un nexus_token fresco en la URL. Si hay uno en sessionStorage
-  // de una sesión anterior (otra empresa / módulo), NO debe ganar: provoca
-  // "Servicio no activado para esta empresa" con un token válido nuevo en la URL.
-  let tokenFromUrl: string | null = null;
-  try {
-    tokenFromUrl = new URLSearchParams(window.location.search).get('nexus_token');
-  } catch {
-    tokenFromUrl = null;
-  }
-  if (tokenFromUrl) {
-    persistNexusToken(STORAGE_KEY, tokenFromUrl);
-  }
-
   const token = getNexusToken(STORAGE_KEY);
 
   if (!token) {

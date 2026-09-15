@@ -5,111 +5,102 @@ export type EmissionPdfDocs = {
   url_ingreso_caja?: string;
 };
 
-const MAX_EMISSION_DOCS = 4;
+export type EmissionDocItem = {
+  key: string;
+  label: string;
+  url: string;
+};
 
-/** Pestañas reservadas en el clic del usuario (SysIP payment-admin: window.open() sin URL). */
-let reservedPopupWindows: Window[] = [];
+export type OpenEmissionResult = {
+  opened: string[];
+  total: number;
+  blockedCount: number;
+};
 
 function collectEmissionUrls(docs: EmissionPdfDocs): string[] {
-  return [
-    docs.urlpoliza,
-    docs.url_club_arys,
-    docs.url_conductor_habitual,
-    docs.url_ingreso_caja,
-  ].filter((url): url is string => Boolean(url && String(url).trim()));
+  return listEmissionDocs(docs).map((d) => d.url);
 }
 
-function writePopupLoading(w: Window): void {
-  try {
-    w.document.open();
-    w.document.write(
-      '<!doctype html><html lang="es"><head><meta charset="utf-8"><title>La Mundial</title></head>'
-      + '<body style="font-family:Poppins,sans-serif;padding:2rem;color:#0F1A5A">'
-      + '<p>Generando documentos…</p></body></html>',
-    );
-    w.document.close();
-  } catch {
-    // cross-origin después de navegar — ignorar
+export function listEmissionDocs(docs: EmissionPdfDocs): EmissionDocItem[] {
+  const items: EmissionDocItem[] = [];
+  if (docs.urlpoliza?.trim()) {
+    items.push({ key: 'poliza', label: 'Cuadro de póliza', url: docs.urlpoliza.trim() });
   }
+  if (docs.url_conductor_habitual?.trim()) {
+    items.push({
+      key: 'conductor',
+      label: 'Anexo conductor habitual',
+      url: docs.url_conductor_habitual.trim(),
+    });
+  }
+  if (docs.url_club_arys?.trim()) {
+    items.push({ key: 'arys', label: 'Club Arys', url: docs.url_club_arys.trim() });
+  }
+  if (docs.url_ingreso_caja?.trim()) {
+    items.push({ key: 'ingreso', label: 'Ingreso de caja', url: docs.url_ingreso_caja.trim() });
+  }
+  return items;
 }
 
-/** Llamar de forma síncrona en el clic «Verificar pago» / «Confirmar OTP», antes de cualquier await. */
-export function reserveEmissionPopupSlots(count = MAX_EMISSION_DOCS): void {
-  releaseEmissionPopupSlots();
-  const slots = Math.min(Math.max(count, 1), MAX_EMISSION_DOCS);
-  for (let i = 0; i < slots; i += 1) {
-    const w = window.open('about:blank', '_blank');
-    if (w) {
-      writePopupLoading(w);
-      reservedPopupWindows.push(w);
-    }
-  }
+export function countEmissionDocs(docs: EmissionPdfDocs): number {
+  return listEmissionDocs(docs).length;
 }
 
-export function releaseEmissionPopupSlots(): void {
-  for (const w of reservedPopupWindows) {
-    try {
-      if (w && !w.closed) w.close();
-    } catch {
-      // ignore
-    }
-  }
-  reservedPopupWindows = [];
-}
-
-function navigateReservedPopups(urls: string[]): string[] {
-  const opened: string[] = [];
-  urls.forEach((url, index) => {
-    const w = reservedPopupWindows[index];
-    if (w && !w.closed) {
-      try {
-        w.location.href = url;
-        opened.push(url);
-      } catch {
-        const fallback = window.open(url, '_blank');
-        if (fallback) opened.push(url);
-      }
-    } else {
-      const fallback = window.open(url, '_blank');
-      if (fallback) opened.push(url);
-    }
-  });
-  for (let i = urls.length; i < reservedPopupWindows.length; i += 1) {
-    try {
-      if (!reservedPopupWindows[i].closed) reservedPopupWindows[i].close();
-    } catch {
-      // ignore
-    }
-  }
-  reservedPopupWindows = [];
-  return opened;
-}
-
-/** Fallback si no hubo reserva en el clic (p. ej. reemitir manual). */
-export function openEmissionPdfs(docs: EmissionPdfDocs): string[] {
-  const urls = collectEmissionUrls(docs);
-  if (reservedPopupWindows.length > 0) {
-    return navigateReservedPopups(urls);
-  }
+/**
+ * Patrón SysIP pay-form.component.ts: window.open(url, '_blank') por cada documento
+ * en el mismo handler async que empezó con el clic del usuario.
+ */
+function openUrlsLikeLaMundial(urls: string[]): string[] {
   const opened: string[] = [];
   for (const url of urls) {
-    const w = window.open(url, '_blank');
-    if (w) opened.push(url);
+    try {
+      // Igual que SysIP: window.open(url, '_blank') sin noopener en features.
+      // Con 'noopener,noreferrer' el navegador abre la pestaña pero devuelve null
+      // y el fallback anterior duplicaba cada documento.
+      window.open(url, '_blank');
+      opened.push(url);
+    } catch {
+      /* popup bloqueado */
+    }
   }
   return opened;
 }
 
-export function emissionPdfHint(opened: string[]): string {
-  if (opened.length === 0) return '';
-  if (opened.length === 1) return ' · PDF abierto en nueva pestaña';
-  return ` · ${opened.length} documentos abiertos en nuevas pestañas`;
+function openAndReport(urls: string[]): OpenEmissionResult {
+  const opened = openUrlsLikeLaMundial(urls);
+  return {
+    opened,
+    total: urls.length,
+    blockedCount: Math.max(0, urls.length - opened.length),
+  };
 }
 
-/** SysIP pay-form: aviso de éxito y abrir documentos (pestañas reservadas o window.open). */
+export function openEmissionPdfs(docs: EmissionPdfDocs): OpenEmissionResult {
+  return openAndReport(collectEmissionUrls(docs));
+}
+
+export function openEmissionPdfsOnUserClick(docs: EmissionPdfDocs): OpenEmissionResult {
+  return openAndReport(collectEmissionUrls(docs));
+}
+
+export function emissionPdfHint(result: OpenEmissionResult): string {
+  if (result.total === 0) return '';
+  if (result.blockedCount > 0) {
+    return ' · Si faltan PDFs, usa los enlaces en pantalla';
+  }
+  if (result.total === 1) return ' · Documento abierto en nueva pestaña';
+  return ` · ${result.total} documentos abiertos en nuevas pestañas`;
+}
+
 export function notifyEmissionSuccessAndOpenPdfs(
-  cnpoliza: string,
+  _cnpoliza: string,
   docs: EmissionPdfDocs,
-): string[] {
-  window.alert(`Se ha generado exitosamente su emisión bajo el número ${cnpoliza}.`);
+): OpenEmissionResult {
   return openEmissionPdfs(docs);
 }
+
+/** Reserva popups en el clic del usuario (domiciliación / OTP). No-op en flujo local. */
+export function reserveEmissionPopupSlots(_count = 4): void {}
+
+/** Libera popups reservados. No-op en flujo local. */
+export function releaseEmissionPopupSlots(): void {}

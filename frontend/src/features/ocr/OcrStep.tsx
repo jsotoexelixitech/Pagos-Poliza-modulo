@@ -39,8 +39,8 @@ const DOCS: DocConfig[] = [
   },
   {
     type: 'certificado',
-    label: 'Certificado del vehículo',
-    description: 'Vehículo a asegurar',
+    label: 'Carnet de circulación y/o título de propiedad',
+    description: 'Documento vehicular INTT · carnet o título',
     Icon: FileText,
     accent: 'from-blue-500 to-indigo-500',
   },
@@ -452,9 +452,12 @@ function UploadDocCard({
  */
 const DEMO_FILES: Record<DocType, { name: string; mimeType: string; url: string }> = {
   cedula: { name: 'cedula-demo.svg', mimeType: 'image/svg+xml', url: '/samples/cedula-demo.svg' },
+  cedula_titular: { name: 'cedula-titular-demo.svg', mimeType: 'image/svg+xml', url: '/samples/cedula-demo.svg' },
+  cedula_beneficiario: { name: 'cedula-benef-demo.svg', mimeType: 'image/svg+xml', url: '/samples/cedula-demo.svg' },
   licencia: { name: 'licencia-demo.svg', mimeType: 'image/svg+xml', url: '/samples/licencia-demo.svg' },
   certificado: { name: 'certificado-demo.svg', mimeType: 'image/svg+xml', url: '/samples/certificado-demo.svg' },
   rif: { name: 'rif-demo.svg', mimeType: 'image/svg+xml', url: '/samples/rif-demo.svg' },
+  pasaporte: { name: 'pasaporte-demo.svg', mimeType: 'image/svg+xml', url: '/samples/cedula-demo.svg' },
 };
 
 const DEMO_OCR: Record<DocType, Record<string, string>> = {
@@ -464,6 +467,24 @@ const DEMO_OCR: Record<DocType, Record<string, string>> = {
     identificacion: '18456329',
     tipoDoc: 'V',
     fechaNacimiento: '1990-04-15',
+    sexo: 'Femenino',
+    estadoCivil: 'Soltero(a)',
+  },
+  cedula_titular: {
+    nombre: 'Jose',
+    apellido: 'Souto',
+    identificacion: '14484932',
+    tipoDoc: 'V',
+    fechaNacimiento: '1979-07-09',
+    sexo: 'Masculino',
+    estadoCivil: 'Casado(a)',
+  },
+  cedula_beneficiario: {
+    nombre: 'Ana',
+    apellido: 'Souto',
+    identificacion: '20111222',
+    tipoDoc: 'V',
+    fechaNacimiento: '2001-03-12',
     sexo: 'Femenino',
     estadoCivil: 'Soltero(a)',
   },
@@ -484,6 +505,7 @@ const DEMO_OCR: Record<DocType, Record<string, string>> = {
     rif: 'V-18456329-0',
     razonSocial: 'Maria Fernandez',
   },
+  pasaporte: {},
 };
 
 function makeDemoFile(type: DocType): DocumentFile {

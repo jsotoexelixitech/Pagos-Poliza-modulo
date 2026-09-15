@@ -1,5 +1,4 @@
 import axios, { AxiosError } from 'axios';
-import type { CanalVisibility } from './canal-visibility';
 import type { CheckoutData, DocType, OcrResult, DocumentFile } from '../types';
 import { moduleApiBase } from './app-base';
 import { attachNexusTokenAxios } from './nexus-token-client';
@@ -247,6 +246,37 @@ export async function emitFuneral(payload: EmitPolicyPayload): Promise<EmitPolic
   }
 }
 
+/** Valida titular/plan antes de pagar (speeValidatePersonGeneral vía nest-api). */
+export async function validateFuneralEmission(payload: {
+  state: unknown;
+  plan?: string;
+}): Promise<{ success: boolean; validation?: unknown }> {
+  try {
+    const response = await api.post<{ success: boolean; validation?: unknown }>(
+      '/personas/validacion',
+      payload,
+    );
+    return response.data;
+  } catch (err) {
+    const axErr = err as AxiosError<{
+      success?: boolean;
+      code?: string;
+      message?: string;
+      stage?: string;
+    }>;
+    const data = axErr.response?.data;
+    if (data && (data.code || data.message)) {
+      throw new PolicyEmitError({
+        code: data.code ?? 'PERSONAS_VALIDATION_ERROR',
+        message: data.message ?? 'No se pudo validar la emisión funeraria.',
+        httpStatus: axErr.response?.status,
+        stage: data.stage ?? 'validate',
+      });
+    }
+    throw err;
+  }
+}
+
 export interface QuotePolicyPayload {
   state: unknown;
   plan?: string;
@@ -457,25 +487,39 @@ export function isSypagoPending(status?: string, statusInfo?: SypagoStatusInfo):
 export class SypagoError extends Error {
   code       : string;
   sypagoCode?: string | null;
+  rejectCode?: string | null;
   httpStatus?: number;
 
-  constructor(payload: { message: string; code: string; sypagoCode?: string | null; httpStatus?: number }) {
+  constructor(payload: {
+    message: string;
+    code: string;
+    sypagoCode?: string | null;
+    rejectCode?: string | null;
+    httpStatus?: number;
+  }) {
     super(payload.message);
     this.name       = 'SypagoError';
     this.code       = payload.code;
     this.sypagoCode = payload.sypagoCode;
+    this.rejectCode = payload.rejectCode;
     this.httpStatus = payload.httpStatus;
   }
 }
 
 function _throwSypago(err: unknown): never {
-  const axErr = err as AxiosError<{ code?: string; message?: string; sypagoCode?: string | null }>;
+  const axErr = err as AxiosError<{
+    code?: string;
+    message?: string;
+    sypagoCode?: string | null;
+    rejectCode?: string | null;
+  }>;
   const data   = axErr.response?.data;
   const status = axErr.response?.status;
   throw new SypagoError({
     message   : data?.message ?? (axErr as Error).message ?? 'Error con SyPago.',
     code      : data?.code    ?? 'SYPAGO_ERROR',
     sypagoCode: data?.sypagoCode ?? null,
+    rejectCode: data?.rejectCode ?? null,
     httpStatus: status,
   });
 }
@@ -574,27 +618,6 @@ export const catalogoApi = {
   /** Resuelve texto libre (de OCR) → cmarca + cmodelo + versiones en una sola llamada */
   resolver: (fano: number, marca: string, modelo: string) =>
     api.get<ResolverResult>(`/catalogo/resolver?fano=${fano}&marca=${encodeURIComponent(marca)}&modelo=${encodeURIComponent(modelo)}`),
-  canalVisibility: (params?: {
-    cproducto?: string;
-    cramo?: number;
-    centidad?: string;
-    citem?: string;
-    bridge?: boolean;
-  }) => {
-    const qs = new URLSearchParams();
-    if (params?.cproducto) qs.set('cproducto', params.cproducto);
-    if (params?.cramo != null) qs.set('cramo', String(params.cramo));
-    if (params?.centidad) qs.set('centidad', params.centidad);
-    if (params?.citem) qs.set('citem', params.citem);
-    const bridged = params?.bridge
-      || (typeof window !== 'undefined'
-        && Boolean(new URLSearchParams(window.location.search).get('sid')));
-    if (bridged) qs.set('bridge', '1');
-    const query = qs.toString();
-    return api.get<{ success: boolean; canalVisibility: CanalVisibility | null }>(
-      `/catalogo/canal-visibility${query ? `?${query}` : ''}`,
-    );
-  },
 };
 
 // ──────────────────────────────────────────────────────────────────────

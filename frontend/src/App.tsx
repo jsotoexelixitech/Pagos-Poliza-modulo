@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { useWizardStore } from './store/wizardStore';
 import { TopStepper } from './components/TopStepper';
 import { TopProgressBar } from './components/TopProgressBar';
@@ -15,29 +15,34 @@ import { readStoredBuilderProduct } from './lib/exelixi-catalog';
 import {
   isEmbeddedMetadataCheckout,
   isGenericCheckoutMode,
-  getGenericCheckoutReturnUrl,
+  completeCheckoutOnSuccess,
   requiresPaymentBeforeContinue,
 } from './lib/checkout';
+import { isFuneralApprovedCheckout } from './lib/funeral-approved-checkout';
 import { useNexusTokenMetadata } from './hooks/useNexusTokenMetadata';
-import { useCanalVisibility } from './hooks/useCanalVisibility';
-import { shouldShowPaymentStep, allowsEmitPending, labelTipoEmision, effectiveCanalVisibility } from './lib/canal-visibility';
 import { toast } from './store/toastStore';
 import {
   emissionPdfHint,
   notifyEmissionSuccessAndOpenPdfs,
   releaseEmissionPopupSlots,
-  reserveEmissionPopupSlots,
 } from './lib/openEmissionPdfs';
-import { Zap, ShieldCheck, Sparkles, Loader2 } from 'lucide-react';
+import { validateRcvEmitPersonas } from './lib/person-identificacion';
+import { Zap, ShieldCheck, Sparkles } from 'lucide-react';
 import type { PaymentEmitContext } from './types';
+import { useProductConfig } from './hooks/useProductConfig';
+import { useUiFlags } from './lib/ui-flags';
+import { getProductId } from './lib/product';
+import { shouldSkipTarjetaPayment } from './lib/rcv-tarjeta-flow';
+
+const EMPRESA_ID = Number(import.meta.env.VITE_EMPRESA_ID ?? 1);
 
 export default function App() {
   useNexusTokenMetadata();
-  useCanalVisibility();
   const store = useWizardStore();
-  const { step, goTo, setPolicy, canalVisibility, metadataCanal } = store;
+  const { step, goTo, setPolicy } = store;
   const [emitting, setEmitting] = useState(false);
-  const skipPaymentEmittedRef = useRef(false);
+  const { config } = useProductConfig(EMPRESA_ID, getProductId(), 'pagos');
+  const { hideStepper, hideFooterBar } = useUiFlags(config);
 
   const isSuccess = step === 6;
   const funeralFlow = isFunerario();
@@ -46,29 +51,24 @@ export default function App() {
   const genericCheckout = isGenericCheckoutMode(store);
   const embeddedCheckout = isEmbeddedMetadataCheckout(store);
   const paymentRequired = requiresPaymentBeforeContinue(store, funeralFlow);
-  const hidePaymentStep = shouldShowPaymentStep(canalVisibility, metadataCanal) === false;
-  const emitPendingMode = allowsEmitPending(canalVisibility, metadataCanal);
-  const tipoEmisionLabel = labelTipoEmision(
-    effectiveCanalVisibility(canalVisibility, metadataCanal)?.tipoEmision,
-  );
+  const tarjetaFarmaciaPaid = rcvFlow && shouldSkipTarjetaPayment(store.metadataCanal);
+  const funeralApproved = isFuneralApprovedCheckout(store);
 
   /** Funerario legacy: emitir sin bloquear por verificación bancaria. */
   const canEmitFuneral = funeralFlow && !genericCheckout && !emitting;
-  const canEmitWithOptionalPayment =
-    !paymentRequired || store.paymentVerified || emitPendingMode;
-  /** RCV legacy: exige pago verificado salvo emisión pendiente (tipoEmision emit). */
+  /** RCV legacy: exige pago verificado salvo bypass QA. */
   const canEmitRcv =
     rcvFlow &&
     !exelixiFlow &&
     !genericCheckout &&
     !emitting &&
-    canEmitWithOptionalPayment;
-  /** Exélixi catálogo: emite vía product-emission tras pago (o bypass QA / emit pendiente). */
+    (!paymentRequired || store.paymentVerified);
+  /** Exélixi catálogo: emite vía product-emission tras pago (o bypass QA). */
   const canEmitExelixi =
     exelixiFlow &&
     !genericCheckout &&
     !emitting &&
-    canEmitWithOptionalPayment;
+    (!paymentRequired || store.paymentVerified);
   /** Checkout genérico: respeta rules.requirePayment. */
   const canCompleteGeneric =
     genericCheckout &&
@@ -101,6 +101,9 @@ export default function App() {
       metadataCanal: snap.metadataCanal,
       checkout: snap.checkout,
       checkoutPayload: snap.checkoutPayload,
+      diligencia: snap.diligencia,
+      documents: snap.documents,
+      quote: snap.quote,
     };
   }
 
@@ -124,6 +127,27 @@ export default function App() {
       metadataCanal: snap.metadataCanal,
       checkout: snap.checkout,
       checkoutPayload: snap.checkoutPayload,
+      quote: snap.quote,
+      funeralSubmissionId:
+        snap.funeralSubmissionId
+        || (typeof snap.checkoutPayload?.funeralSubmissionId === 'string'
+          ? snap.checkoutPayload.funeralSubmissionId
+          : undefined)
+        || (typeof snap.metadataCanal?.funeralSubmissionId === 'string'
+          ? snap.metadataCanal.funeralSubmissionId
+          : undefined),
+      paymentSid:
+        typeof window !== 'undefined'
+          ? new URLSearchParams(window.location.search).get('sid') || undefined
+          : snap.paymentSid,
+      originSessionId:
+        snap.originSessionId
+        || (typeof snap.checkoutPayload?.originSessionId === 'string'
+          ? snap.checkoutPayload.originSessionId
+          : undefined)
+        || (typeof snap.metadataCanal?.originSessionId === 'string'
+          ? snap.metadataCanal.originSessionId
+          : undefined),
     };
   }
 
@@ -138,7 +162,7 @@ export default function App() {
       url_ingreso_caja: product === 'generic' ? undefined : result.policy.url_ingreso_caja,
     };
 
-    const opened = notifyEmissionSuccessAndOpenPdfs(result.policy.cnpoliza, docs);
+    const openResult = notifyEmissionSuccessAndOpenPdfs(result.policy.cnpoliza, docs);
 
     setPolicy({
       number: result.policy.number,
@@ -156,7 +180,7 @@ export default function App() {
 
     toast.success(
       '¡Póliza emitida!',
-      `Número ${result.policy.cnpoliza}${emissionPdfHint(opened)}`,
+      `Número ${result.policy.cnpoliza}${emissionPdfHint(openResult)}`,
       6000,
     );
 
@@ -212,16 +236,13 @@ export default function App() {
   async function handleContinuarExelixi(paymentCtx?: PaymentEmitContext) {
     const snap = useWizardStore.getState();
     const verified = paymentCtx?.paymentVerified ?? snap.paymentVerified;
-    const pendingEmit = allowsEmitPending(snap.canalVisibility, snap.metadataCanal);
-    if (paymentRequired && !verified && !pendingEmit) {
+    if (paymentRequired && !verified) {
       toast.warning(
         'Pago pendiente',
         'Verifica o confirma el pago con el banco antes de emitir.',
       );
       return;
     }
-
-    if (!paymentCtx) reserveEmissionPopupSlots();
 
     setEmitting(true);
     try {
@@ -237,8 +258,7 @@ export default function App() {
   async function handleContinuarRcv(paymentCtx?: PaymentEmitContext) {
     const snap = useWizardStore.getState();
     const verified = paymentCtx?.paymentVerified ?? snap.paymentVerified;
-    const pendingEmit = allowsEmitPending(snap.canalVisibility, snap.metadataCanal);
-    if (paymentRequired && !verified && !pendingEmit) {
+    if (paymentRequired && !verified) {
       toast.warning(
         'Pago pendiente',
         'Verifica o confirma el pago con el banco antes de continuar.',
@@ -246,7 +266,11 @@ export default function App() {
       return;
     }
 
-    if (!paymentCtx) reserveEmissionPopupSlots();
+    const personaErr = validateRcvEmitPersonas(snap);
+    if (personaErr) {
+      toast.warning('Revisa el formulario', personaErr, 9000);
+      return;
+    }
 
     setEmitting(true);
     try {
@@ -268,20 +292,19 @@ export default function App() {
   }
 
   async function handleGenericComplete() {
-    if (paymentRequired && !store.paymentVerified) {
+    const snap = useWizardStore.getState();
+    const required = requiresPaymentBeforeContinue(snap, funeralFlow);
+
+    if (required && !snap.paymentVerified) {
       toast.warning('Pago pendiente', 'Confirma el pago antes de continuar.');
       return;
     }
 
-    const mode = store.checkoutRules?.onSuccess?.mode ?? 'none';
-    const redirectUrl = getGenericCheckoutReturnUrl(
-      store.checkoutPayload,
-      store.checkoutRules,
-      'success',
-    );
-    const webhookUrl = store.checkoutRules?.onSuccess?.webhookUrl;
+    const mode = snap.checkoutRules?.onSuccess?.mode ?? 'none';
+    const redirectUrl = snap.checkoutRules?.onSuccess?.redirectUrl;
+    const webhookUrl = snap.checkoutRules?.onSuccess?.webhookUrl;
 
-    if (mode === 'emit') {
+    if (mode === 'emit' || funeralApproved) {
       if (funeralFlow) {
         await handleEmitir();
         return;
@@ -321,7 +344,14 @@ export default function App() {
     }
 
     if (mode === 'redirect' && redirectUrl) {
-      window.location.href = redirectUrl;
+      completeCheckoutOnSuccess({
+        rules: snap.checkoutRules,
+        payload: snap.checkoutPayload,
+        payment: snap.paymentCapture
+          ? { ...snap.paymentCapture, method: snap.paymentMethod }
+          : null,
+        code: 'ACCP',
+      });
       return;
     }
 
@@ -345,67 +375,38 @@ export default function App() {
     void handleContinuarRcv();
   }
 
-  function handleEmitPending() {
-    if (exelixiFlow) {
-      void handleContinuarExelixi();
-      return;
-    }
-    void handleContinuarRcv();
-  }
-
-  const showEmitPendingButton =
-    emitPendingMode && !store.paymentVerified && !genericCheckout && !funeralFlow;
-  const canEmitPendingNow =
-    showEmitPendingButton && (exelixiFlow ? canEmitExelixi : canEmitRcv);
-
   const primaryDisabled = genericCheckout
     ? !canCompleteGeneric
     : exelixiFlow
       ? !canEmitExelixi
       : funeralFlow
         ? !canEmitFuneral
-        : showEmitPendingButton
-          ? !store.paymentVerified || !canEmitRcv
-          : !canEmitRcv;
-
-  const pendingPaymentHint = store.paymentMethod === 'domiciliacion'
-    ? 'Autoriza la domiciliación para continuar'
-    : 'Confirma el pago con el banco para continuar';
-
-  const verifyToEmitLabel = store.paymentMethod === 'domiciliacion'
-    ? 'Autoriza la domiciliación para emitir'
-    : 'Verificar pago para emitir';
+        : !canEmitRcv;
 
   const primaryLabel = genericCheckout
-    ? (emitting ? 'Procesando...' : 'Continuar')
+    ? (emitting
+      ? 'Emitiendo póliza...'
+      : funeralFlow && store.paymentVerified
+        ? 'Emitir póliza'
+        : 'Continuar')
     : exelixiFlow
       ? store.paymentVerified
         ? (emitting ? 'Emitiendo póliza Exélixi...' : 'Emitir póliza')
-        : (emitting ? 'Emitiendo...' : verifyToEmitLabel)
+        : (emitting ? 'Emitiendo...' : 'Verificar pago para emitir')
       : funeralFlow
       ? (emitting ? 'Emitiendo póliza...' : 'Emitir póliza')
       : store.paymentVerified
-        ? (emitting ? 'Emitiendo y activando recibo...' : 'Reemitir póliza')
-        : (emitting ? 'Emitiendo póliza...' : verifyToEmitLabel);
+        ? (emitting
+          ? 'Emitiendo y activando recibo...'
+          : (store.policy ? 'Reemitir póliza' : 'Emitir póliza'))
+        : (emitting ? 'Emitiendo póliza...' : 'Verificar pago para emitir');
 
-  async function handleEmitir() {
-    if (!funeralFlow) return;
+  async function handleContinuarFunerario(paymentCtx?: PaymentEmitContext) {
+    const snap = useWizardStore.getState();
+    const verified = paymentCtx?.paymentVerified ?? snap.paymentVerified;
+    const approved = isFuneralApprovedCheckout(snap);
 
-    if (!store.funeral?.healthQuestionnaireDone) {
-      toast.warning(
-        'Cuestionario pendiente',
-        'Completa el cuestionario de salud al confirmar el plan antes de emitir.',
-      );
-      return;
-    }
-    if (!store.funeral?.aceptaTerminos) {
-      toast.warning(
-        'Términos pendientes',
-        'Debes aceptar los términos en el cuestionario de salud.',
-      );
-      return;
-    }
-    if (paymentRequired && !store.paymentVerified) {
+    if (paymentRequired && !verified) {
       toast.warning(
         'Pago pendiente',
         'Verifica o confirma el pago con el banco antes de emitir.',
@@ -413,12 +414,26 @@ export default function App() {
       return;
     }
 
-    reserveEmissionPopupSlots();
+    if (!approved && !snap.funeral?.healthQuestionnaireDone) {
+      toast.warning(
+        'Cuestionario pendiente',
+        'Completa el cuestionario de salud al confirmar el plan antes de emitir.',
+      );
+      return;
+    }
+    if (!approved && !snap.funeral?.aceptaTerminos) {
+      toast.warning(
+        'Términos pendientes',
+        'Debes aceptar los términos en el cuestionario de salud.',
+      );
+      return;
+    }
+
     setEmitting(true);
     try {
       const result = await emitFuneral({
-        state: buildFuneralEmitState(),
-        frecuencia: (store.funeral?.frecuencia as 'A' | 'S' | 'M' | 'T' | 'C') ?? 'M',
+        state: buildFuneralEmitState(paymentCtx),
+        frecuencia: (snap.funeral?.frecuencia as 'A' | 'S' | 'M' | 'T' | 'C') ?? 'M',
       });
       await applyEmissionResult(result, 'funerario');
     } catch (err) {
@@ -428,32 +443,10 @@ export default function App() {
     }
   }
 
-  useEffect(() => {
-    if (!hidePaymentStep || genericCheckout || emitting || step !== 5 || isSuccess) return;
-    if (skipPaymentEmittedRef.current) return;
-    skipPaymentEmittedRef.current = true;
-
-    if (exelixiFlow) {
-      void handleContinuarExelixi();
-      return;
-    }
-    if (funeralFlow) {
-      void handleEmitir();
-      return;
-    }
-    if (rcvFlow) {
-      void handleContinuarRcv();
-    }
-  }, [
-    hidePaymentStep,
-    genericCheckout,
-    emitting,
-    step,
-    isSuccess,
-    exelixiFlow,
-    funeralFlow,
-    rcvFlow,
-  ]);
+  async function handleEmitir() {
+    if (!funeralFlow) return;
+    await handleContinuarFunerario();
+  }
 
   return (
     <div className="min-h-screen relative">
@@ -467,11 +460,11 @@ export default function App() {
       <div>
         <main
           className={`flex-1 min-h-screen px-4 sm:px-6 lg:px-10 ${
-            genericCheckout ? 'pb-12' : 'pb-32 lg:pb-12'
+            genericCheckout ? 'pb-12' : 'pb-[calc(7.5rem+env(safe-area-inset-bottom))] lg:pb-12'
           } ${genericCheckout ? 'pt-10' : 'pt-[72px] lg:pt-10'}`}
         >
           <div className="max-w-5xl mx-auto">
-            {!genericCheckout && <TopStepper />}
+            {!genericCheckout && !hideStepper && <TopStepper />}
 
             {!isSuccess && (
               <header className="mb-8 animate-fade-in">
@@ -479,116 +472,93 @@ export default function App() {
                   <div className="min-w-0">
                     <p className="text-[0.68rem] font-black tracking-[0.22em] gradient-text-indigo uppercase mb-2 inline-flex items-center gap-1.5">
                       <Sparkles size={11} className="text-indigo-500" />
-                      {genericCheckout ? 'Pago' : 'Paso 05 · Checkout'}
+                      {funeralApproved
+                        ? 'Paso 05 · Checkout'
+                        : genericCheckout
+                          ? 'Pago'
+                          : 'Paso 05 · Checkout'}
                     </p>
-                    <h1 className="font-display text-3xl sm:text-[2.5rem] font-black text-slate-900 tracking-tight leading-tight">
-                      {genericCheckout ? 'Realiza tu pago' : 'Confirma y paga'}
+                    <h1 className="font-display text-[1.7rem] sm:text-[2.5rem] font-black text-slate-900 tracking-tight leading-tight">
+                      {tarjetaFarmaciaPaid
+                        ? 'Emitir póliza'
+                        : funeralApproved
+                          ? 'Confirma y paga'
+                          : genericCheckout
+                            ? 'Realiza tu pago'
+                            : 'Confirma y paga'}
                     </h1>
                     <p className="text-slate-500 text-sm mt-2 max-w-xl leading-relaxed">
-                      {embeddedCheckout
-                        ? 'Al verificar el pago, tu sistema recibirá el resultado automáticamente.'
-                        : genericCheckout
-                          ? 'Revisa el detalle y confirma el método de pago.'
-                          : emitPendingMode
-                            ? 'Puedes registrar el pago ahora o emitir la póliza con recibo pendiente de cobro.'
-                            : 'Una conexión cifrada protege la operación de extremo a extremo.'}
+                      {tarjetaFarmaciaPaid
+                        ? 'El pago quedó registrado con tu factura de farmacia. Solo falta emitir la póliza.'
+                        : funeralApproved
+                          ? 'Una conexión cifrada protege la operación de extremo a extremo.'
+                          : embeddedCheckout
+                            ? 'Al verificar el pago, tu sistema recibirá el resultado automáticamente.'
+                            : genericCheckout
+                              ? 'Revisa el detalle y confirma el método de pago.'
+                              : 'Una conexión cifrada protege la operación de extremo a extremo.'}
                     </p>
-                    {tipoEmisionLabel && (
-                      <p className="text-[0.65rem] font-bold uppercase tracking-wider text-indigo-600 mt-2">
-                        Tipo de emisión: {tipoEmisionLabel}
-                      </p>
-                    )}
                   </div>
                 </div>
               </header>
             )}
 
             <section className="surface-card overflow-hidden step-enter">
-              <div className="p-6 sm:p-8 lg:p-10">
+              <div className="p-4 sm:p-8 lg:p-10">
                 {!isSuccess && (
-                  hidePaymentStep ? (
-                    <div className="flex flex-col items-center justify-center gap-4 py-16 text-center">
-                      <Loader2 className="h-10 w-10 animate-spin text-indigo-500" />
-                      <p className="text-slate-600 font-medium">
-                        {emitting
-                          ? 'Emitiendo póliza sin paso de pago…'
-                          : 'Preparando emisión según configuración del canal…'}
-                      </p>
-                    </div>
-                  ) : (
-                    <PaymentStep
-                      onPaymentVerified={
-                        exelixiFlow && !genericCheckout
-                          ? handleContinuarExelixi
-                          : rcvFlow && !genericCheckout
-                            ? handleContinuarRcv
+                  <PaymentStep
+                    onPaymentVerified={
+                      exelixiFlow && !genericCheckout
+                        ? handleContinuarExelixi
+                        : rcvFlow && !genericCheckout
+                          ? handleContinuarRcv
+                          : funeralFlow
+                            ? handleContinuarFunerario
                             : undefined
-                      }
-                    />
-                  )
+                    }
+                    onGenericCheckoutComplete={
+                      genericCheckout ? handleGenericComplete : undefined
+                    }
+                  />
                 )}
                 {isSuccess && <SuccessStep />}
               </div>
 
-              {!isSuccess && !embeddedCheckout && !hidePaymentStep && (
+              {!isSuccess && !embeddedCheckout && !hideFooterBar && (
                 <div className="hidden md:flex items-center justify-between gap-4 px-8 lg:px-10 py-5 border-t border-slate-100/80 bg-gradient-to-b from-slate-50/50 to-white/40 backdrop-blur-sm">
                   <div className="flex items-center gap-2 text-xs text-slate-500">
                     <ShieldCheck size={13} className="text-emerald-500" />
                     <span className="font-medium">Cifrado de extremo a extremo · TLS 1.3</span>
                   </div>
                 <div className="flex flex-col items-end gap-1.5">
-                  {emitPendingMode && !store.paymentVerified && (
-                    <p className="text-[0.65rem] font-semibold text-indigo-700">
-                      Opcional: verifica el pago o emite con recibo pendiente
-                    </p>
-                  )}
-                  {paymentRequired && !store.paymentVerified && !emitPendingMode && (
+                  {paymentRequired && !store.paymentVerified && (
                     <p className="text-[0.65rem] font-semibold text-amber-700">
-                      {pendingPaymentHint}
+                      Confirma el pago con el banco para continuar
                     </p>
                   )}
-                  <div className="flex items-center gap-2">
-                    {showEmitPendingButton && (
-                      <Button
-                        variant="secondary"
-                        onClick={handleEmitPending}
-                        disabled={!canEmitPendingNow}
-                        className="min-w-[180px]"
-                      >
-                        {emitting ? (
-                          <>
-                            <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-indigo-400/40 border-t-indigo-600 animate-spin-slow" />
-                            Emitiendo…
-                          </>
-                        ) : (
-                          'Emitir como pendiente'
-                        )}
-                      </Button>
+                  <Button
+                    variant="primary"
+                    onClick={handlePrimaryAction}
+                    disabled={primaryDisabled}
+                    className="min-w-[180px]"
+                    title={
+                      paymentRequired && !store.paymentVerified
+                        ? 'Debes verificar o confirmar el pago con el banco'
+                        : undefined
+                    }
+                  >
+                    {emitting ? (
+                      <>
+                        <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin-slow" />
+                        {primaryLabel}
+                      </>
+                    ) : (
+                      <>
+                        <Zap size={15} fill="currentColor" />
+                        {primaryLabel}
+                      </>
                     )}
-                    <Button
-                      variant="primary"
-                      onClick={handlePrimaryAction}
-                      disabled={primaryDisabled}
-                      className="min-w-[180px]"
-                      title={
-                        paymentRequired && !store.paymentVerified && !emitPendingMode
-                          ? pendingPaymentHint
-                          : undefined
-                      }
-                    >
-                      {emitting && !showEmitPendingButton ? (
-                        <>
-                          <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin-slow" />
-                          {primaryLabel}
-                        </>
-                      ) : (
-                        <>
-                          <Zap size={15} fill="currentColor" />
-                          {primaryLabel}
-                        </>
-                      )}
-                    </Button>
-                  </div>
+                  </Button>
                 </div>
                 </div>
               )}
@@ -607,27 +577,12 @@ export default function App() {
         </main>
       </div>
 
-      {!isSuccess && !embeddedCheckout && !hidePaymentStep && (
-        <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 px-4 py-3 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-[0_-8px_24px_rgba(15,23,42,0.08)]">
-          {emitPendingMode && !store.paymentVerified && (
-            <p className="text-[0.65rem] font-semibold text-indigo-700 text-center mb-2">
-              Opcional: verifica el pago o emite con recibo pendiente
-            </p>
-          )}
-          {paymentRequired && !store.paymentVerified && !emitPendingMode && (
+      {!isSuccess && !embeddedCheckout && (
+        <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-[0_-8px_24px_rgba(15,23,42,0.08)]">
+          {paymentRequired && !store.paymentVerified && (
             <p className="text-[0.65rem] font-semibold text-amber-700 text-center mb-2">
-              {pendingPaymentHint}
+              Confirma el pago con el banco para continuar
             </p>
-          )}
-          {showEmitPendingButton && (
-            <Button
-              variant="secondary"
-              className="w-full mb-2"
-              onClick={handleEmitPending}
-              disabled={!canEmitPendingNow}
-            >
-              {emitting ? 'Emitiendo…' : 'Emitir como pendiente'}
-            </Button>
           )}
           <Button
             variant="primary"
@@ -635,8 +590,8 @@ export default function App() {
             onClick={handlePrimaryAction}
             disabled={primaryDisabled}
             title={
-              paymentRequired && !store.paymentVerified && !emitPendingMode
-                ? pendingPaymentHint
+              paymentRequired && !store.paymentVerified
+                ? 'Debes verificar o confirmar el pago con el banco'
                 : undefined
             }
           >
@@ -703,6 +658,20 @@ function handleEmissionError(err: unknown) {
         toast.warning(
           'Vehículo con póliza vigente',
           'La Mundial detectó que la placa o el serial de carrocería ya tienen una póliza activa.',
+          8000,
+        );
+        return;
+      case 'PERSONAS_DUPLICATE':
+        toast.warning(
+          'Póliza vigente',
+          err.message || 'Ya existe una póliza funeraria activa para este asegurado.',
+          8000,
+        );
+        return;
+      case 'PERSONAS_VALIDATION_ERROR':
+        toast.warning(
+          'Emisión no disponible',
+          err.message,
           8000,
         );
         return;
