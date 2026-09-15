@@ -11,6 +11,7 @@ import {
 import { useWizardStore } from '../store/wizardStore';
 import { getProductConfig } from '../lib/product';
 import { isGenericCheckoutMode } from '../lib/checkout';
+import { isFuneralApprovedCheckout } from '../lib/funeral-approved-checkout';
 import { toast } from '../store/toastStore';
 
 /**
@@ -19,6 +20,14 @@ import { toast } from '../store/toastStore';
  */
 export function TopStepper() {
   const checkout = useWizardStore((s) => s.checkout);
+  const checkoutRules = useWizardStore((s) => s.checkoutRules);
+  const funeralApproved = useWizardStore((s) =>
+    isFuneralApprovedCheckout({
+      funeralApprovedCheckout: s.funeralApprovedCheckout,
+      checkoutRules: s.checkoutRules,
+      product: s.product,
+    }),
+  );
   const step = useWizardStore((s) => s.step);
   const ocrDone = useWizardStore((s) => s.ocrDone);
   const documents = useWizardStore((s) => s.documents);
@@ -27,6 +36,7 @@ export function TopStepper() {
   const [navigating, setNavigating] = useState(false);
 
   if (isGenericCheckoutMode({ checkout })) return null;
+  if (funeralApproved || checkoutRules?.hideNavigation) return null;
 
   const navSnapshot = {
     step,

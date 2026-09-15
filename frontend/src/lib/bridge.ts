@@ -19,6 +19,10 @@
 
 import { useWizardStore } from '../store/wizardStore';
 import { resolveNexusApiUrl } from '../nexus/nexus-core';
+import {
+  adoptNexusTokenFromUrl,
+  getNexusTokenFromUrl,
+} from './nexus-token-client';
 import { canNavigateToStep, getDefaultRequiredDocs } from './wizard-navigation';
 import { getProductConfig } from './product';
 import { BUILDER_PRODUCT_STORAGE_KEY, isExelixiCatalogFlow, ensureExelixiFlowQueryParam } from './exelixi-catalog';
@@ -28,18 +32,9 @@ import {
   isValidCheckoutInput,
   parseCheckoutRules,
   quoteFromCheckout,
+  applySsoCheckoutMetadata,
 } from './checkout';
-import { getSsoMetadataFromBrowser } from './sso-metadata';
-import type { CanalVisibility } from './canal-visibility';
-import { resolveEntityFromMetadata, visibilityMatchesEntity } from './canal-visibility';
 import type { CheckoutPayer } from '../types';
-
-const CANAL_META_KEYS = [
-  'centidad', 'citem', 'cproducto', 'cramo', 'cproductor',
-  'ccanalalt', 'cscanalalt', 'ccanalalt_in', 'cscanalalt_in',
-  'xform', 'xproducto', 'cgestor', 'ifrecuencia', 'frecuencia',
-  'fraccionado', 'forma_pago',
-] as const;
 
 // ── Configuración por puerto (dev local) o hostname (HTTPS sslip.io) ───────
 const PORT_TO_ORDER: Record<string, number> = {
@@ -123,22 +118,20 @@ function getSidFromUrl(): string | null {
   } catch { return null; }
 }
 
-function getNexusTokenFromUrl(): string | null {
-  try {
-    return new URL(window.location.href).searchParams.get('nexus_token');
-  } catch { return null; }
-}
-
 function moduleOrder(): number | null {
   const envOrder = import.meta.env.VITE_BRIDGE_MODULE_ORDER;
   if (envOrder) {
     const n = Number(envOrder);
-    return Number.isFinite(n) ? n : null;
+    if (Number.isFinite(n)) return n;
   }
   const fromPath = matchPathPrefix(PATH_PREFIX_TO_ORDER);
   if (fromPath !== null) return fromPath;
-  const host = window.location.hostname;
+  const host = window.location.hostname.toLowerCase();
   if (HOST_TO_ORDER[host]) return HOST_TO_ORDER[host];
+  if (host.startsWith('ocr.')) return 1;
+  if (host.startsWith('formulario.') || host.startsWith('form.')) return 2;
+  if (host.startsWith('emision.')) return 3;
+  if (host.startsWith('pagos.')) return 4;
   const port = window.location.port || '';
   return PORT_TO_ORDER[port] ?? null;
 }
@@ -237,7 +230,17 @@ function makeBridge(): BridgeAPI {
     }
     // Limpieza de datos fantasma y bloqueo de producto en la sesión backend
     const isCatalogFlow = isExelixiCatalogFlow();
-    const prod = sessionStorage.getItem('exelixi_product') || 'rcv';
+    const urlProduct =
+      typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search).get('product')
+        : null;
+    const storedProd = sessionStorage.getItem('exelixi_product');
+    const isFuneral =
+      out.product === 'funerario'
+      || storedProd === 'funerario'
+      || urlProduct === 'funerario'
+      || Boolean(out.funeralSubmissionId);
+    const prod = isFuneral ? 'funerario' : (storedProd || urlProduct || 'rcv');
     if (!isCatalogFlow) {
       if (prod === 'funerario') {
         delete out.vehicle;
@@ -246,6 +249,11 @@ function makeBridge(): BridgeAPI {
       }
     }
     out.product = prod;
+    if (isFuneral) {
+      try {
+        sessionStorage.setItem('exelixi_product', 'funerario');
+      } catch { /* ignore */ }
+    }
     out.exelixiCatalogFlow = isCatalogFlow;
     try {
       const builderRaw = sessionStorage.getItem(BUILDER_PRODUCT_STORAGE_KEY);
@@ -257,15 +265,18 @@ function makeBridge(): BridgeAPI {
       sessionStorage.getItem(getModuleTokenKey()) ||
       getNexusTokenFromUrl();
     if (nexusToken) out.nexus_token = nexusToken;
+    // Solo OCR (order=1) persiste documents; otros módulos tienen slots idle que
+    // sobrescribirían el expediente procesado en la sesión del flujo.
+    if (order !== 1) delete out.documents;
     return out;
   };
 
   // Campos cuyo valor NO debe sobrescribirse durante la hidratación.
-  // Cada módulo gestiona su propio step interno (OCR=1, Form=2/3, Emisión=4, Pagos=5/6).
+  // OCR (order=1) conserva documents locales; el resto necesita el expediente del flujo.
   const HYDRATE_EXCLUDE = new Set([
     'step',
-    'documents',     // OCR mantiene su estado de progreso local
-    'quoteState',    // estados de UI transitorios
+    ...(order === 1 ? ['documents' as const] : []),
+    'quoteState',
     'quoteError',
     'paymentVerified', // debe confirmarse en este módulo, no heredarse del bridge
   ]);
@@ -280,7 +291,6 @@ function makeBridge(): BridgeAPI {
         || k === 'rules'
         || k === 'payload'
         || k === 'payer'
-        || k === 'canalVisibility'
       ) {
         continue;
       }
@@ -289,35 +299,9 @@ function makeBridge(): BridgeAPI {
     const set = (useWizardStore as unknown as { setState: (p: Partial<Record<string, unknown>>) => void }).setState;
     set(filtered);
 
-    const store = useWizardStore.getState();
-
-    const canalMeta: Record<string, unknown> = {
-      ...(getSsoMetadataFromBrowser() || {}),
-      ...(store.metadataCanal || {}),
-    };
-    if (data.metadataCanal && typeof data.metadataCanal === 'object') {
-      Object.assign(canalMeta, data.metadataCanal as Record<string, unknown>);
-    }
-    for (const key of CANAL_META_KEYS) {
-      if (data[key] != null && data[key] !== '') {
-        canalMeta[key] = data[key];
-      }
-    }
-    if (Object.keys(canalMeta).length > 0) {
-      store.setMetadataCanal(canalMeta);
-    }
-
-    const activeEntity = resolveEntityFromMetadata(canalMeta);
-    if (
-      data.canalVisibility
-      && typeof data.canalVisibility === 'object'
-      && visibilityMatchesEntity(data.canalVisibility as CanalVisibility, activeEntity)
-    ) {
-      store.setCanalVisibility(data.canalVisibility as CanalVisibility);
-    }
-
     const checkout = data.checkout;
     if (isValidCheckoutInput(checkout)) {
+      const store = useWizardStore.getState();
       // Forma canónica del store O metadata Nexus (rules/payload/payer) como en SSO.
       // Si la sesión bridge no trae rules/payload, conservar lo que ya hidrató el token.
       const rulesFromSession = parseCheckoutRules(
@@ -342,7 +326,45 @@ function makeBridge(): BridgeAPI {
       });
       store.setQuote(quoteFromCheckout(checkout), 'checkout-session');
       store.setQuoteState('ready');
+
+      // Canal: resto de metadata Nexus (frecuencia, fraccionado, etc.)
+      if (!store.metadataCanal) {
+        const canal: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(data)) {
+          if (
+            k === 'checkout'
+            || k === 'checkoutRules'
+            || k === 'checkoutPayload'
+            || k === 'checkoutPayer'
+            || k === 'rules'
+            || k === 'payload'
+            || k === 'payer'
+            || k === 'nexus_token'
+            || typeof v === 'function'
+          ) {
+            continue;
+          }
+          canal[k] = v;
+        }
+        if (Object.keys(canal).length > 0) {
+          store.setMetadataCanal(canal);
+        }
+      }
     }
+
+    if (data.funeralApprovedCheckout === true) {
+      try {
+        sessionStorage.setItem('exelixi_product', 'funerario');
+      } catch { /* ignore */ }
+      useWizardStore.getState().goTo(5);
+    }
+
+    applySsoCheckoutMetadata({
+      sessionMeta:
+        data.metadata && typeof data.metadata === 'object'
+          ? (data.metadata as Record<string, unknown>)
+          : null,
+    });
   };
 
   const hydrate = async () => {
@@ -379,7 +401,6 @@ function makeBridge(): BridgeAPI {
       }
       // eslint-disable-next-line no-console
       console.info('[bridge] hydrated session', sid);
-      window.dispatchEvent(new CustomEvent('bridge-hydrated'));
     } catch (e) {
       // eslint-disable-next-line no-console
       console.warn('[bridge] hydrate failed', e);
@@ -485,6 +506,8 @@ function makeBridge(): BridgeAPI {
 
 async function init() {
   let bridge = makeBridge();
+
+  adoptNexusTokenFromUrl(getModuleTokenKey());
 
   // Si no hay sid pero hay nexus_token, intentar auto-arranque del flujo
   if (!bridge.active && typeof window !== 'undefined') {

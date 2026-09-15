@@ -81,9 +81,25 @@ async function nexusAuth(req, res, next) {
         if (decoded && typeof decoded === 'object') {
           req.nexusMetadata = decoded.metadata || {};
         }
-      } catch { /* ignore */ }
+      } catch { /* ignorar token malformado en bypass */ }
     }
 
+    return next();
+  }
+
+  // Activación tarjeta farmacia — cadena sin nexus_token
+  const tarjetaFlowHeader = req.headers['x-rcv-tarjeta-flow'];
+  const tarjetaPublicFlow =
+    process.env.TARJETA_ACTIVACION_PUBLIC === 'true'
+    && !token
+    && (tarjetaFlowHeader === '1' || tarjetaFlowHeader === 1);
+  if (tarjetaPublicFlow) {
+    req.empresa = {
+      id: 0,
+      nombre: process.env.EXPEDIENTE_EMPRESA_FALLBACK || 'La Mundial de Seguros',
+    };
+    req.submoduloId = EXPECTED_SUBMODS.length > 0 ? EXPECTED_SUBMODS[0] : 17;
+    req.tarjetaPublicFlow = true;
     return next();
   }
   // -----------------------------------

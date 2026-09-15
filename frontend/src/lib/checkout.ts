@@ -1,14 +1,138 @@
 import type {
   CheckoutData,
+  CheckoutPayer,
   CheckoutRules,
   PolicyQuote,
   WizardState,
 } from '../types';
 import { useWizardStore } from '../store/wizardStore';
-import { effectiveCanalVisibility } from './canal-visibility';
-import { getSsoMetadataFromBrowser } from './sso-metadata';
+import { decodeNexusTokenMetadata, getNexusToken } from './nexus-token-client';
+import { shouldSkipTarjetaPayment } from './rcv-tarjeta-flow';
 
-export { getSsoMetadataFromBrowser } from './sso-metadata';
+const NEXUS_TOKEN_KEY = 'nexus_access_token_pagos';
+
+const SSO_NESTED_KEYS = new Set(['checkout', 'rules', 'payer', 'payload']);
+
+function getAccessTokenFromBrowser(): string | null {
+  if (typeof window === 'undefined') return null;
+  return getNexusToken(NEXUS_TOKEN_KEY);
+}
+
+/** Metadata SSO del JWT (con o sin bridge ?sid=). */
+export function readSsoMetadataFromToken(): Record<string, unknown> | null {
+  if (typeof window === 'undefined') return null;
+  const token = getAccessTokenFromBrowser();
+  if (!token) return null;
+  return decodeNexusTokenMetadata(token);
+}
+
+/** Metadata SSO sin bridge activo (entrada directa Pagos). */
+export function getSsoMetadataFromBrowser(): Record<string, unknown> | null {
+  if (typeof window === 'undefined') return null;
+  if (new URLSearchParams(window.location.search).get('sid')) return null;
+  return readSsoMetadataFromToken();
+}
+
+function extractCanalFields(meta: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(meta)) {
+    if (!SSO_NESTED_KEYS.has(key)) out[key] = value;
+  }
+  return out;
+}
+
+function mergeCheckoutRules(
+  existing: CheckoutRules | null,
+  incoming: CheckoutRules | null,
+): CheckoutRules | null {
+  if (!incoming) return existing;
+  if (!existing) return incoming;
+  return {
+    ...existing,
+    ...incoming,
+    onSuccess: { ...existing.onSuccess, ...incoming.onSuccess },
+  };
+}
+
+/**
+ * Fusiona checkout/rules del JWT SSO y de la sesión bridge en el store.
+ * - Sin ?sid=: checkout genérico embebido (salta al paso de pago).
+ * - Con ?sid=: conserva cotización del wizard; aplica rules/payload del integrador.
+ */
+export function applySsoCheckoutMetadata(opts?: {
+  sessionMeta?: Record<string, unknown> | null;
+}): boolean {
+  if (typeof window === 'undefined') return false;
+
+  const hasSid = Boolean(new URLSearchParams(window.location.search).get('sid'));
+  const store = useWizardStore.getState();
+
+  const sources: Record<string, unknown>[] = [];
+  if (opts?.sessionMeta && typeof opts.sessionMeta === 'object') {
+    sources.push(opts.sessionMeta);
+  }
+  const canal = store.metadataCanal;
+  if (canal && typeof canal === 'object') sources.push(canal);
+  const tokenMeta = readSsoMetadataFromToken();
+  if (tokenMeta) sources.push(tokenMeta);
+
+  if (sources.length === 0) return false;
+
+  let rules = store.checkoutRules;
+  let payer: CheckoutPayer | null = store.checkoutPayer;
+  let payload = store.checkoutPayload;
+  let checkout: CheckoutData | null = null;
+  let canalFields: Record<string, unknown> = {};
+
+  for (const src of sources) {
+    canalFields = { ...canalFields, ...extractCanalFields(src) };
+    if (src.rules) {
+      rules = mergeCheckoutRules(rules, parseCheckoutRules(src.rules));
+    }
+    if (src.payer && typeof src.payer === 'object') {
+      payer = src.payer as CheckoutPayer;
+    }
+    if (src.payload && typeof src.payload === 'object') {
+      payload = {
+        ...(payload ?? {}),
+        ...(src.payload as Record<string, unknown>),
+      };
+    }
+    if (isValidCheckoutInput(src.checkout)) checkout = src.checkout;
+  }
+
+  if (Object.keys(canalFields).length > 0) {
+    store.setMetadataCanal({ ...(store.metadataCanal ?? {}), ...canalFields });
+  }
+
+  const standaloneGeneric = !hasSid && checkout !== null;
+  let applied = Object.keys(canalFields).length > 0;
+
+  if (checkout && (standaloneGeneric || !store.quote)) {
+    store.setCheckout({
+      data: checkout,
+      rules,
+      payer,
+      payload,
+    });
+    store.setQuote(quoteFromCheckout(checkout), 'checkout-metadata');
+    store.setQuoteState('ready');
+    applied = true;
+  } else if (rules || payer || payload) {
+    useWizardStore.setState({
+      checkoutRules: rules,
+      checkoutPayer: payer,
+      checkoutPayload: payload,
+    });
+    applied = true;
+  }
+
+  if (standaloneGeneric) {
+    store.goTo(5);
+  }
+
+  return applied;
+}
 
 /** Sesión Pagos standalone con checkout en metadata (antes de hidratar el store). */
 export function isStandaloneGenericCheckoutSession(): boolean {
@@ -22,34 +146,7 @@ export function isStandaloneGenericCheckoutSession(): boolean {
  * Si ya hay checkout en el store (p. ej. bridge hidrató la sesión), no pisa.
  */
 export function hydrateCheckoutFromAccessToken(): boolean {
-  const meta = getSsoMetadataFromBrowser();
-  if (!meta) return false;
-
-  const { checkout, rules, payer, payload: opaque, ...canal } = meta;
-  const store = useWizardStore.getState();
-
-  if (Object.keys(canal).length > 0) {
-    store.setMetadataCanal({ ...(store.metadataCanal || {}), ...canal });
-  }
-
-  if (!isValidCheckoutInput(checkout)) return false;
-
-  // Bridge (?sid=) puede llegar después y sobrescribir; no pisar si ya hay checkout.
-  if (hasGenericCheckout(store)) return true;
-
-  store.setCheckout({
-    data: checkout,
-    rules: parseCheckoutRules(rules),
-    payer: payer && typeof payer === 'object' ? (payer as never) : null,
-    payload:
-      opaque && typeof opaque === 'object'
-        ? (opaque as Record<string, unknown>)
-        : null,
-  });
-  store.setQuote(quoteFromCheckout(checkout), 'checkout-metadata');
-  store.setQuoteState('ready');
-  store.goTo(5);
-  return true;
+  return applySsoCheckoutMetadata();
 }
 
 /** Activo cuando la sesión trae un checkout con monto válido. */
@@ -113,7 +210,7 @@ export function getCheckoutNotifyUrl(
   return null;
 }
 
-/** URL a la que volver tras pagar (Hogar/Condominio SSO: payload.successUrl). */
+/** URL a la que volver tras pagar (SSO embebido: payload.successUrl o rules.onSuccess.redirectUrl). */
 export function getGenericCheckoutReturnUrl(
   payload: Record<string, unknown> | null | undefined,
   rules?: CheckoutRules | null,
@@ -126,11 +223,9 @@ export function getGenericCheckoutReturnUrl(
   } else {
     url = asHttpUrl(p.successUrl) || asHttpUrl(rules?.onSuccess?.redirectUrl);
   }
-  // payload.returnUrl es el fallback general, independiente del estado
   return url || asHttpUrl(p.returnUrl);
 }
 
-/** Añade status / idOperacion al return URL si el portal no los trae. */
 function withCheckoutReturnParams(
   url: string,
   status: 'success' | 'failed',
@@ -141,9 +236,7 @@ function withCheckoutReturnParams(
     if (!u.searchParams.get('status') && !u.searchParams.get('paymentStatus')) {
       u.searchParams.set('status', status === 'success' ? 'ok' : 'error');
     }
-    const id = String(
-      payload?.idOperacion || payload?.referenceId || '',
-    ).trim();
+    const id = String(payload?.idOperacion || payload?.referenceId || '').trim();
     if (id && !u.searchParams.get('idOperacion') && !u.searchParams.get('referenceId')) {
       u.searchParams.set('idOperacion', id);
     }
@@ -153,10 +246,7 @@ function withCheckoutReturnParams(
   }
 }
 
-/**
- * Checkout embebido (Hogar/Condominio): no hay botón Continuar.
- * Tras autorizar pago o domiciliación, vuelve al portal origen.
- */
+/** Checkout embebido: redirige al portal origen tras pago (respeta autoRedirect / redirectDelayMs). */
 export function scheduleGenericCheckoutReturn(params: {
   checkoutPayload: Record<string, unknown> | null;
   checkoutRules: CheckoutRules | null;
@@ -204,20 +294,83 @@ export function parseCheckoutRules(raw: unknown): CheckoutRules | null {
   return raw as CheckoutRules;
 }
 
+/** Redirige al origen tras pago SSO (rompe iframe si aplica). */
+export function redirectCheckoutOnSuccess(rules?: CheckoutRules | null): boolean {
+  const raw = rules?.onSuccess?.redirectUrl?.trim();
+  if (!raw || rules?.onSuccess?.mode !== 'redirect') return false;
+
+  let redirectUrl = raw;
+  try {
+    const u = new URL(raw);
+    if (!u.searchParams.has('status')) {
+      u.searchParams.set('status', 'ok');
+    }
+    redirectUrl = u.toString();
+  } catch {
+    redirectUrl = raw.includes('?') ? `${raw}&status=ok` : `${raw}?status=ok`;
+  }
+
+  const useTop =
+    rules.onSuccess.target === '_top' ||
+    (typeof window !== 'undefined' && window.self !== window.top);
+
+  try {
+    if (useTop && window.top) {
+      window.top.location.href = redirectUrl;
+    } else {
+      window.location.href = redirectUrl;
+    }
+    return true;
+  } catch {
+    window.location.href = redirectUrl;
+    return true;
+  }
+}
+
+/**
+ * Avisa al padre (iframe cross-origin) y redirige si aplica.
+ * Auto Casa / portales escuchan postMessage con paymentVerified + idOperacion.
+ */
+export function completeCheckoutOnSuccess(opts: {
+  rules?: CheckoutRules | null;
+  payload?: Record<string, unknown> | null;
+  payment?: Record<string, unknown> | null;
+  code?: string;
+}): void {
+  if (typeof window === 'undefined') return;
+
+  const redirectUrl = opts.rules?.onSuccess?.redirectUrl?.trim() || null;
+  const idOperacion =
+    (opts.payload?.idOperacion as string | undefined) ??
+    (opts.payload?.id_operacion as string | undefined) ??
+    null;
+
+  if (window.parent !== window) {
+    window.parent.postMessage(
+      {
+        type: 'payment.success',
+        event: 'payment.success',
+        paymentVerified: true,
+        status: 'ok',
+        code: opts.code ?? 'ACCP',
+        idOperacion,
+        referenceId: idOperacion,
+        redirectUrl,
+        payment: opts.payment ?? null,
+      },
+      '*',
+    );
+  }
+
+  redirectCheckoutOnSuccess(opts.rules);
+}
+
 /** ¿Exige pago verificado antes de continuar? */
 export function requiresPaymentBeforeContinue(
-  state: Pick<WizardState, 'checkout' | 'checkoutRules' | 'canalVisibility' | 'metadataCanal'>,
+  state: Pick<WizardState, 'checkout' | 'checkoutRules' | 'metadataCanal'>,
   funeralFlow: boolean,
 ): boolean {
-  const canal = effectiveCanalVisibility(state.canalVisibility, state.metadataCanal);
-  const canalRequired = canal?.ui
-    ? canal.ui.mostrarPasoPago
-      && canal.ui.requierePagoVerificado
-    : null;
-
-  if (canalRequired === false) return false;
-  if (canalRequired === true) return true;
-
+  if (shouldSkipTarjetaPayment(state.metadataCanal)) return false;
   if (hasGenericCheckout(state)) {
     return state.checkoutRules?.requirePayment !== false;
   }

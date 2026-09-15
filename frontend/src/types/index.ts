@@ -1,6 +1,13 @@
-import type { CanalVisibility } from '../lib/canal-visibility';
+export type DocType =
+  | 'cedula'
+  | 'cedula_titular'
+  | 'cedula_beneficiario'
+  | 'licencia'
+  | 'certificado'
+  | 'rif'
+  | 'pasaporte';
 
-export type DocType = 'cedula' | 'licencia' | 'certificado' | 'rif';
+export type { DiligenciaState, TipoDiligencia } from '../lib/diligencia';
 
 /** Producto de seguro que se está suscribiendo en el flujo. */
 export type ProductId = 'rcv' | 'funerario';
@@ -64,6 +71,11 @@ export type TomadorData = {
   cestado?: number;
   /** Código numérico La Mundial de la ciudad (cciudad). Se obtiene del selector de catálogo. */
   cciudad?: number;
+  cprofesion?: number | string;
+  cactividad?: number | string;
+  xprofesion?: string;
+  xactividad?: string;
+  itipoDiligencia?: 'S' | 'C';
 };
 
 export type PersonData = {
@@ -99,8 +111,6 @@ export interface Plan {
   sumaAsegurada: number;
   /** Sufijo opcional para la suma asegurada (ej. "/unidad") */
   sumaAseguradaUnit?: string;
-  /** Producto Sis2000 — usado para visibilidad de canal y reglas de pago */
-  cproducto?: string;
 }
 
 export type PaymentMethod = 'card' | 'transfer' | 'mobile' | 'otp' | 'domiciliacion';
@@ -108,9 +118,13 @@ export type PaymentMethod = 'card' | 'transfer' | 'mobile' | 'otp' | 'domiciliac
 /** Datos del pago verificado para activar recibo en Sis2000 al emitir. */
 export interface PaymentCapture {
   reference?: string;
+  /** Alias Sis2000 / ingreso de caja (xreferencia). */
+  xreferencia?: string;
   transactionId?: string;
   amount?: number;
   paidOn?: string;
+  /** bfactura=1: pago en farmacia; referencia = nfactura fiscal. */
+  tarjetaFarmacia?: boolean;
   /** Método con el que se cobró la 1ª cuota / pago (mobile | otp | …). */
   method?: PaymentMethod;
   /** Código banco origen (cbanco_ref) usado en la verificación móvil. */
@@ -131,7 +145,7 @@ export interface PaymentCapture {
   numeroCuenta?: string;
   /** Domiciliación SyPago: titular de la cuenta. */
   titularCuenta?: string;
-  /** Domiciliación: correo para notificaciones de cobro/rechazo (obligatorio en el servicio). */
+  /** Domiciliación: correo para notificaciones de cobro/rechazo. */
   correo?: string;
   /** ID de afiliación SyPago tras registrar la domiciliación. */
   sypagoAfiliacionId?: string;
@@ -172,13 +186,20 @@ export interface CheckoutRules {
   requireFirstPayment?: boolean;
   /** Tras la 1ª cuota, exigir domiciliación SyPago. */
   requireDomiciliacion?: boolean;
-  /** Tras verificar/autorizar, redirige a payload.successUrl (SSO Hogar/Condominio). */
+  /** Funerario aprobado: no editar datos del wizard */
+  lockFields?: boolean;
+  /** Ocultar stepper / navegación a pasos anteriores */
+  hideNavigation?: boolean;
+  /** Tras pago SSO embebido, volver al portal origen (default true). */
   autoRedirect?: boolean;
+  /** Espera antes de redirigir (ms). Default 2000. */
   redirectDelayMs?: number;
   onSuccess?: {
     mode?: CheckoutOnSuccessMode;
     redirectUrl?: string;
     webhookUrl?: string;
+    /** Salir del iframe al redirigir (ej. `_top`). */
+    target?: string;
   };
 }
 
@@ -232,7 +253,9 @@ export interface FuneralData {
 export interface VehicleData {
   placa: string;
   /** Tipo de placa: nacional (formato venezolano AAA000A/AAA000) o extranjera. */
-  tipoPlaca: 'nacional' | 'extranjera';
+  tipoPlaca: 'nacional' | 'extranjera' | 'binacional';
+  /** Certificado circulación binacional (handoff OCR). */
+  tipoCarnet?: 'nacional' | 'binacional';
   marca: string;   // nombre descriptivo (ej. "TOYOTA") — para display
   modelo: string;  // nombre descriptivo (ej. "COROLLA") — para display
   año: string;
@@ -340,6 +363,12 @@ export interface WizardState {
   checkoutPayer: CheckoutPayer | null;
   /** Metadata canal SSO (cproductor, cramo, etc.) — igual que emisión. */
   metadataCanal: Record<string, unknown> | null;
-  /** Reglas de visibilidad del canal (SysIP / nest-api). */
-  canalVisibility: CanalVisibility | null;
+  diligencia: import('../lib/diligencia').DiligenciaState | null;
+  /** Link de pago post-aprobación funerario */
+  funeralApprovedCheckout?: boolean;
+  funeralSubmissionId?: string;
+  /** SID OCR original (el checkout crea otro SID). */
+  originSessionId?: string;
+  funeralPaymentExpiresAt?: string;
+  paymentSid?: string;
 }

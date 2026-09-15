@@ -17,7 +17,6 @@ import type {
   CheckoutRules,
   CheckoutPayer,
 } from '../types';
-import type { CanalVisibility } from '../lib/canal-visibility';
 
 const defaultDoc = (): DocumentState => ({ status: 'idle', progress: 0 });
 
@@ -113,7 +112,6 @@ interface WizardActions {
     payload?: Record<string, unknown> | null;
   }) => void;
   setMetadataCanal: (data: Record<string, unknown> | null) => void;
-  setCanalVisibility: (data: CanalVisibility | null) => void;
 }
 
 const initialState: WizardState = {
@@ -121,9 +119,12 @@ const initialState: WizardState = {
   product: 'rcv',
   documents: {
     cedula: defaultDoc(),
+    cedula_titular: defaultDoc(),
+    cedula_beneficiario: defaultDoc(),
     licencia: defaultDoc(),
     certificado: defaultDoc(),
     rif: defaultDoc(),
+    pasaporte: defaultDoc(),
   },
   ocrDone: false,
   tomador: defaultTomador(),
@@ -153,7 +154,12 @@ const initialState: WizardState = {
   checkoutPayload: null,
   checkoutPayer: null,
   metadataCanal: null,
-  canalVisibility: null,
+  diligencia: null,
+  funeralApprovedCheckout: false,
+  funeralSubmissionId: undefined,
+  originSessionId: undefined,
+  funeralPaymentExpiresAt: undefined,
+  paymentSid: undefined,
 };
 
 export const useWizardStore = create<WizardState & WizardActions>()((set) => ({
@@ -234,8 +240,6 @@ export const useWizardStore = create<WizardState & WizardActions>()((set) => ({
     }),
 
   setMetadataCanal: (metadataCanal) => set({ metadataCanal }),
-
-  setCanalVisibility: (canalVisibility) => set({ canalVisibility }),
 
   setPolicy: (policy) => set({ policy }),
 

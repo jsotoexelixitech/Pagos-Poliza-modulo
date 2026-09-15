@@ -8,20 +8,26 @@ import {
   Check, Receipt, Sparkles, Loader2, BadgeCheck, AlertTriangle,
   CheckCircle2, XCircle, RefreshCw, Send, ClipboardCheck,
 } from 'lucide-react';
-import { formatUsdShort, vesAnnual } from '../../lib/money';
-import { formatTelefono, phoneDigits, isCompletePhoneVe, PHONE_MASK_MAX_LENGTH } from '../../lib/phone';
+import { formatUsdShort, formatQuoteUsdMoney, formatQuoteVesLabel, formatQuoteVesPaymentInput, formatQuoteTasa } from '../../lib/money';
+import { formatTelefono, FORMATTED_PHONE_MAX_LENGTH, isValidPhonePrefix, phoneDigitsOnly } from '../../lib/phone';
 import { formatCedulaRif, validateCedulaRif } from '../../lib/cedula-rif';
 import { useProductConfig } from '../../hooks/useProductConfig';
-import { isExelixiCatalogProduct } from '../../lib/product';
+import { isExelixiCatalogProduct, getProductConfig } from '../../lib/product';
+import {
+  getCuotasByFrecuencia,
+  resolveFrecuenciaAmounts,
+  resolveWizardFrecuenciaCode,
+  resolveRcvQuoteBasis,
+} from '../../lib/frecuencia';
 import {
   getCheckoutPaymentConcept,
+  isEmbeddedMetadataCheckout,
   isGenericCheckoutMode,
   isPaymentBypassEnabled,
   scheduleGenericCheckoutReturn,
 } from '../../lib/checkout';
-import { notifyClientCheckoutStatus, mergePaymentNotifyFields } from '../../lib/checkout-notify';
-import { isPaymentMethodEnabled, isPagoFraccionado, resolveCheckoutFrecuencia } from '../../lib/payment-methods';
-import { allowsEmitPending, isCanalPaymentMethodAllowed } from '../../lib/canal-visibility';
+import { notifyClientCheckoutStatus } from '../../lib/checkout-notify';
+import { isPaymentMethodEnabled, isPagoFraccionado } from '../../lib/payment-methods';
 import {
   releaseEmissionPopupSlots,
   reserveEmissionPopupSlots,
@@ -30,6 +36,15 @@ import { BANCOS_VE } from '../../lib/bancos-ve';
 import { useBancosSypago } from '../../hooks/useBancosSypago';
 import { getCheckoutPolicyRef } from '../../lib/domiciliacion';
 import { DomiciliacionForm } from './DomiciliacionForm';
+import { isFuneralApprovedCheckout, isFuneralPaymentLinkExpired } from '../../lib/funeral-approved-checkout';
+import {
+  applyTarjetaFarmaciaPaymentSkip,
+  getTarjetaPlanCmoneda,
+  resolveTarjetaPaymentMeta,
+  shouldSkipTarjetaPayment,
+  shouldUseTarjetaPublicApi,
+  tarjetaQuoteShowsVes,
+} from '../../lib/rcv-tarjeta-flow';
 
 const EMPRESA_ID = Number(import.meta.env.VITE_EMPRESA_ID ?? 1);
 
@@ -46,6 +61,8 @@ import {
   type SypagoOtpConfirmResponse,
   SypagoError,
   quotePolicy,
+  validateFuneralEmission,
+  PolicyEmitError,
 } from '../../lib/api';
 
 /** Pago móvil usa SUDEBAN local (Meritop / Banco Activo), no la red SyPago. */
@@ -57,7 +74,6 @@ const PAYMENT_OPTIONS: {
   sub: string;
   Icon: React.ElementType;
 }[] = [
-  // { method: 'transfer', label: 'Transferencia',  sub: 'Referencia bancaria',     Icon: Building2  },
   { method: 'mobile',        label: 'Pago móvil',      sub: 'Banco Activo · Verificación automática', Icon: Smartphone },
   { method: 'otp',           label: 'Débito OTP',      sub: 'SyPago · Débito directo', Icon: KeyRound   },
   { method: 'domiciliacion', label: 'Domiciliación',   sub: 'SyPago · Débito automático de recibos', Icon: Landmark },
@@ -71,24 +87,36 @@ const TODAY_ISO = new Date().toISOString().split('T')[0];
 type PaymentStepProps = {
   /** RCV: tras verificar pago, emite póliza y activa recibo en Sis2000. */
   onPaymentVerified?: (ctx: PaymentEmitContext) => void | Promise<void>;
+  /** Checkout SSO embebido: continuar tras pago (redirect / webhook). */
+  onGenericCheckoutComplete?: () => void | Promise<void>;
 };
 
-export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
+export function PaymentStep({
+  onPaymentVerified,
+  onGenericCheckoutComplete,
+}: PaymentStepProps = {}) {
   const bancosSypago = useBancosSypago();
   const {
     paymentMethod, setPaymentMethod,
-    selectedPlan, quote, quoteState, vehicle,
+    selectedPlan, quote, quoteState, vehicle, rcv, funeral,
     checkout, checkoutRules, checkoutPayer, checkoutPayload,
-    tomador, rcv, funeral, metadataCanal, canalVisibility,
+    tomador, product: wizardProduct, funeralApprovedCheckout, funeralPaymentExpiresAt,
+    sameInsured, asegurado, hasBeneficiary, beneficiario, metadataCanal,
     setQuote, setQuoteState,
     setPaymentVerified,
     setPaymentCapture,
   } = useWizardStore();
 
+  const product = getProductConfig();
+  const frecuenciaCode = resolveWizardFrecuenciaCode(product.hasVehicle, rcv?.frecuencia, funeral?.frecuencia);
+  const quoteBasis = resolveRcvQuoteBasis(vehicle?.tipoPlaca, rcv?.frecuencia, vehicle?.tipoCarnet);
+
   const genericCheckout = isGenericCheckoutMode({ checkout });
-  const emitPendingMode = allowsEmitPending(canalVisibility, metadataCanal);
-  const bridgeChained = typeof window !== 'undefined'
-    && Boolean(new URLSearchParams(window.location.search).get('sid'));
+  const funeralApproved = isFuneralApprovedCheckout({
+    funeralApprovedCheckout,
+    checkoutRules,
+    product: wizardProduct,
+  });
   const qaMobileBypass = isPaymentBypassEnabled();
   // Piloto Exélixi o QA RCV: el pago móvil se simula (sin conexión bancaria real).
   const mobilePaymentSimulated = !genericCheckout && (isExelixiCatalogProduct() || qaMobileBypass);
@@ -96,48 +124,53 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
   const producto = new URLSearchParams(window.location.search).get('product') as 'rcv' | 'funerario' ?? 'rcv';
   const { config } = useProductConfig(EMPRESA_ID, producto, 'pagos');
 
-  const frecuenciaCode = resolveCheckoutFrecuencia({
-    checkoutPayload,
-    metadataCanal,
-    rcvFrecuencia: rcv?.frecuencia,
-    funeralFrecuencia: funeral?.frecuencia,
-    preferWizardFrecuencia: bridgeChained && !genericCheckout,
-  });
-
-  const pagoFraccionado = isPagoFraccionado({
-    fraccionado:
-      checkoutRules?.fraccionado ??
-      checkoutPayload?.fraccionado ??
-      metadataCanal?.fraccionado,
-    formaPago:
-      checkoutPayload?.forma_pago ??
-      checkoutPayload?.formaPago ??
-      metadataCanal?.forma_pago,
-    frecuencia: frecuenciaCode,
-  });
-
   /**
-   * Fraccionado + 1ª cuota: Autocasco manda requireFirstPayment en payload.
-   * Legacy (solo methods: ['domiciliacion']): un solo paso de domiciliación.
+   * Flujo wizard RCV/funerario: la frecuencia del bridge (rcv/funeral) manda.
+   * metadataCanal/JWT puede traer ifrecuencia distinta (SSO legacy) y activaba
+   * domiciliación con montos anuales.
    */
+  const pagoFraccionado = genericCheckout
+    ? isPagoFraccionado({
+        fraccionado:
+          checkoutRules?.fraccionado ??
+          checkoutPayload?.fraccionado ??
+          metadataCanal?.fraccionado,
+        formaPago:
+          checkoutPayload?.forma_pago ??
+          checkoutPayload?.formaPago ??
+          metadataCanal?.forma_pago,
+        frecuencia:
+          checkoutPayload?.ifrecuencia ??
+          checkoutPayload?.frecuencia ??
+          metadataCanal?.ifrecuencia ??
+          metadataCanal?.frecuencia ??
+          frecuenciaCode,
+      })
+    : isPagoFraccionado({ frecuencia: frecuenciaCode });
+
+  /** Domiciliación SyPago: solo pago fraccionado o más de 1 cuota (M/T/S/C…), no anual. */
+  const offerDomiciliacion = genericCheckout
+    ? (pagoFraccionado || getCuotasByFrecuencia(frecuenciaCode) > 1)
+    : getCuotasByFrecuencia(frecuenciaCode) > 1;
+
   const requireFirstThenDomiciliar = (() => {
-    if (!pagoFraccionado) return false
+    if (!pagoFraccionado) return false;
     if (
       checkoutPayload?.requireFirstPayment === true
       || checkoutRules?.requireFirstPayment === true
     ) {
-      return true
+      return true;
     }
     if (
       checkoutPayload?.requireFirstPayment === false
       || checkoutRules?.requireFirstPayment === false
     ) {
-      return false
+      return false;
     }
-    const methods = checkoutRules?.methods || []
-    if (methods.length === 1 && methods[0] === 'domiciliacion') return false
-    return !methods.length || methods.some((m) => m === 'mobile' || m === 'otp')
-  })()
+    const methods = checkoutRules?.methods || [];
+    if (methods.length === 1 && methods[0] === 'domiciliacion') return false;
+    return !methods.length || methods.some((m) => m === 'mobile' || m === 'otp');
+  })();
 
   const [fraccionPhase, setFraccionPhase] = useState<'cobro' | 'domiciliar'>(
     requireFirstThenDomiciliar ? 'cobro' : 'domiciliar',
@@ -159,10 +192,6 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
   }, [requireFirstThenDomiciliar, firstCuotaCapture, fraccionPhase]);
 
   const availableMethods = PAYMENT_OPTIONS.filter(opt => {
-    // Domiciliación solo para fraccionado (M/T/S). Anual/contado: pago móvil u OTP.
-    if (opt.method === 'domiciliacion' && !pagoFraccionado) {
-      return false;
-    }
     if (requireFirstThenDomiciliar) {
       if (fraccionPhase === 'cobro') {
         return opt.method === 'mobile' || opt.method === 'otp';
@@ -170,12 +199,17 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       return opt.method === 'domiciliacion';
     }
     if (pagoFraccionado) return opt.method === 'domiciliacion';
-    // QA / piloto: pago móvil simulado (sin OTP ni domiciliación en anual).
+    if (opt.method === 'domiciliacion') {
+      if (genericCheckout && checkoutRules?.methods?.length) {
+        return checkoutRules.methods.includes('domiciliacion');
+      }
+      if (!offerDomiciliacion) return false;
+      return isPaymentMethodEnabled(opt.method, config?.metodos);
+    }
     if (mobilePaymentSimulated) {
       return opt.method === 'mobile';
     }
     if (!isPaymentMethodEnabled(opt.method, config?.metodos)) return false;
-    if (!isCanalPaymentMethodAllowed(opt.method, canalVisibility, metadataCanal)) return false;
     if (genericCheckout && checkoutRules?.methods?.length) {
       return checkoutRules.methods.includes(opt.method);
     }
@@ -191,13 +225,14 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
 
   useEffect(() => {
     if (!requireFirstThenDomiciliar) return;
-    if (fraccionPhase === 'cobro' && (paymentMethod === 'domiciliacion')) {
+    if (fraccionPhase === 'cobro' && paymentMethod === 'domiciliacion') {
       setPaymentMethod('mobile');
     }
     if (fraccionPhase === 'domiciliar' && paymentMethod !== 'domiciliacion') {
       setPaymentMethod('domiciliacion');
     }
   }, [requireFirstThenDomiciliar, fraccionPhase, paymentMethod, setPaymentMethod]);
+
   /** Tras 1º cuota en fraccionado: no cerrar checkout; pasar a domiciliar. */
   function completeFirstCuotaOrFinish(capture: PaymentCapture) {
     if (requireFirstThenDomiciliar && fraccionPhase === 'cobro') {
@@ -268,6 +303,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
   const [verifyError,  setVerifyError]  = useState<string>('');
   const autoEmitStarted = useRef(false);
   const autoVerifyStarted = useRef(false);
+  const genericCheckoutCompleteStarted = useRef(false);
 
   const triggerAutoEmit = async (capture: PaymentCapture) => {
     if (!onPaymentVerified || autoEmitStarted.current) return;
@@ -280,60 +316,28 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
     }
   };
 
-  /**
-   * Acciones comunes post-pago exitoso:
-   *   1. Dispara auto-emisión (si aplica).
-   *   2. Notifica al cliente origen con el resultado del pago.
-   *   3. Programa la redirección de vuelta al portal (genericCheckout).
-   *
-   * Cada manejador (mobile, OTP, domiciliación) llama a esto tras
-   * actualizar su propio estado local (setVerifyStatus, setOtpStep, etc.).
-   */
-  async function handlePaymentSuccessActions(
-    capture: PaymentCapture,
-    notification: {
-      code: string;
-      message: string;
-      payment: Record<string, unknown>;
-    },
-  ) {
-    await triggerAutoEmit(capture);
-    await notifyClientCheckoutStatus({
-      checkout,
-      checkoutRules,
-      checkoutPayload,
-      paymentVerified: true,
-      code: notification.code,
-      message: notification.message,
-      payment: mergePaymentNotifyFields(capture, notification.payment),
-    });
-    if (genericCheckout) {
-      // Avisa al portal padre (iframe Autocasco) aunque falle el redirect.
-      try {
-        if (window.parent && window.parent !== window) {
-          const idOperacion =
-            checkoutPayload?.idOperacion
-            || checkout?.referenceId
-            || null;
-          window.parent.postMessage(
-            {
-              type: 'payment.success',
-              event: 'payment.success',
-              paymentVerified: true,
-              status: 'ok',
-              code: notification.code,
-              idOperacion,
-              referenceId: idOperacion,
-            },
-            '*',
-          );
-        }
-      } catch {
-        /* ignore */
+  const finishGenericCheckout = async () => {
+    if (!genericCheckout || !onGenericCheckoutComplete) return;
+    if (genericCheckoutCompleteStarted.current) return;
+    genericCheckoutCompleteStarted.current = true;
+    try {
+      if (
+        isEmbeddedMetadataCheckout({ checkout })
+        && scheduleGenericCheckoutReturn({ checkoutPayload, checkoutRules })
+      ) {
+        return;
       }
-      scheduleGenericCheckoutReturn({ checkoutPayload, checkoutRules });
+      await onGenericCheckoutComplete();
+    } catch {
+      genericCheckoutCompleteStarted.current = false;
     }
-  }
+  };
+
+  /** Tras pago verificado: auto-emite (RCV/funerario) o cierra checkout genérico. */
+  const completeCheckoutAfterPayment = async () => {
+    if (onPaymentVerified) return;
+    await finishGenericCheckout();
+  };
 
   // ── SyPago Débito OTP ─────────────────────────────────────────────────
   const [otpDocType,   setOtpDocType]   = useState('V');
@@ -356,6 +360,57 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
   // useRef garantiza que el bloqueo ocurre ANTES del siguiente render,
   // a diferencia de setState que necesita un ciclo para propagarse.
   const confirmInFlight = useRef(false);
+  const [funeralValidation, setFuneralValidation] = useState<'idle' | 'loading' | 'ok' | 'blocked'>('idle');
+  const [funeralValidationMsg, setFuneralValidationMsg] = useState('');
+
+  // Funerario link de pago: validar póliza vigente antes de cobrar (paridad RCV / validateEmissionAuto).
+  useEffect(() => {
+    if (!funeralApproved || !selectedPlan?.cplan) return;
+    let cancelled = false;
+    setFuneralValidation('loading');
+    setFuneralValidationMsg('');
+    validateFuneralEmission({
+      state: {
+        tomador,
+        funeral,
+        selectedPlan,
+        sameInsured,
+        asegurado,
+        hasBeneficiary,
+        beneficiario,
+        quote,
+      },
+      plan: selectedPlan.cplan,
+    })
+      .then(() => {
+        if (!cancelled) setFuneralValidation('ok');
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        const msg = err instanceof PolicyEmitError
+          ? err.message
+          : 'No se pudo validar la emisión funeraria.';
+        setFuneralValidationMsg(msg);
+        setFuneralValidation('blocked');
+      });
+    return () => { cancelled = true; };
+  }, [
+    funeralApproved,
+    selectedPlan?.cplan,
+    tomador,
+    funeral,
+    sameInsured,
+    asegurado,
+    hasBeneficiary,
+    beneficiario,
+    quote,
+  ]);
+
+  const paymentBlocked = funeralApproved && funeralValidation === 'blocked';
+  const funeralLinkExpired = funeralApproved && isFuneralPaymentLinkExpired(funeralPaymentExpiresAt);
+  const funeralPayDisabled =
+    funeralApproved &&
+    (funeralLinkExpired || paymentBlocked || funeralValidation === 'loading' || funeralValidation === 'idle');
 
   // Resetear estados al cambiar método de pago
   useEffect(() => {
@@ -396,15 +451,53 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Sincroniza el monto en Bs con la cotización oficial cada vez que cambia.
-  // No es editable por el usuario: es el monto exacto a pagar (prima anual a tasa BCV).
-  // Esto evita que el cliente coloque un monto menor al cotizado.
+  // Sincroniza el monto en Bs (checkout SSO o cotización legacy).
   useEffect(() => {
+    if (funeralApproved && quote) {
+      const amounts = resolveFrecuenciaAmounts(quote, frecuenciaCode, {
+        quoteBasis: 'annual-total',
+      });
+      const vesStr = formatQuoteVesPaymentInput(amounts.installmentVes);
+      setMontoM(vesStr);
+      setOtpAmount(vesStr);
+      return;
+    }
+    if (genericCheckout && checkout?.totalVes) {
+      const vesStr = formatQuoteVesPaymentInput(checkout.totalVes);
+      setMontoM(vesStr);
+      setOtpAmount(vesStr);
+      return;
+    }
     if (quoteState !== 'ready' || !quote) return;
-    const vesStr = vesAnnual(quote).toFixed(2);
+    const amounts = resolveFrecuenciaAmounts(quote, frecuenciaCode, { quoteBasis });
+    const vesStr = formatQuoteVesPaymentInput(amounts.installmentVes);
     setMontoM(vesStr);
     setOtpAmount(vesStr);
-  }, [quoteState, quote]);
+  }, [genericCheckout, checkout, quoteState, quote, frecuenciaCode, quoteBasis, funeralApproved]);
+
+  // Funerario aprobado: precargar pagador desde tomador del snapshot (BD Exélixi).
+  useEffect(() => {
+    if (!funeralApproved) return;
+    if (tomador.tipoDoc) {
+      setOtpDocType((prev) => prev || tomador.tipoDoc || 'V');
+    }
+    if (tomador.identificacion) {
+      const digits = String(tomador.identificacion).replace(/\D/g, '');
+      setOtpDocNum((prev) => prev || digits);
+    }
+    const fullName = [tomador.nombre, tomador.apellido].filter(Boolean).join(' ');
+    if (fullName) setOtpName((prev) => prev || fullName);
+    if (tomador.telefono) {
+      setOtpPhone((prev) => prev || formatTelefono(tomador.telefono));
+    }
+  }, [
+    funeralApproved,
+    tomador.tipoDoc,
+    tomador.identificacion,
+    tomador.nombre,
+    tomador.apellido,
+    tomador.telefono,
+  ]);
 
   // Countdown para reenvío de OTP
   useEffect(() => {
@@ -422,44 +515,67 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
     }
   }, [paymentMethod, setPaymentMethod, availableMethods]);
 
-  const isLoadingQuote = !genericCheckout && quoteState === 'loading';
-  const hasRealQuote   = !genericCheckout && quoteState === 'ready' && Boolean(quote);
-  const isQuoteError   = !genericCheckout && quoteState === 'error';
+  const funeralProductUi = funeralApproved && quoteState === 'ready' && Boolean(quote);
+  const isLoadingQuote = !genericCheckout && !funeralProductUi && quoteState === 'loading';
+  const hasRealQuote = funeralProductUi || (!genericCheckout && quoteState === 'ready' && Boolean(quote));
+  const isQuoteError   = !genericCheckout && !funeralProductUi && quoteState === 'error';
   const hasLockedAmount = genericCheckout || hasRealQuote;
+  const productQuoteBasis = product.hasVehicle ? quoteBasis : 'annual-total';
 
-  const annualUsd = genericCheckout
-    ? (checkout!.totalUsd ?? checkout!.totalVes)
-    : hasRealQuote
-      ? quote!.mprimaext
+  const freqAmounts = resolveFrecuenciaAmounts(hasRealQuote ? quote : null, frecuenciaCode, {
+    quoteBasis: productQuoteBasis,
+  });
+  const isShortPeriodQuote = productQuoteBasis === 'per-installment';
+
+  const annualUsd = funeralProductUi || !genericCheckout
+    ? (isShortPeriodQuote ? freqAmounts.installmentUsd : freqAmounts.annualUsd)
+    : genericCheckout
+      ? (checkout!.totalUsd ?? checkout!.totalVes)
       : (selectedPlan?.priceNum ?? 0) * 12;
-  const annualVes = genericCheckout
-    ? checkout!.totalVes
-    : hasRealQuote
-      ? vesAnnual(quote)
+  const annualVes = funeralProductUi || !genericCheckout
+    ? (isShortPeriodQuote ? freqAmounts.installmentVes : freqAmounts.annualVes)
+    : genericCheckout
+      ? checkout!.totalVes
       : 0;
+  const headerSuffix = isShortPeriodQuote ? (freqAmounts.periodSuffix || '/ cuota') : '/ año';
+  const installmentHint = hasRealQuote && freqAmounts.cuotas > 1
+    ? `Monto del 1er recibo (${frecuenciaCode}) · no editable`
+    : 'Monto exacto según cotización oficial · no editable';
 
-  const displayTitle = genericCheckout
-    ? checkout!.title
-    : (selectedPlan?.name ?? 'Plan no seleccionado');
-  const displaySubtitle = genericCheckout ? checkout!.subtitle : null;
+  const displayTitle = funeralProductUi || !genericCheckout
+    ? (selectedPlan?.name ?? 'Plan no seleccionado')
+    : (checkout!.title ?? selectedPlan?.name ?? 'Pago en línea');
+  const displaySubtitle = genericCheckout && !funeralProductUi ? checkout!.subtitle : null;
+  const showProductQuoteBar = funeralProductUi || !genericCheckout;
+  const tarjetaFlow = shouldUseTarjetaPublicApi();
+  const tarjetaCmoneda = tarjetaFlow
+    ? getTarjetaPlanCmoneda(metadataCanal as Record<string, unknown> | null)
+    : null;
+  const tarjetaVesPrimary = Boolean(tarjetaFlow && tarjetaQuoteShowsVes(tarjetaCmoneda));
+  const tarjetaUsdOnly = Boolean(tarjetaFlow && !tarjetaVesPrimary);
+  const tarjetaFarmaciaPaid = shouldSkipTarjetaPayment(metadataCanal);
+  const tarjetaNfactura = String(resolveTarjetaPaymentMeta(metadataCanal).nfactura ?? '').trim();
+
+  useEffect(() => {
+    if (!tarjetaFlow) return;
+    applyTarjetaFarmaciaPaymentSkip();
+  }, [tarjetaFlow, metadataCanal?.nfactura, metadataCanal?.bfactura, metadataCanal?.skipPayment]);
 
   // ── Validaciones pago móvil ───────────────────────────────────────────
   const movErrors = {
     banco    : !bankCode                                          ? 'Selecciona el banco'                : '',
-    telefono : !telefonoPago
-      ? 'El teléfono es obligatorio'
-      : !isCompletePhoneVe(telefonoPago)
-        ? 'Prefijo inválido o incompleto (11 dígitos)'
-        : '',
+    telefono : telefonoPago.length > 0 && !isValidPhonePrefix(telefonoPago)
+                 ? 'Prefijo inválido o incompleto (11 dígitos)'
+                 : !telefonoPago ? 'El teléfono es obligatorio' : '',
     cedula   : validateCedulaRif(cedulaPago),
     monto    : !montoPagoM                                        ? 'El monto es obligatorio'            : isNaN(parseFloat(montoPagoM)) || parseFloat(montoPagoM) <= 0 ? 'Monto inválido' : '',
     fecha    : !fechaPagoM                                        ? 'La fecha es obligatoria'            : fechaPagoM > TODAY_ISO ? 'La fecha no puede ser futura' : '',
   };
-  const pagoMovilListo = Object.values(movErrors).every(e => !e) && isCompletePhoneVe(telefonoPago);
+  const pagoMovilListo = Object.values(movErrors).every(e => !e) && isValidPhonePrefix(telefonoPago);
 
   // ── Función verificar pago móvil ─────────────────────────────────────
   async function handleVerificar() {
-    if (!pagoMovilListo) return;
+    if (!pagoMovilListo || funeralPayDisabled) return;
     if (onPaymentVerified) reserveEmissionPopupSlots();
     setVerifyStatus('loading');
     setVerifyResult(null);
@@ -490,32 +606,21 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
         amount: simAmount,
         paidOn,
         bankCode: bankCode || undefined,
-        sourcePhone: phoneDigits(telefonoPago) || undefined,
+        sourcePhone: phoneDigitsOnly(telefonoPago) || undefined,
         cci_rif: cedulaPago ? cedulaPago.toUpperCase() : undefined,
         method: 'mobile',
       };
       if (!completeFirstCuotaOrFinish(capture)) return;
       setPaymentVerified(true);
       setPaymentCapture(capture);
-      await handlePaymentSuccessActions(capture, {
-        code: simulated.code || 'SIMULATED',
-        message: simulated.message || 'Pago simulado',
-        payment: {
-          method: 'mobile',
-          reference: simulated.reference,
-          amount: simAmount,
-          paidOn,
-          verifiedOn: simulated.verifiedOn,
-          code: simulated.code,
-          message: simulated.message,
-        },
-      });
+      await triggerAutoEmit(capture);
+      await completeCheckoutAfterPayment();
       return;
     }
 
     try {
       const result = await verifyMobilePayment({
-        sourcePhoneNumber : phoneDigits(telefonoPago),
+        sourcePhoneNumber : phoneDigitsOnly(telefonoPago),
         bankCode,
         amount            : parseFloat(montoPagoM),
         paidOn,
@@ -530,14 +635,19 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
           amount: result.verifiedAmount ?? parseFloat(montoPagoM),
           paidOn,
           bankCode: bankCode || undefined,
-          sourcePhone: phoneDigits(telefonoPago) || undefined,
+          sourcePhone: phoneDigitsOnly(telefonoPago) || undefined,
           cci_rif: cedulaPago ? cedulaPago.toUpperCase() : undefined,
           method: 'mobile',
         };
         if (!completeFirstCuotaOrFinish(capture)) return;
         setPaymentVerified(true);
         setPaymentCapture(capture);
-        await handlePaymentSuccessActions(capture, {
+        await triggerAutoEmit(capture);
+        await notifyClientCheckoutStatus({
+          checkout,
+          checkoutRules,
+          checkoutPayload,
+          paymentVerified: true,
           code: result.code,
           message: result.message,
           payment: {
@@ -550,6 +660,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
             message: result.message,
           },
         });
+        await completeCheckoutAfterPayment();
       } else {
         setPaymentVerified(false);
         releaseEmissionPopupSlots();
@@ -617,11 +728,9 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
 
     bank   : !otpBankCode ? 'Selecciona el banco' : '',
 
-    phone  : !otpPhone
-               ? 'Teléfono obligatorio'
-               : !isCompletePhoneVe(otpPhone)
+    phone  : otpPhone.length > 0 && !isValidPhonePrefix(otpPhone)
                ? 'Prefijo inválido o incompleto (11 dígitos)'
-               : '',
+               : !otpPhone ? 'Teléfono obligatorio' : '',
 
     amount : otpAmount.length > 0 && (isNaN(parseFloat(otpAmount)) || parseFloat(otpAmount) <= 0)
                ? 'Ingresa un monto válido'
@@ -642,7 +751,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
         documentType  : otpDocType,
         documentNumber: otpDocNum,
         debtorBankCode: otpBankCode,
-        debtorPhone   : phoneDigits(otpPhone),
+        debtorPhone   : phoneDigitsOnly(otpPhone),
         amount        : parseFloat(otpAmount),
       });
       if (resp && resp.success === false) {
@@ -678,7 +787,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
         documentType  : otpDocType,
         documentNumber: otpDocNum,
         debtorBankCode: otpBankCode,
-        debtorPhone   : phoneDigits(otpPhone),
+        debtorPhone   : phoneDigitsOnly(otpPhone),
         debtorName    : otpName,
         amount        : parseFloat(otpAmount),
         otp           : otpCode.trim(),
@@ -725,7 +834,12 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       }
       setPaymentVerified(true);
       setPaymentCapture(capture);
-      await handlePaymentSuccessActions(capture, {
+      await triggerAutoEmit(capture);
+      await notifyClientCheckoutStatus({
+        checkout,
+        checkoutRules,
+        checkoutPayload,
+        paymentVerified: true,
         code: final.status || 'ACCP',
         message: final.statusInfo?.label || 'Pago OTP confirmado',
         payment: {
@@ -736,6 +850,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
           reference: final.ref_ibp || final.transaction_id,
         },
       });
+      await completeCheckoutAfterPayment();
       // Latch queda activo en 'done' — no se puede volver a confirmar
     } catch (err) {
       releaseEmissionPopupSlots();
@@ -768,7 +883,12 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
     };
     setPaymentVerified(true);
     setPaymentCapture(merged);
-    await handlePaymentSuccessActions(merged, {
+    await triggerAutoEmit(merged);
+    await notifyClientCheckoutStatus({
+      checkout,
+      checkoutRules,
+      checkoutPayload,
+      paymentVerified: true,
       code: capture.sypagoAfiliacionId ? 'DOMICILIACION_ACTIVA' : 'DOMICILIACION_AUTORIZADA',
       message: requireFirstThenDomiciliar
         ? (capture.sypagoAfiliacionId
@@ -778,7 +898,6 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
           ? 'Domiciliación activada en SyPago'
           : 'Domiciliación autorizada. Se afiliará al emitir la póliza.'),
       payment: {
-        // Método de cobro de la 1ª cuota (otp/mobile); la domiciliación es afiliación.
         method: firstCuotaCapture?.method || 'domiciliacion',
         reference: firstCuotaCapture?.reference || merged.reference,
         sypagoAfiliacionId: capture.sypagoAfiliacionId,
@@ -796,24 +915,34 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
         domiciliacionOk: Boolean(capture.sypagoAfiliacionId),
       },
     });
+    await completeCheckoutAfterPayment();
   }
 
   return (
     <div className="animate-fade-in space-y-6">
-      <p className="text-slate-500 text-sm leading-relaxed -mt-2">
-        {genericCheckout
-          ? 'Selecciona el método de pago y confirma la operación. La conexión está cifrada de extremo a extremo.'
-          : emitPendingMode
-            ? 'Registra el pago si el cliente ya pagó, o emite la póliza con recibo pendiente de cobro.'
-            : 'Confirma el método de pago y emite la póliza. La operación está cifrada de extremo a extremo.'}
-      </p>
-
-      {emitPendingMode && !genericCheckout && (
-        <div className="rounded-xl border border-indigo-200 bg-indigo-50/80 px-4 py-3 text-sm text-indigo-900">
-          <strong>Emisión pendiente.</strong> Este gestor puede emitir sin verificar el pago en línea.
-          Usa el botón <em>Emitir como pendiente</em> al final del paso.
+      {funeralLinkExpired && (
+        <div className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+          <AlertTriangle size={18} className="shrink-0 mt-0.5" />
+          <span>Este enlace de pago expiró. Solicita un nuevo correo con el enlace de pago.</span>
         </div>
       )}
+      {paymentBlocked && (
+        <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <AlertTriangle size={18} className="shrink-0 mt-0.5" />
+          <span>{funeralValidationMsg || 'No es posible emitir la póliza con los datos actuales.'}</span>
+        </div>
+      )}
+      {funeralApproved && funeralValidation === 'loading' && (
+        <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+          <Loader2 size={16} className="animate-spin shrink-0" />
+          <span>Verificando datos de la póliza…</span>
+        </div>
+      )}
+      <p className="text-slate-500 text-sm leading-relaxed -mt-2">
+        {tarjetaFarmaciaPaid
+          ? 'Tu pago ya quedó registrado con la factura de farmacia. Revisa el resumen y emite la póliza.'
+          : 'Confirma el método de pago y emite la póliza. La operación está cifrada de extremo a extremo.'}
+      </p>
 
       {/* Total bar */}
       <div className="rounded-2xl border-2 border-indigo-200 bg-gradient-to-r from-indigo-50/80 via-violet-50/40 to-fuchsia-50/30 p-5 flex items-center justify-between flex-wrap gap-4 relative overflow-hidden">
@@ -824,11 +953,11 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
           </div>
           <div className="min-w-0">
             <p className="text-[0.62rem] font-black tracking-widest text-indigo-600 uppercase mb-0.5">
-              {genericCheckout
-                ? (requireFirstThenDomiciliar && fraccionPhase === 'cobro'
+              {showProductQuoteBar
+                ? (freqAmounts.cuotas > 1 ? 'Total a pagar (1er recibo)' : 'Total a pagar (prima anual)')
+                : genericCheckout && requireFirstThenDomiciliar && fraccionPhase === 'cobro'
                   ? '1ª cuota a pagar'
-                  : 'Total a pagar')
-                : 'Total a pagar (prima anual)'}
+                  : 'Total a pagar'}
             </p>
             <p className="font-display font-bold text-slate-900 text-sm truncate">
               {displayTitle}
@@ -837,23 +966,18 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
               <p className="text-xs text-slate-500 mt-0.5 truncate">{displaySubtitle}</p>
             )}
             <div className="mt-1 flex flex-wrap items-center gap-1.5">
-              {genericCheckout && (
-                <span className="inline-flex items-center gap-1 text-[0.55rem] font-black text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded-md border border-indigo-100 uppercase tracking-wider">
-                  <BadgeCheck size={9} strokeWidth={2.4} /> Checkout
-                </span>
-              )}
-              {!genericCheckout && hasRealQuote && !quote?.vehicleFallback && (
+              {showProductQuoteBar && hasRealQuote && !quote?.vehicleFallback && (
                 <span className="inline-flex items-center gap-1 text-[0.55rem] font-black text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-md border border-emerald-100 uppercase tracking-wider">
                   <BadgeCheck size={9} strokeWidth={2.4} />
                   {isExelixiCatalogProduct() ? 'Tarifa Exélixi' : 'Tarifa La Mundial'}
                 </span>
               )}
-              {!genericCheckout && hasRealQuote && quote?.vehicleFallback && (
+              {showProductQuoteBar && hasRealQuote && quote?.vehicleFallback && (
                 <span className="inline-flex items-center gap-1 text-[0.55rem] font-black text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-md border border-amber-200 uppercase tracking-wider">
                   <AlertTriangle size={9} strokeWidth={2.4} /> Tarifa estimada
                 </span>
               )}
-              {!genericCheckout && isQuoteError && (
+              {showProductQuoteBar && isQuoteError && (
                 <span className="inline-flex items-center gap-1 text-[0.55rem] font-black text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded-md border border-rose-200 uppercase tracking-wider">
                   <AlertTriangle size={9} strokeWidth={2.4} /> Cotización pendiente
                 </span>
@@ -870,27 +994,45 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
               </span>
             ) : (
               <span className="text-3xl sm:text-4xl font-display font-black gradient-text-indigo leading-none tabular-nums">
-                {formatUsdShort(annualUsd)}
+                {tarjetaVesPrimary
+                  ? `${formatQuoteVesLabel(annualVes)}${headerSuffix ? ` ${headerSuffix}` : ''}`
+                  : showProductQuoteBar
+                    ? formatQuoteUsdMoney(annualUsd)
+                    : formatUsdShort(annualUsd)}
               </span>
             )}
-            {!genericCheckout && (
-              <span className="text-xs text-slate-500 font-semibold pb-1">/ año</span>
+            {showProductQuoteBar && !tarjetaVesPrimary && (
+              <span className="text-xs text-slate-500 font-semibold pb-1">{headerSuffix}</span>
             )}
           </div>
-          {(hasRealQuote || genericCheckout) && annualVes > 0 && (
+          {!tarjetaFlow && (hasRealQuote || (genericCheckout && !funeralProductUi)) && annualVes > 0 && (
             <p className="text-sm font-display font-black text-indigo-700 mt-1 tabular-nums">
-              Bs {annualVes.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              {showProductQuoteBar
+                ? `${formatQuoteVesLabel(annualVes)}${headerSuffix ? ` ${headerSuffix}` : ''}`
+                : `Bs ${annualVes.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
             </p>
           )}
-          {!genericCheckout && hasRealQuote && quote?.ptasa && quote.ptasa > 0 && (
+          {showProductQuoteBar && hasRealQuote && !isShortPeriodQuote && freqAmounts.cuotas > 1 && (
             <p className="text-[0.6rem] text-slate-500 mt-0.5 tabular-nums">
-              Tasa BCV: {quote.ptasa.toFixed(4)}
+              1er recibo: {tarjetaVesPrimary
+                ? formatQuoteVesLabel(freqAmounts.installmentVes)
+                : formatQuoteUsdMoney(freqAmounts.installmentUsd)} ({freqAmounts.periodSuffix.trim()})
+            </p>
+          )}
+          {!showProductQuoteBar && hasRealQuote && quote?.ptasa && quote.ptasa > 0 && (
+            <p className="text-[0.6rem] text-slate-500 mt-0.5 tabular-nums">
+              Tasa BCV: {formatQuoteTasa(quote.ptasa)}
+            </p>
+          )}
+          {showProductQuoteBar && !tarjetaUsdOnly && hasRealQuote && quote?.ptasa && quote.ptasa > 0 && (
+            <p className="text-[0.6rem] text-slate-500 mt-0.5 tabular-nums">
+              Tasa BCV: {formatQuoteTasa(quote.ptasa)}
             </p>
           )}
         </div>
       </div>
 
-      {genericCheckout && checkout!.lines && checkout!.lines.length > 0 && (
+      {genericCheckout && !funeralProductUi && checkout!.lines && checkout!.lines.length > 0 && (
         <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-2">
           <p className="text-[0.65rem] font-bold uppercase tracking-wider text-slate-400">Detalle</p>
           {checkout!.lines!.map((line, idx) => (
@@ -904,7 +1046,24 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
         </div>
       )}
 
-      {/* Selector de método */}
+      {tarjetaFarmaciaPaid ? (
+        <div className="rounded-2xl border-2 border-emerald-200 bg-gradient-to-br from-emerald-50 to-teal-50/40 p-5 flex items-start gap-3">
+          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 grid place-items-center text-white shadow-md shrink-0">
+            <BadgeCheck size={20} strokeWidth={2.2} />
+          </div>
+          <div className="min-w-0">
+            <p className="font-display font-bold text-emerald-900 text-base">Pago registrado en farmacia</p>
+            <p className="text-sm text-emerald-800/90 mt-1 leading-relaxed">
+              La factura fiscal
+              {tarjetaNfactura ? (
+                <> <span className="font-mono font-bold">{tarjetaNfactura}</span></>
+              ) : null}
+              {' '}fue validada. No debes pagar de nuevo en línea; continúa para emitir tu póliza RCV.
+            </p>
+          </div>
+        </div>
+      ) : (
+      <>
       <div>
         <p className="text-[0.7rem] font-black text-slate-500 uppercase tracking-widest mb-3 inline-flex items-center gap-1.5">
           <Sparkles size={11} className="text-indigo-500" />
@@ -1050,7 +1209,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* fila 1: banco · teléfono */}
-              <Field label="Banco de origen" error={movErrors.banco}>
+              <Field label="Banco de origen *" error={movErrors.banco}>
                 <BankSearchSelect
                   options={BANCOS_MOVIL}
                   value={bankCode}
@@ -1064,19 +1223,19 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
                 />
               </Field>
 
-              <Field label="Teléfono de origen" hint="Número que realizó el pago" error={movErrors.telefono}>
+              <Field label="Teléfono de origen *" hint="Número que realizó el pago" error={movErrors.telefono}>
                 <Input
                   value={telefonoPago}
                   onChange={(e) => { setTelPago(formatTelefono(e.target.value)); setVerifyStatus('idle'); setPaymentVerified(false); }}
-                  placeholder="04121234567"
+                  placeholder="(0412) 123-4567"
                   type="tel"
                   inputMode="numeric"
-                  maxLength={PHONE_MASK_MAX_LENGTH}
+                  maxLength={FORMATTED_PHONE_MAX_LENGTH}
                 />
               </Field>
 
               {/* fila 2: fecha */}
-              <Field label="Fecha del pago" error={movErrors.fecha}>
+              <Field label="Fecha del pago *" error={movErrors.fecha}>
                 <Input
                   type="date"
                   value={fechaPagoM}
@@ -1085,7 +1244,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
                 />
               </Field>
 
-              <Field label="Cédula/RIF del titular" hint="Ej: V-12345678 (máx. 8 dígitos)" error={movErrors.cedula}>
+              <Field label="Cédula/RIF del titular *" hint="Ej: V-12345678 (máx. 8 dígitos)" error={movErrors.cedula}>
                 <Input
                   value={cedulaPago}
                   onChange={(e) => {
@@ -1105,7 +1264,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
                   genericCheckout
                     ? 'Monto exacto del checkout · no editable'
                     : hasRealQuote
-                    ? 'Monto exacto según cotización oficial · no editable'
+                    ? installmentHint
                     : isLoadingQuote
                     ? 'Calculando monto en bolívares desde la cotización...'
                     : 'Esperando cotización para calcular el monto'
@@ -1133,9 +1292,10 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
             <button
               type="button"
               disabled={
-                mobilePaymentSimulated
+                funeralPayDisabled ||
+                (mobilePaymentSimulated
                   ? true
-                  : !pagoMovilListo || verifyStatus === 'loading' || verifyStatus === 'success'
+                  : !pagoMovilListo || verifyStatus === 'loading' || verifyStatus === 'success')
               }
               onClick={handleVerificar}
               className={`
@@ -1245,7 +1405,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
             {(otpStep === 'form' || otpStep === 'requesting' || otpStep === 'error') && (
               <>
                 <p className="text-xs text-slate-500 leading-relaxed">
-                  Ingresa los datos del pagador. En el ambiente de pruebas de SyPago la clave OTP llega por correo; en producción por SMS o notificación del banco.
+                  Ingresa los datos del pagador. El banco le enviará una clave OTP por SMS o notificación push.
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {/* fila 1: documento · nombre */}
@@ -1294,10 +1454,10 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
                     <Input
                       value={otpPhone}
                       onChange={(e) => setOtpPhone(formatTelefono(e.target.value))}
-                      placeholder="04141234567"
+                      placeholder="(0412) 123-4567"
                       type="tel"
                       inputMode="numeric"
-                      maxLength={PHONE_MASK_MAX_LENGTH}
+                      maxLength={FORMATTED_PHONE_MAX_LENGTH}
                     />
                   </Field>
 
@@ -1308,7 +1468,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
                       genericCheckout
                         ? 'Monto exacto del checkout · no editable'
                         : hasRealQuote
-                        ? 'Monto exacto según cotización oficial · no editable'
+                        ? installmentHint
                         : isLoadingQuote
                         ? 'Calculando monto en bolívares desde la cotización...'
                         : 'Esperando cotización para calcular el monto'
@@ -1346,7 +1506,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
 
                 <button
                   type="button"
-                  disabled={otpStep === 'requesting'}
+                  disabled={funeralPayDisabled || otpStep === 'requesting'}
                   onClick={handleOtpRequest}
                   className="w-full flex items-center justify-center gap-2 py-3 px-5 rounded-xl font-bold text-sm bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-[0_8px_20px_rgba(79,70,229,0.35)] hover:shadow-[0_12px_28px_rgba(79,70,229,0.45)] hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
                 >
@@ -1373,13 +1533,12 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
                     <p className="text-xs text-indigo-600 mt-1">
                       {otpMockLocal
                         ? 'SYPAGO_MOCK está activo: no se envía correo. Desactívalo para usar el sandbox real de SyPago.'
-                        : <>Revisa el <span className="font-bold">correo</span> asociado a la cuenta (sandbox SyPago). En producción llega por SMS/notificación al teléfono <span className="font-mono font-bold">{otpPhone}</span>. Ingresa la clave para autorizar el débito.</>
-                      }
+                        : <>El banco ha enviado una clave de un solo uso al teléfono <span className="font-mono font-bold">{otpPhone}</span>. Ingrésala a continuación para autorizar el débito.</>}
                     </p>
                   </div>
                 </div>
 
-                <Field label="Clave OTP" hint={otpMockLocal ? 'Mock local — no uses este modo' : 'Código de 6 u 8 dígitos del correo (pruebas) o SMS/notificación'}>
+                <Field label="Clave OTP" hint="La clave de 6 u 8 dígitos que recibiste por SMS o notificación">
                   <Input
                     value={otpCode}
                     onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 8))}
@@ -1429,7 +1588,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
                   </button>
                   <button
                     type="button"
-                    disabled={otpCode.length < 6 || otpStep === 'confirming' || otpStep === 'polling' || confirmInFlight.current}
+                    disabled={funeralPayDisabled || otpCode.length < 6 || otpStep === 'confirming' || otpStep === 'polling' || confirmInFlight.current}
                     onClick={handleOtpConfirm}
                     className="flex-1 flex items-center justify-center gap-2 py-3 px-5 rounded-xl font-bold text-sm bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-[0_8px_20px_rgba(16,185,129,0.35)] hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
                   >
@@ -1491,6 +1650,8 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
           />
         </div>
       </div>
+      </>
+      )}
 
       {/* Trust badges */}
       <div className="flex items-center justify-center gap-6 flex-wrap pt-2 text-[0.7rem] text-slate-500">

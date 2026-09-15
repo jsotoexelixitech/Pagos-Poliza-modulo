@@ -74,13 +74,19 @@ const EMISION_URL = (process.env.EMISION_API_URL ?? 'http://localhost:4004').rep
 
 async function _proxyToEmision(req, res) {
   try {
+    const authHeader = req.nexusToken
+      ? `Bearer ${req.nexusToken}`
+      : req.headers.authorization;
     const upstream = await axios({
       method: req.method,
       url: `${EMISION_URL}${req.originalUrl}`,
       data: req.body,
       headers: {
         'Content-Type': 'application/json',
-        ...(req.headers.authorization ? { Authorization: req.headers.authorization } : {}),
+        ...(authHeader ? { Authorization: authHeader } : {}),
+        ...(req.headers['x-nexus-token']
+          ? { 'x-nexus-token': req.headers['x-nexus-token'] }
+          : {}),
       },
       timeout: 90_000,
       validateStatus: () => true,
@@ -99,8 +105,7 @@ app.post('/api/exelixi/emit',   nexusAuth, _proxyToEmision);
 // Producto Funerario (personas, ramo 9): cotización y emisión viven en emisión.
 app.post('/api/personas/:path(*)', nexusAuth, _proxyToEmision);
 app.get('/api/personas/:path(*)',  nexusAuth, _proxyToEmision);
-// Catálogos INMA y visibilidad de canal (proxy hacia emisión / nest-api)
-app.get('/api/catalogo/canal-visibility', nexusAuth, _proxyToEmision);
+// Catálogos INMA (para mostrar datos del vehículo en el checkout)
 app.get('/api/catalogo/:path(*)', _proxyToEmision);
 app.get('/api/valrep/:path(*)',   _proxyToEmision);
 app.post('/api/valrep/validate-vehicle', nexusAuth, _proxyToEmision);
