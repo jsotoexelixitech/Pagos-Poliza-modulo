@@ -236,19 +236,15 @@ export function isGenericCheckoutMode(
 export function isEmbeddedMetadataCheckout(
   state: Pick<WizardState, 'checkout'>,
 ): boolean {
-  if (typeof window !== 'undefined') {
-    if (window.parent !== window) {
-      return true;
-    }
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('embed') === 'true' || params.get('embedded') === 'true') {
-      return true;
-    }
-  }
   if (!isGenericCheckoutMode(state)) return false;
   if (typeof window === 'undefined') return true;
+  if (window.parent !== window) return true;
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('embed') === 'true' || params.get('embedded') === 'true') {
+    return true;
+  }
   // Bridge (?sid=) puede usar onSuccess.emit; metadata SSO no controla el flujo del cliente.
-  return !new URLSearchParams(window.location.search).get('sid');
+  return !params.get('sid');
 }
 
 /** Concepto SyPago / descripción del cobro según el modo activo. */

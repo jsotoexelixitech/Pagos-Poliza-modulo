@@ -8,16 +8,25 @@ import type { AxiosInstance } from 'axios';
 
 export function getNexusToken(storageKey: string): string | null {
   try {
+    const fromUrl = new URLSearchParams(window.location.search).get('nexus_token');
+    if (fromUrl) {
+      try {
+        sessionStorage.setItem(storageKey, fromUrl);
+      } catch {
+        /* ignore */
+      }
+      return fromUrl;
+    }
+  } catch {
+    /* ignore */
+  }
+  try {
     const fromStorage = sessionStorage.getItem(storageKey);
     if (fromStorage) return fromStorage;
   } catch {
     /* ignore */
   }
-  try {
-    return new URLSearchParams(window.location.search).get('nexus_token');
-  } catch {
-    return null;
-  }
+  return null;
 }
 
 export function persistNexusToken(storageKey: string, token: string): void {

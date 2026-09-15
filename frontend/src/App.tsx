@@ -282,11 +282,11 @@ export default function App() {
     const webhookUrl = store.checkoutRules?.onSuccess?.webhookUrl;
 
     if (mode === 'emit') {
-      if (funeralFlow) {
+      if (funeralFlow && store.selectedPlan?.cplan) {
         await handleEmitir();
         return;
       }
-      if (rcvFlow || store.selectedPlan?.cplan) {
+      if ((rcvFlow || store.selectedPlan?.cplan) && (store.vehicle?.placa || store.selectedPlan?.cplan)) {
         await handleContinuarRcv();
         return;
       }
@@ -542,11 +542,13 @@ export default function App() {
                   ) : (
                     <PaymentStep
                       onPaymentVerified={
-                        exelixiFlow && !genericCheckout
-                          ? handleContinuarExelixi
-                          : rcvFlow && !genericCheckout
-                            ? handleContinuarRcv
-                            : undefined
+                        genericCheckout || embeddedCheckout
+                          ? undefined
+                          : exelixiFlow
+                            ? handleContinuarExelixi
+                            : rcvFlow
+                              ? handleContinuarRcv
+                              : undefined
                       }
                     />
                   )

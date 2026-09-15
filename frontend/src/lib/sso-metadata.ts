@@ -15,10 +15,17 @@ export function getSsoMetadataFromBrowser(): Record<string, unknown> | null {
     return null;
   };
 
+  const tokenFromUrl = getParam('nexus_token');
+  if (tokenFromUrl) {
+    try {
+      sessionStorage.setItem('nexus_access_token_pagos', tokenFromUrl);
+    } catch { /* ignore */ }
+  }
+
   const token =
-    sessionStorage.getItem('nexus_access_token_pagos')
-    || sessionStorage.getItem('nexus_access_token')
-    || getParam('nexus_token');
+    tokenFromUrl
+    || sessionStorage.getItem('nexus_access_token_pagos')
+    || sessionStorage.getItem('nexus_access_token');
 
   if (!token) return null;
 

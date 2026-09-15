@@ -274,6 +274,9 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
   }, [checkoutPayload, tomador, checkoutPayer]);
 
   const triggerAutoEmit = async (capture: PaymentCapture) => {
+    if (genericCheckout || isEmbeddedMetadataCheckout({ checkout })) {
+      return;
+    }
     if (!onPaymentVerified || autoEmitStarted.current) return;
     autoEmitStarted.current = true;
     try {
