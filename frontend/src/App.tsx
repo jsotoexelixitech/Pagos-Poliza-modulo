@@ -325,6 +325,30 @@ export default function App() {
       return;
     }
 
+    if (typeof window !== 'undefined' && window.parent && window.parent !== window) {
+      try {
+        const snap = useWizardStore.getState();
+        const payload = {
+          type: 'PAGOS_CHECKOUT_SUCCESS',
+          event: 'payment.success',
+          paymentVerified: true,
+          status: 'ok',
+          reference: (snap.paymentCapture as any)?.reference || (snap.paymentCapture as any)?.ref || '',
+          amount: (snap.paymentCapture as any)?.amount ?? snap.checkout?.totalVes,
+          capture: snap.paymentCapture,
+          method: snap.paymentMethod,
+        };
+        const cloned = JSON.parse(JSON.stringify(payload));
+        console.log('[PagosCheckout] Emitting PAGOS_CHECKOUT_SUCCESS from handleGenericComplete:', cloned);
+        window.parent.postMessage(cloned, '*');
+        if (window.top && window.top !== window.parent) {
+          window.top.postMessage(cloned, '*');
+        }
+      } catch (e) {
+        console.warn('[PagosCheckout] Failed postMessage in handleGenericComplete:', e);
+      }
+    }
+
     toast.success('Pago completado', 'Operación registrada correctamente.', 5000);
     goTo(6);
   }
