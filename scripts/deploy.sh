@@ -37,7 +37,9 @@ echo "📦 Instalando dependencias (npm run install:all)..."
 npm run install:all
 
 # 4. Compilar el frontend
-echo "🔨 Compilando frontend..."
+echo "🔨 Compilando frontend (VITE_APP_BASE=/pagos/)..."
+export VITE_APP_BASE=/pagos/
+export VITE_DEPLOY_PREFIX=/pagos
 npm run build --prefix frontend
 
 # 5. Copiar archivos compilados al directorio de Nginx y PM2
