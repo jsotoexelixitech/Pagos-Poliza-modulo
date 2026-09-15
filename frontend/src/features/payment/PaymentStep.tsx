@@ -94,7 +94,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
     && Boolean(new URLSearchParams(window.location.search).get('sid'));
   const qaMobileBypass = isPaymentBypassEnabled();
   // Piloto Exélixi o QA RCV: el pago móvil se simula (sin conexión bancaria real).
-  const mobilePaymentSimulated = !genericCheckout && (isExelixiCatalogProduct() || qaMobileBypass);
+  const mobilePaymentSimulated = isExelixiCatalogProduct() || qaMobileBypass;
 
   const producto = new URLSearchParams(window.location.search).get('product') as 'rcv' | 'funerario' ?? 'rcv';
   const { config } = useProductConfig(EMPRESA_ID, producto, 'pagos');
@@ -421,7 +421,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
 
   // QA RCV: prellenar pago móvil desde tomador para auto-verificación.
   useEffect(() => {
-    if (!mobilePaymentSimulated || !qaMobileBypass || genericCheckout) return;
+    if (!mobilePaymentSimulated || !qaMobileBypass) return;
     if (!bankCode) {
       setBankCode('0171');
       setBankLabel('Banco Activo');

@@ -16,12 +16,6 @@ export function getSsoMetadataFromBrowser(): Record<string, unknown> | null {
   };
 
   const tokenFromUrl = getParam('nexus_token');
-  if (tokenFromUrl) {
-    try {
-      sessionStorage.setItem('nexus_access_token_pagos', tokenFromUrl);
-    } catch { /* ignore */ }
-  }
-
   const token =
     tokenFromUrl
     || sessionStorage.getItem('nexus_access_token_pagos')
