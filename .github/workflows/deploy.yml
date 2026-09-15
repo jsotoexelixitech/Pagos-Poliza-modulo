@@ -58,45 +58,60 @@ jobs:
     steps:
       - name: 📥 Pull cambios
         run: |
-          cd /opt/services/Pagos-Poliza-modulo
-          git fetch origin qa
-          git checkout -f qa
-          git reset --hard origin/qa
+          for DIR in "/opt/services/Pagos-Poliza-modulo" "/home/proyect/exelixi/Pagos-Poliza-modulo"; do
+            if [ -d "$DIR" ]; then
+              echo "=== Sincronizando repositorio en $DIR ==="
+              cd "$DIR"
+              git fetch origin qa
+              git checkout -f qa
+              git reset --hard origin/qa
+            fi
+          done
 
       - name: 📦 Instalar dependencias
         run: |
-          cd /opt/services/Pagos-Poliza-modulo
-          npm run install:all
+          for DIR in "/opt/services/Pagos-Poliza-modulo" "/home/proyect/exelixi/Pagos-Poliza-modulo"; do
+            if [ -d "$DIR" ]; then
+              echo "=== Instalando dependencias en $DIR ==="
+              cd "$DIR"
+              npm run install:all
+            fi
+          done
 
       - name: 🔨 Build frontend
         run: |
-          cd /opt/services/Pagos-Poliza-modulo
-          npm run build --prefix frontend
+          if [ -d "/opt/services/Pagos-Poliza-modulo" ]; then
+            cd /opt/services/Pagos-Poliza-modulo
+            npm run build --prefix frontend
+          elif [ -d "/home/proyect/exelixi/Pagos-Poliza-modulo" ]; then
+            cd /home/proyect/exelixi/Pagos-Poliza-modulo
+            npm run build --prefix frontend
+          fi
 
-      - name: 📋 Copiar dist a Nginx/Apache
+      - name: 📋 Copiar dist a Nginx/Apache y PM2 webroot
         run: |
-          echo "=== Localizando bundle antiguo en servidor ==="
-          find /var/www /opt /home -name "*B_hltFap*" 2>/dev/null || true
-          echo "=== Configuraciones de Apache/Nginx para pagos ==="
-          grep -rn "pagos" /etc/apache2/ 2>/dev/null || true
-          grep -rn "pagos" /etc/nginx/ 2>/dev/null || true
-          
-          echo "=== Copiando a /var/www/html/pagos/ ==="
+          DIST_SRC=""
+          if [ -d "/opt/services/Pagos-Poliza-modulo/frontend/dist" ]; then
+            DIST_SRC="/opt/services/Pagos-Poliza-modulo/frontend/dist"
+          elif [ -d "/home/proyect/exelixi/Pagos-Poliza-modulo/frontend/dist" ]; then
+            DIST_SRC="/home/proyect/exelixi/Pagos-Poliza-modulo/frontend/dist"
+          fi
+
+          echo "=== Copiando dist desde $DIST_SRC ==="
           mkdir -p /var/www/html/pagos/
-          cp -r /opt/services/Pagos-Poliza-modulo/frontend/dist/* /var/www/html/pagos/
-          
-          # Si el bundle antiguo reside en otra ruta servida por Apache, sincronizar allí también
-          FOUND_ASSETS=$(find /var/www -name "*B_hltFap*" 2>/dev/null | head -n 1)
-          if [ -n "$FOUND_ASSETS" ]; then
-            TARGET_DIR=$(dirname $(dirname "$FOUND_ASSETS"))
-            echo "=== Sincronizando en directorio activo detectado: $TARGET_DIR ==="
-            cp -r /opt/services/Pagos-Poliza-modulo/frontend/dist/* "$TARGET_DIR/" || true
+          cp -r "$DIST_SRC"/* /var/www/html/pagos/
+
+          if [ -d "/home/proyect/exelixi/Pagos-Poliza-modulo/frontend/dist" ]; then
+            echo "=== Sincronizando en PM2 webroot /home/proyect/exelixi/Pagos-Poliza-modulo/frontend/dist/ ==="
+            mkdir -p /home/proyect/exelixi/Pagos-Poliza-modulo/frontend/dist/
+            cp -r "$DIST_SRC"/* /home/proyect/exelixi/Pagos-Poliza-modulo/frontend/dist/
           fi
 
       - name: ♻️ Recargar PM2 (API y Web)
         run: |
-          pm2 reload pagos-api
+          pm2 reload pagos-api || true
           pm2 restart pagos-web || true
+          pm2 status
 
       - name: ✅ Deploy QA completado
         run: echo "Deploy a QA finalizado correctamente — $(date)"

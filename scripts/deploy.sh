@@ -40,9 +40,16 @@ npm run install:all
 echo "🔨 Compilando frontend..."
 npm run build --prefix frontend
 
-# 5. Copiar archivos compilados al directorio de Nginx
+# 5. Copiar archivos compilados al directorio de Nginx y PM2
 echo "📋 Copiando dist/ → $NGINX_DIR"
+mkdir -p "$NGINX_DIR"
 cp -r frontend/dist/* "$NGINX_DIR"
+
+if [ -d "/home/proyect/exelixi/Pagos-Poliza-modulo/frontend/dist" ] && [ "$SERVICE_DIR" != "/home/proyect/exelixi/Pagos-Poliza-modulo" ]; then
+  echo "📋 Sincronizando con /home/proyect/exelixi/Pagos-Poliza-modulo/frontend/dist/"
+  mkdir -p /home/proyect/exelixi/Pagos-Poliza-modulo/frontend/dist/
+  cp -r frontend/dist/* /home/proyect/exelixi/Pagos-Poliza-modulo/frontend/dist/
+fi
 
 # 6. Recargar la API sin downtime y reiniciar servidor web
 echo "♻️  Recargando procesos PM2: $PM2_APP y pagos-web..."
