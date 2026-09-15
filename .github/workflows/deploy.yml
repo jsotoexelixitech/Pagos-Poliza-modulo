@@ -38,8 +38,10 @@ jobs:
         run: |
           cp -r /opt/services/Pagos-Poliza-modulo/frontend/dist/* /var/www/html/pagos/
 
-      - name: ♻️ Recargar API con PM2
-        run: pm2 reload pagos-api
+      - name: ♻️ Recargar PM2 (API y Web)
+        run: |
+          pm2 reload pagos-api
+          pm2 restart pagos-web || true
 
       - name: ✅ Deploy DEV completado
         run: echo "Deploy a DEV finalizado correctamente — $(date)"
@@ -75,8 +77,10 @@ jobs:
         run: |
           cp -r /opt/services/Pagos-Poliza-modulo/frontend/dist/* /var/www/html/pagos/
 
-      - name: ♻️ Recargar API con PM2
-        run: pm2 reload pagos-api
+      - name: ♻️ Recargar PM2 (API y Web)
+        run: |
+          pm2 reload pagos-api
+          pm2 restart pagos-web || true
 
       - name: ✅ Deploy QA completado
         run: echo "Deploy a QA finalizado correctamente — $(date)"
