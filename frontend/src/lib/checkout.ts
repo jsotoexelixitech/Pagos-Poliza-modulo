@@ -52,32 +52,45 @@ export function hydrateCheckoutFromAccessToken(): boolean {
   return true;
 }
 
+function getBrowserParam(key: string): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const searchVal = new URLSearchParams(window.location.search).get(key);
+    if (searchVal) return searchVal;
+    const hash = window.location.hash || '';
+    const qIdx = hash.indexOf('?');
+    if (qIdx !== -1) {
+      return new URLSearchParams(hash.slice(qIdx)).get(key);
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
 /**
  * Hidrata checkout desde query params (SysIP o integración vía iframe/URL).
  * Soporta: embed, amount/totalVes, totalUsd, docType, docNumber/cedula, phone/telefono, name/nombre, title/plan, etc.
  */
 export function hydrateCheckoutFromQueryParams(): boolean {
   if (typeof window === 'undefined') return false;
-  const params = new URLSearchParams(window.location.search);
 
-  const rawVes = params.get('amount') || params.get('totalVes') || params.get('monto') || params.get('ves');
+  const rawVes = getBrowserParam('amount') || getBrowserParam('totalVes') || getBrowserParam('monto') || getBrowserParam('ves');
   if (!rawVes) return false;
 
   const totalVes = parseFloat(rawVes.replace(',', '.'));
   if (!Number.isFinite(totalVes) || totalVes <= 0) return false;
 
-  const rawUsd = params.get('totalUsd') || params.get('usd') || params.get('dolares');
+  const rawUsd = getBrowserParam('totalUsd') || getBrowserParam('usd') || getBrowserParam('dolares');
   const parsedUsd = rawUsd ? parseFloat(rawUsd.replace(',', '.')) : NaN;
   const totalUsd = Number.isFinite(parsedUsd) && parsedUsd > 0 ? parsedUsd : undefined;
 
-  const rawRate = params.get('exchangeRate') || params.get('tasa');
+  const rawRate = getBrowserParam('exchangeRate') || getBrowserParam('tasa');
   const parsedRate = rawRate ? parseFloat(rawRate.replace(',', '.')) : NaN;
   const exchangeRate = Number.isFinite(parsedRate) && parsedRate > 0
     ? parsedRate
     : (totalUsd && totalUsd > 0 ? totalVes / totalUsd : undefined);
 
-  let docType = (params.get('docType') || params.get('tipoDoc') || params.get('icedula') || '').toUpperCase().trim();
-  let docNumber = (params.get('docNumber') || params.get('cedula') || params.get('cci_rif') || params.get('identificacion') || '').trim();
+  let docType = (getBrowserParam('docType') || getBrowserParam('tipoDoc') || getBrowserParam('icedula') || '').toUpperCase().trim();
+  let docNumber = (getBrowserParam('docNumber') || getBrowserParam('cedula') || getBrowserParam('cci_rif') || getBrowserParam('identificacion') || '').trim();
 
   // Si docNumber viene con letra prefijo tipo V12345678 o V-12345678
   if (!docType && docNumber) {
@@ -90,15 +103,15 @@ export function hydrateCheckoutFromQueryParams(): boolean {
     docNumber = docNumber.replace(/^[VEJPGvejpg][- ]?/, '');
   }
 
-  const phone = params.get('phone') || params.get('telefono') || params.get('xtelefono') || '';
-  const name = params.get('name') || params.get('nombre') || params.get('xcliente') || '';
-  const email = params.get('email') || params.get('correo') || '';
-  const title = params.get('title') || params.get('titulo') || params.get('plan') || params.get('concepto') || 'Pago de Póliza';
-  const referenceId = params.get('referenceId') || params.get('idOperacion') || params.get('cnpoliza') || undefined;
+  const phone = getBrowserParam('phone') || getBrowserParam('telefono') || getBrowserParam('xtelefono') || '';
+  const name = getBrowserParam('name') || getBrowserParam('nombre') || getBrowserParam('xcliente') || '';
+  const email = getBrowserParam('email') || getBrowserParam('correo') || '';
+  const title = getBrowserParam('title') || getBrowserParam('titulo') || getBrowserParam('plan') || getBrowserParam('concepto') || 'Pago de Póliza';
+  const referenceId = getBrowserParam('referenceId') || getBrowserParam('idOperacion') || getBrowserParam('cnpoliza') || undefined;
 
   // Datos del asegurado (si es diferente al tomador)
-  let asegDocType = (params.get('asegDocType') || params.get('asegTipoDoc') || params.get('asegIcedula') || '').toUpperCase().trim();
-  let asegDocNumber = (params.get('asegDocNumber') || params.get('asegCedula') || params.get('asegCci_rif') || params.get('asegIdentificacion') || '').trim();
+  let asegDocType = (getBrowserParam('asegDocType') || getBrowserParam('asegTipoDoc') || getBrowserParam('asegIcedula') || '').toUpperCase().trim();
+  let asegDocNumber = (getBrowserParam('asegDocNumber') || getBrowserParam('asegCedula') || getBrowserParam('asegCci_rif') || getBrowserParam('asegIdentificacion') || '').trim();
 
   if (!asegDocType && asegDocNumber) {
     const match = asegDocNumber.match(/^([VEJPGvejpg])[- ]?(\d+)$/);
@@ -110,9 +123,9 @@ export function hydrateCheckoutFromQueryParams(): boolean {
     asegDocNumber = asegDocNumber.replace(/^[VEJPGvejpg][- ]?/, '');
   }
 
-  const asegPhone = params.get('asegPhone') || params.get('asegTelefono') || params.get('asegXtelefono') || '';
-  const asegName = params.get('asegName') || params.get('asegNombre') || params.get('asegCliente') || '';
-  const asegEmail = params.get('asegEmail') || params.get('asegCorreo') || '';
+  const asegPhone = getBrowserParam('asegPhone') || getBrowserParam('asegTelefono') || getBrowserParam('asegXtelefono') || '';
+  const asegName = getBrowserParam('asegName') || getBrowserParam('asegNombre') || getBrowserParam('asegCliente') || '';
+  const asegEmail = getBrowserParam('asegEmail') || getBrowserParam('asegCorreo') || '';
 
   const store = useWizardStore.getState();
   if (hasGenericCheckout(store)) return true;
@@ -213,8 +226,7 @@ export function isGenericCheckoutMode(
 ): boolean {
   if (hasGenericCheckout(state) || isStandaloneGenericCheckoutSession()) return true;
   if (typeof window !== 'undefined') {
-    const params = new URLSearchParams(window.location.search);
-    const rawVes = params.get('amount') || params.get('totalVes') || params.get('monto') || params.get('ves');
+    const rawVes = getBrowserParam('amount') || getBrowserParam('totalVes') || getBrowserParam('monto') || getBrowserParam('ves');
     if (rawVes && parseFloat(rawVes.replace(',', '.')) > 0) return true;
   }
   return false;

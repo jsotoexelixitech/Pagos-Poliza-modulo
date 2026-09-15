@@ -2,10 +2,23 @@
 export function getSsoMetadataFromBrowser(): Record<string, unknown> | null {
   if (typeof window === 'undefined') return null;
 
+  const getParam = (key: string) => {
+    try {
+      const fromSearch = new URLSearchParams(window.location.search).get(key);
+      if (fromSearch) return fromSearch;
+      const hash = window.location.hash || '';
+      const qIdx = hash.indexOf('?');
+      if (qIdx !== -1) {
+        return new URLSearchParams(hash.slice(qIdx)).get(key);
+      }
+    } catch { /* ignore */ }
+    return null;
+  };
+
   const token =
     sessionStorage.getItem('nexus_access_token_pagos')
     || sessionStorage.getItem('nexus_access_token')
-    || new URLSearchParams(window.location.search).get('nexus_token');
+    || getParam('nexus_token');
 
   if (!token) return null;
 

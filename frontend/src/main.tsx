@@ -31,9 +31,10 @@ function ExelixiHandoffBootstrap({ children }: { children: ReactNode }) {
 const isConfigRoute = /\/config\/?$/.test(window.location.pathname);
 
 const isEmbedMode = typeof window !== 'undefined' && (
+  window.parent !== window ||
   new URLSearchParams(window.location.search).get('embed') === 'true' ||
   new URLSearchParams(window.location.search).get('embedded') === 'true' ||
-  (window.parent !== window && Boolean(new URLSearchParams(window.location.search).get('amount')))
+  Boolean(new URLSearchParams(window.location.search).get('amount'))
 );
 
 const appTree = (

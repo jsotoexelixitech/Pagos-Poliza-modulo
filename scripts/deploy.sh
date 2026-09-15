@@ -44,9 +44,10 @@ npm run build --prefix frontend
 echo "📋 Copiando dist/ → $NGINX_DIR"
 cp -r frontend/dist/* "$NGINX_DIR"
 
-# 6. Recargar la API sin downtime
-echo "♻️  Recargando proceso PM2: $PM2_APP..."
+# 6. Recargar la API sin downtime y reiniciar servidor web
+echo "♻️  Recargando procesos PM2: $PM2_APP y pagos-web..."
 pm2 reload "$PM2_APP"
+pm2 restart pagos-web || true
 
 echo ""
 echo "✅ Deploy completado exitosamente"
