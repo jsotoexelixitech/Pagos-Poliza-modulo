@@ -338,10 +338,15 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
             payerDoc: activeDoc,
             payerPhone: activePhone,
           };
-          window.parent.postMessage(successPayload, '*');
+          const clonedPayload = JSON.parse(JSON.stringify(successPayload));
+          console.log('[PagosCheckout] Emitting PAGOS_CHECKOUT_SUCCESS to parent:', clonedPayload);
+          window.parent.postMessage(clonedPayload, '*');
+          if (window.top && window.top !== window.parent) {
+            window.top.postMessage(clonedPayload, '*');
+          }
         }
-      } catch {
-        /* ignore */
+      } catch (postErr) {
+        console.warn('[PagosCheckout] Failed to emit postMessage to parent:', postErr);
       }
       scheduleGenericCheckoutReturn({ checkoutPayload, checkoutRules });
     }

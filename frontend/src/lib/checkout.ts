@@ -225,11 +225,11 @@ export function isEmbeddedMetadataCheckout(
   state: Pick<WizardState, 'checkout'>,
 ): boolean {
   if (typeof window !== 'undefined') {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('embed') === 'true' || params.get('embedded') === 'true') {
+    if (window.parent !== window) {
       return true;
     }
-    if (window.parent !== window && hasGenericCheckout(state)) {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('embed') === 'true' || params.get('embedded') === 'true') {
       return true;
     }
   }
