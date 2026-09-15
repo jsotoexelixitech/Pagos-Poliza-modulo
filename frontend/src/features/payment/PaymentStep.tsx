@@ -124,25 +124,34 @@ export function PaymentStep({
   const producto = new URLSearchParams(window.location.search).get('product') as 'rcv' | 'funerario' ?? 'rcv';
   const { config } = useProductConfig(EMPRESA_ID, producto, 'pagos');
 
-  const pagoFraccionado = isPagoFraccionado({
-    fraccionado:
-      checkoutRules?.fraccionado ??
-      checkoutPayload?.fraccionado ??
-      metadataCanal?.fraccionado,
-    formaPago:
-      checkoutPayload?.forma_pago ??
-      checkoutPayload?.formaPago ??
-      metadataCanal?.forma_pago,
-    frecuencia:
-      checkoutPayload?.ifrecuencia ??
-      checkoutPayload?.frecuencia ??
-      metadataCanal?.ifrecuencia ??
-      metadataCanal?.frecuencia ??
-      (producto === 'funerario' ? funeral?.frecuencia : rcv?.frecuencia),
-  });
+  /**
+   * Flujo wizard RCV/funerario: la frecuencia del bridge (rcv/funeral) manda.
+   * metadataCanal/JWT puede traer ifrecuencia distinta (SSO legacy) y activaba
+   * domiciliación con montos anuales.
+   */
+  const pagoFraccionado = genericCheckout
+    ? isPagoFraccionado({
+        fraccionado:
+          checkoutRules?.fraccionado ??
+          checkoutPayload?.fraccionado ??
+          metadataCanal?.fraccionado,
+        formaPago:
+          checkoutPayload?.forma_pago ??
+          checkoutPayload?.formaPago ??
+          metadataCanal?.forma_pago,
+        frecuencia:
+          checkoutPayload?.ifrecuencia ??
+          checkoutPayload?.frecuencia ??
+          metadataCanal?.ifrecuencia ??
+          metadataCanal?.frecuencia ??
+          frecuenciaCode,
+      })
+    : isPagoFraccionado({ frecuencia: frecuenciaCode });
 
   /** Domiciliación SyPago: solo pago fraccionado o más de 1 cuota (M/T/S/C…), no anual. */
-  const offerDomiciliacion = pagoFraccionado || getCuotasByFrecuencia(frecuenciaCode) > 1;
+  const offerDomiciliacion = genericCheckout
+    ? (pagoFraccionado || getCuotasByFrecuencia(frecuenciaCode) > 1)
+    : getCuotasByFrecuencia(frecuenciaCode) > 1;
 
   const requireFirstThenDomiciliar = (() => {
     if (!pagoFraccionado) return false;
