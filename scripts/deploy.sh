@@ -27,8 +27,10 @@ echo "📁 Navegando a $SERVICE_DIR..."
 cd "$SERVICE_DIR"
 
 # 2. Traer los últimos cambios
-echo "📥 git pull origin $BRANCH..."
-git pull origin "$BRANCH"
+echo "📥 Sincronizando con origin/$BRANCH..."
+git fetch origin "$BRANCH"
+git checkout -f "$BRANCH"
+git reset --hard "origin/$BRANCH"
 
 # 3. Instalar dependencias (server + frontend)
 echo "📦 Instalando dependencias (npm run install:all)..."

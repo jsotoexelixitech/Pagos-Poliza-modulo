@@ -20,7 +20,9 @@ jobs:
       - name: 📥 Pull cambios
         run: |
           cd /opt/services/Pagos-Poliza-modulo
-          git pull origin develop
+          git fetch origin develop
+          git checkout -f develop
+          git reset --hard origin/develop
 
       - name: 📦 Instalar dependencias
         run: |
@@ -55,7 +57,9 @@ jobs:
       - name: 📥 Pull cambios
         run: |
           cd /opt/services/Pagos-Poliza-modulo
-          git pull origin qa
+          git fetch origin qa
+          git checkout -f qa
+          git reset --hard origin/qa
 
       - name: 📦 Instalar dependencias
         run: |

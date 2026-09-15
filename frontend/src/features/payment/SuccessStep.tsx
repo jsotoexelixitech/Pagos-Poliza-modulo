@@ -111,7 +111,7 @@ export function SuccessStep() {
 
   if (genericCheckout) {
     const paidAmount = paymentCapture?.amount ?? checkout?.totalVes ?? 0;
-    const paidUsd = checkout?.totalUsd ?? paidAmount;
+    const paidUsd = checkout?.totalUsd ?? (checkout?.exchangeRate && checkout.exchangeRate > 0 ? paidAmount / checkout.exchangeRate : 0);
 
     return (
       <div className="animate-fade-in py-2">

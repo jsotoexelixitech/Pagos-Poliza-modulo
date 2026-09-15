@@ -343,9 +343,10 @@ export function scheduleGenericCheckoutReturn(params: {
 
 /** Convierte checkout → quote para reutilizar lógica de montos en Bs. */
 export function quoteFromCheckout(checkout: CheckoutData): PolicyQuote {
+  const usd = checkout.totalUsd ?? (checkout.exchangeRate && checkout.exchangeRate > 0 ? checkout.totalVes / checkout.exchangeRate : 0);
   return {
     mprima: checkout.totalVes,
-    mprimaext: checkout.totalUsd ?? checkout.totalVes,
+    mprimaext: usd,
     ptasa: checkout.exchangeRate ?? 1,
   };
 }

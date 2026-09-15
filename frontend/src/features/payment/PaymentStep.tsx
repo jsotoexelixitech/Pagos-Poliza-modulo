@@ -467,7 +467,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
   const hasLockedAmount = genericCheckout || hasRealQuote;
 
   const annualUsd = genericCheckout
-    ? (checkout!.totalUsd ?? checkout!.totalVes)
+    ? (checkout?.totalUsd ?? (checkout?.exchangeRate && checkout.exchangeRate > 0 ? checkout.totalVes / checkout.exchangeRate : 0))
     : hasRealQuote
       ? quote!.mprimaext
       : (selectedPlan?.priceNum ?? 0) * 12;
@@ -920,16 +920,20 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
                 <Loader2 size={26} className="animate-spin opacity-70" />
                 <span className="opacity-50">---</span>
               </span>
-            ) : (
+            ) : annualUsd > 0 ? (
               <span className="text-3xl sm:text-4xl font-display font-black gradient-text-indigo leading-none tabular-nums">
                 {formatUsdShort(annualUsd)}
+              </span>
+            ) : (
+              <span className="text-3xl sm:text-4xl font-display font-black gradient-text-indigo leading-none tabular-nums">
+                Bs {annualVes.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
             )}
             {!genericCheckout && (
               <span className="text-xs text-slate-500 font-semibold pb-1">/ año</span>
             )}
           </div>
-          {(hasRealQuote || genericCheckout) && annualVes > 0 && (
+          {(hasRealQuote || genericCheckout) && annualVes > 0 && annualUsd > 0 && (
             <p className="text-sm font-display font-black text-indigo-700 mt-1 tabular-nums">
               Bs {annualVes.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
@@ -937,6 +941,11 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
           {!genericCheckout && hasRealQuote && quote?.ptasa && quote.ptasa > 0 && (
             <p className="text-[0.6rem] text-slate-500 mt-0.5 tabular-nums">
               Tasa BCV: {quote.ptasa.toFixed(4)}
+            </p>
+          )}
+          {genericCheckout && checkout?.exchangeRate && checkout.exchangeRate > 0 && (
+            <p className="text-[0.6rem] text-slate-500 mt-0.5 tabular-nums">
+              Tasa BCV: {checkout.exchangeRate.toFixed(4)}
             </p>
           )}
         </div>
