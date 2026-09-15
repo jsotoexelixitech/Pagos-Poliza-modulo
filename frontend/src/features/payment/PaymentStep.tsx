@@ -301,20 +301,11 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       payment: Record<string, unknown>;
     },
   ) {
-    await triggerAutoEmit(capture);
-    await notifyClientCheckoutStatus({
-      checkout,
-      checkoutRules,
-      checkoutPayload,
-      paymentVerified: true,
-      code: notification.code,
-      message: notification.message,
-      payment: mergePaymentNotifyFields(capture, notification.payment),
-    });
-    if (genericCheckout || (typeof window !== 'undefined' && window.parent !== window)) {
-      // Avisa al portal padre (SysIP / Autocasco) aunque falle el redirect.
+    // 1. Avisar inmediatamente a la ventana padre (SysIP / iframe embebido)
+    const isIframe = typeof window !== 'undefined' && window.parent && window.parent !== window;
+    if (genericCheckout || isIframe) {
       try {
-        if (typeof window !== 'undefined' && window.parent && window.parent !== window) {
+        if (isIframe) {
           const idOperacion =
             checkoutPayload?.idOperacion
             || checkout?.referenceId
@@ -354,6 +345,20 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       }
       scheduleGenericCheckoutReturn({ checkoutPayload, checkoutRules });
     }
+
+    // 2. Disparar auto-emisión si aplica
+    await triggerAutoEmit(capture);
+
+    // 3. Notificar en segundo plano al webhook si existe notifyUrl
+    void notifyClientCheckoutStatus({
+      checkout,
+      checkoutRules,
+      checkoutPayload,
+      paymentVerified: true,
+      code: notification.code,
+      message: notification.message,
+      payment: mergePaymentNotifyFields(capture, notification.payment),
+    });
   }
 
   // ── SyPago Débito OTP ─────────────────────────────────────────────────

@@ -42,6 +42,9 @@ export async function notifyClientCheckoutStatus(params: {
   if (!hasGenericCheckout({ checkout: params.checkout })) return false;
   if (!getCheckoutNotifyUrl(params.checkoutPayload, params.checkoutRules)) return true;
 
+  const isEmbedded = typeof window !== 'undefined' && window.parent && window.parent !== window;
+  const isSysip = params.checkoutPayload?.source === 'sysip';
+
   try {
     const res = await notifyCheckoutStatus({
       status: params.paymentVerified ? 'ok' : 'error',
@@ -57,7 +60,7 @@ export async function notifyClientCheckoutStatus(params: {
       throw new Error(res.message || 'notify failed');
     }
 
-    if (params.paymentVerified) {
+    if (params.paymentVerified && !isEmbedded) {
       const domiciliacion = params.payment?.method === 'domiciliacion';
       toast.success(
         domiciliacion ? 'Domiciliación autorizada' : 'Pago verificado',
@@ -66,12 +69,17 @@ export async function notifyClientCheckoutStatus(params: {
       );
     }
     return true;
-  } catch {
-    toast.error(
-      'Aviso al sistema',
-      'No se pudo notificar a tu sistema. Contacta soporte.',
-      6000,
-    );
+  } catch (err) {
+    console.warn('notifyClientCheckoutStatus error:', err);
+    // Si está embebido en SysIP o iframe, el portal padre ya maneja la confirmación por postMessage.
+    // No alarmar al usuario con un error si el pago ya fue capturado exitosamente.
+    if (!isEmbedded && !isSysip) {
+      toast.error(
+        'Aviso al sistema',
+        'No se pudo notificar a tu sistema. Contacta soporte.',
+        6000,
+      );
+    }
     return false;
   }
 }
