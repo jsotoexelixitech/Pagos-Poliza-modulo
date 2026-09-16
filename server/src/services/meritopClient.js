@@ -25,7 +25,7 @@ const DEFAULT_API_KEY = '5e37ff49cba628dd0000842716f801e166eb20624f3b6b9f72c22da
 const PATH_MERITOP = '/api/v1/bancamiga/meritop/find-mobile-pay';
 const PATH_EXTERNAL = '/api/v1/external/payments/bancoActivo/find-mobile-pay';
 const PATH_PAYMENTS = '/api/v1/payments/bancoActivo/find-mobile-pay';
-const PATH_BANCAMIGA = '/api/v1/bancamiga/find-mobile-pay';
+const PATH_MERITOP_DIRECT = '/APIs-ProxiesCore/api/payment/verifymobilepayment';
 
 const RESULT_CODES = {
   B000: 'Transacción encontrada (pago ya usado por el cliente)',
@@ -43,11 +43,11 @@ const RESULT_CODES = {
   210: 'Error interno del proveedor',
 };
 
-/** Resuelve rutas a probar: prioriza Meritop/Banco Activo sobre Bancamiga. */
+/** Resuelve rutas a probar para verificación exclusiva con Meritop / Banco Activo. */
 function _resolvePaths() {
   const custom = (process.env.LAMUNDIAL_PAYMENTS_PATH || '').trim();
   if (custom) return [custom.startsWith('/') ? custom : `/${custom}`];
-  return [PATH_MERITOP, PATH_EXTERNAL, PATH_PAYMENTS, PATH_BANCAMIGA];
+  return [PATH_MERITOP, PATH_EXTERNAL, PATH_PAYMENTS, PATH_MERITOP_DIRECT];
 }
 
 /** Resuelve servidores base a probar con fallback automático. */
@@ -184,14 +184,21 @@ async function verifyMobilePayment({ sourcePhoneNumber, bankCode, amount, paidOn
     formattedRif = `${formattedRif[0]}-${formattedRif.slice(1)}`;
   }
 
+  const parsedAmount = Number(parseFloat(amount).toFixed(2));
   const payload = {
+    // Formato SysIP La Mundial (Meritop vía Banco Activo)
     xtelefono,
     cbanco_ref: String(bankCode).trim(),
     cbanco_dest: destBanco,
-    mmonto: Number(parseFloat(amount).toFixed(2)),
+    mmonto: parsedAmount,
     cci_rif: formattedRif,
     telefono_dest: destPhone,
     fmovimiento,
+    // Formato directo Meritop Core (APIs-ProxiesCore)
+    SourcePhoneNumber: xtelefono.replace(/^58/, '0'),
+    BankCode: String(bankCode).trim(),
+    Amount: parsedAmount,
+    PaidOn: fmovimiento,
   };
 
   const headers = {
