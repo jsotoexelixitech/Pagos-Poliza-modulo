@@ -15,6 +15,7 @@
  *   GET  /api/health
  */
 require('dotenv').config();
+const http    = require('http');
 const cors    = require('cors');
 const express = require('express');
 const axios   = require('axios');
@@ -127,3 +128,17 @@ app.listen(PORT, () => {
   console.log(`[modulo-pagos] Swagger UI → http://localhost:${PORT}/docs`);
   console.log(`[modulo-pagos] verify-mobile → ${payUrl}`);
 });
+
+// Listener secundario en puerto alternativo (4003/4005) para compatibilidad total con proxies/Apache
+const ALT_PORT = PORT === 4005 ? 4003 : 4005;
+try {
+  const altServer = http.createServer(app);
+  altServer.on('error', (err) => {
+    if (err.code !== 'EADDRINUSE') {
+      console.warn(`[modulo-pagos] puerto alternativo ${ALT_PORT} no disponible:`, err.message);
+    }
+  });
+  altServer.listen(ALT_PORT, () => {
+    console.log(`[modulo-pagos] escuchando también en http://localhost:${ALT_PORT} (compatibilidad)`);
+  });
+} catch { /* ignore */ }
