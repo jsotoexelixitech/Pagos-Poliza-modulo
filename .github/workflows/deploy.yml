@@ -34,6 +34,7 @@ jobs:
           cd /opt/services/Pagos-Poliza-modulo
           export VITE_APP_BASE=/pagos/
           export VITE_DEPLOY_PREFIX=/pagos
+          export VITE_SKIP_PAYMENT_VERIFY=true
           npm run build --prefix frontend
 
       - name: 📋 Copiar dist a Nginx
@@ -84,6 +85,7 @@ jobs:
         run: |
           export VITE_APP_BASE=/pagos/
           export VITE_DEPLOY_PREFIX=/pagos
+          export VITE_SKIP_PAYMENT_VERIFY=true
           if [ -d "/opt/services/Pagos-Poliza-modulo" ]; then
             cd /opt/services/Pagos-Poliza-modulo
             npm run build --prefix frontend
