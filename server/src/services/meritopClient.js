@@ -20,6 +20,7 @@ const DEFAULT_DEST_PHONE = '04143966962';
 const DEFAULT_DEST_BANCO = '0171';
 const DEFAULT_BASE_URL = 'https://apisys2000.lamundialdeseguros.com';
 
+const PATH_BANCAMIGA = '/api/v1/bancamiga/find-mobile-pay';
 const PATH_MERITOP = '/api/v1/bancamiga/meritop/find-mobile-pay';
 const PATH_EXTERNAL = '/api/v1/external/payments/bancoActivo/find-mobile-pay';
 const PATH_PAYMENTS = '/api/v1/payments/bancoActivo/find-mobile-pay';
@@ -40,11 +41,11 @@ const RESULT_CODES = {
   210: 'Error interno del proveedor',
 };
 
-/** Resuelve rutas a probar (env explícita → meritop → external → payments). */
+/** Resuelve rutas a probar (env explícita → bancamiga → meritop → external → payments). */
 function _resolvePaths() {
   const custom = (process.env.LAMUNDIAL_PAYMENTS_PATH || '').trim();
   if (custom) return [custom.startsWith('/') ? custom : `/${custom}`];
-  return [PATH_MERITOP, PATH_EXTERNAL, PATH_PAYMENTS];
+  return [PATH_BANCAMIGA, PATH_MERITOP, PATH_EXTERNAL, PATH_PAYMENTS];
 }
 
 /** URL principal (health/diagnóstico). */
@@ -97,11 +98,12 @@ function _mockResponse({ amount }) {
 }
 
 function _pickFields(inner, amount, fmovimiento) {
+  const safeInner = inner && typeof inner === 'object' ? inner : {};
   const pick = (...keys) => {
     for (const k of keys) {
-      const match = Object.keys(inner).find(dk => dk.toLowerCase() === k.toLowerCase());
-      if (match !== undefined && inner[match] !== undefined && inner[match] !== null) {
-        return inner[match];
+      const match = Object.keys(safeInner).find(dk => dk.toLowerCase() === k.toLowerCase());
+      if (match !== undefined && safeInner[match] !== undefined && safeInner[match] !== null) {
+        return safeInner[match];
       }
     }
     return undefined;
@@ -121,7 +123,7 @@ function _pickFields(inner, amount, fmovimiento) {
     verifiedOn: pick('verifiedOn', 'verifiedon', 'FechaMovimiento', 'fmovimiento') ?? fmovimiento,
     message: pick('message') ?? 'Pago verificado',
     code: baCode,
-    raw: inner,
+    raw: safeInner,
   };
 }
 
