@@ -155,7 +155,7 @@ export default function App() {
       paymentSid:
         typeof window !== 'undefined'
           ? new URLSearchParams(window.location.search).get('sid') || undefined
-          : snap.paymentSid,
+          : undefined,
     };
   }
 
