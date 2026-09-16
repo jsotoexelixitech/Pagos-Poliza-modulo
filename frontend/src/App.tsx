@@ -8,9 +8,9 @@ import { WelcomeSplash } from './components/WelcomeSplash';
 import { Button } from './components/ui/Button';
 import { PaymentStep } from './features/payment/PaymentStep';
 import { SuccessStep } from './features/payment/SuccessStep';
-import { emitPolicy, emitFuneral, emitExelixiPolicy, PolicyEmitError } from './lib/api';
+import { emitPolicy, emitFuneral, emitPatrimonial, emitExelixiPolicy, PolicyEmitError } from './lib/api';
 import { registrarDomiciliacionForPolicy } from './lib/domiciliacion';
-import { isFunerario, isRcv, isExelixiCatalogProduct } from './lib/product';
+import { isFunerario, isPatrimoniales, isRcv, isExelixiCatalogProduct } from './lib/product';
 import { readStoredBuilderProduct } from './lib/exelixi-catalog';
 import {
   isEmbeddedMetadataCheckout,
@@ -46,6 +46,7 @@ export default function App() {
 
   const isSuccess = step === 6;
   const funeralFlow = isFunerario();
+  const patrimonialesFlow = isPatrimoniales();
   const rcvFlow = isRcv();
   const exelixiFlow = isExelixiCatalogProduct();
   const genericCheckout = isGenericCheckoutMode(store);
@@ -56,6 +57,11 @@ export default function App() {
 
   /** Funerario legacy: emitir sin bloquear por verificación bancaria. */
   const canEmitFuneral = funeralFlow && !genericCheckout && !emitting;
+  const canEmitPatrimonial =
+    patrimonialesFlow &&
+    !genericCheckout &&
+    !emitting &&
+    (!paymentRequired || store.paymentVerified);
   /** RCV legacy: exige pago verificado salvo bypass QA. */
   const canEmitRcv =
     rcvFlow &&
@@ -151,9 +157,35 @@ export default function App() {
     };
   }
 
+  function buildPatrimonialEmitState(paymentCtx?: PaymentEmitContext) {
+    const snap = useWizardStore.getState();
+    const paymentVerified = paymentCtx?.paymentVerified ?? snap.paymentVerified;
+    const paymentCapture = paymentCtx?.paymentCapture ?? snap.paymentCapture;
+    return {
+      product: 'patrimoniales' as const,
+      tomador: snap.tomador,
+      sameInsured: snap.sameInsured,
+      asegurado: snap.asegurado,
+      patrimoniales: (snap as { patrimoniales?: unknown }).patrimoniales,
+      selectedPlan: snap.selectedPlan,
+      paymentMethod: snap.paymentMethod,
+      paymentVerified,
+      paymentCapture,
+      metadataCanal: snap.metadataCanal,
+      checkout: snap.checkout,
+      checkoutPayload: snap.checkoutPayload,
+      quote: snap.quote,
+      rcv: snap.rcv,
+      paymentSid:
+        typeof window !== 'undefined'
+          ? new URLSearchParams(window.location.search).get('sid') || undefined
+          : snap.paymentSid,
+    };
+  }
+
   async function applyEmissionResult(
     result: Awaited<ReturnType<typeof emitPolicy>>,
-    product: 'rcv' | 'funerario' | 'generic' = 'rcv',
+    product: 'rcv' | 'funerario' | 'patrimoniales' | 'generic' = 'rcv',
   ) {
     const docs = {
       urlpoliza: result.policy.urlpoliza,
@@ -291,6 +323,37 @@ export default function App() {
     }
   }
 
+  async function handleContinuarPatrimonial(paymentCtx?: PaymentEmitContext) {
+    const snap = useWizardStore.getState();
+    const verified = paymentCtx?.paymentVerified ?? snap.paymentVerified;
+    if (paymentRequired && !verified) {
+      toast.warning(
+        'Pago pendiente',
+        'Verifica o confirma el pago con el banco antes de continuar.',
+      );
+      return;
+    }
+
+    if (!snap.selectedPlan?.cplan) {
+      toast.warning('Plan pendiente', 'Selecciona un plan patrimonial antes de emitir.');
+      return;
+    }
+
+    setEmitting(true);
+    try {
+      const result = await emitPatrimonial({
+        state: buildPatrimonialEmitState(paymentCtx),
+        plan: snap.selectedPlan.cplan,
+        frecuencia: snap.rcv?.frecuencia || 'A',
+      });
+      await applyEmissionResult(result, 'patrimoniales');
+    } catch (err) {
+      handleEmissionError(err);
+    } finally {
+      setEmitting(false);
+    }
+  }
+
   async function handleGenericComplete() {
     const snap = useWizardStore.getState();
     const required = requiresPaymentBeforeContinue(snap, funeralFlow);
@@ -307,6 +370,10 @@ export default function App() {
     if (mode === 'emit' || funeralApproved) {
       if (funeralFlow) {
         await handleEmitir();
+        return;
+      }
+      if (patrimonialesFlow) {
+        await handleContinuarPatrimonial();
         return;
       }
       if (rcvFlow || store.selectedPlan?.cplan) {
@@ -372,6 +439,10 @@ export default function App() {
       void handleEmitir();
       return;
     }
+    if (patrimonialesFlow) {
+      void handleContinuarPatrimonial();
+      return;
+    }
     void handleContinuarRcv();
   }
 
@@ -381,7 +452,9 @@ export default function App() {
       ? !canEmitExelixi
       : funeralFlow
         ? !canEmitFuneral
-        : !canEmitRcv;
+        : patrimonialesFlow
+          ? !canEmitPatrimonial
+          : !canEmitRcv;
 
   const primaryLabel = genericCheckout
     ? (emitting
@@ -512,6 +585,8 @@ export default function App() {
                         ? handleContinuarExelixi
                         : rcvFlow && !genericCheckout
                           ? handleContinuarRcv
+                          : patrimonialesFlow && !genericCheckout
+                            ? handleContinuarPatrimonial
                           : funeralFlow
                             ? handleContinuarFunerario
                             : undefined

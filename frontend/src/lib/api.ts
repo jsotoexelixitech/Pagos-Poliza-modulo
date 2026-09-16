@@ -247,6 +247,38 @@ export async function emitFuneral(payload: EmitPolicyPayload): Promise<EmitPolic
   }
 }
 
+/**
+ * Emite una póliza patrimonial (riesgos generales). El backend de emisión
+ * cotiza y emite con el canal SSO del JWT, sin valores de laboratorio.
+ */
+export async function emitPatrimonial(payload: EmitPolicyPayload): Promise<EmitPolicyResponse> {
+  try {
+    const response = await api.post<EmitPolicyResponse>('/patrimonial/emision', payload);
+    return response.data;
+  } catch (err) {
+    const axErr = err as AxiosError<{
+      success?: boolean;
+      code?: string;
+      message?: string;
+      details?: string[];
+      internalPolicyId?: string;
+      stage?: string;
+    }>;
+    const data = axErr.response?.data;
+    if (data && (data.code || data.message)) {
+      throw new PolicyEmitError({
+        code: data.code ?? 'PATRIMONIAL_ERROR',
+        message: data.message ?? 'Error emitiendo la póliza patrimonial.',
+        httpStatus: axErr.response?.status,
+        details: data.details,
+        internalPolicyId: data.internalPolicyId,
+        stage: data.stage,
+      });
+    }
+    throw err;
+  }
+}
+
 /** Valida titular/plan antes de pagar (speeValidatePersonGeneral vía nest-api). */
 export async function validateFuneralEmission(payload: {
   state: unknown;

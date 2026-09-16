@@ -240,9 +240,17 @@ function makeBridge(): BridgeAPI {
       || storedProd === 'funerario'
       || urlProduct === 'funerario'
       || Boolean(out.funeralSubmissionId);
-    const prod = isFuneral ? 'funerario' : (storedProd || urlProduct || 'rcv');
+    const isPatrimonial =
+      out.product === 'patrimoniales'
+      || storedProd === 'patrimoniales'
+      || urlProduct === 'patrimoniales';
+    const prod = isFuneral
+      ? 'funerario'
+      : isPatrimonial
+        ? 'patrimoniales'
+        : (storedProd || urlProduct || 'rcv');
     if (!isCatalogFlow) {
-      if (prod === 'funerario') {
+      if (prod === 'funerario' || prod === 'patrimoniales') {
         delete out.vehicle;
       } else if (prod === 'rcv') {
         delete out.funeral;
@@ -252,6 +260,10 @@ function makeBridge(): BridgeAPI {
     if (isFuneral) {
       try {
         sessionStorage.setItem('exelixi_product', 'funerario');
+      } catch { /* ignore */ }
+    } else if (isPatrimonial) {
+      try {
+        sessionStorage.setItem('exelixi_product', 'patrimoniales');
       } catch { /* ignore */ }
     }
     out.exelixiCatalogFlow = isCatalogFlow;
@@ -376,7 +388,7 @@ function makeBridge(): BridgeAPI {
       if (r?.data?.data) {
         applyHydration(r.data.data);
         const sessionProduct = r.data.data.product;
-        if (sessionProduct === 'rcv' || sessionProduct === 'funerario') {
+        if (sessionProduct === 'rcv' || sessionProduct === 'funerario' || sessionProduct === 'patrimoniales') {
           try { sessionStorage.setItem('exelixi_product', sessionProduct); } catch { /* ignore */ }
         }
         if (r.data.data.exelixiCatalogFlow) {

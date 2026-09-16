@@ -105,6 +105,8 @@ app.post('/api/exelixi/emit',   nexusAuth, _proxyToEmision);
 // Producto Funerario (personas, ramo 9): cotización y emisión viven en emisión.
 app.post('/api/personas/:path(*)', nexusAuth, _proxyToEmision);
 app.get('/api/personas/:path(*)',  nexusAuth, _proxyToEmision);
+app.post('/api/patrimonial/:path(*)', nexusAuth, _proxyToEmision);
+app.get('/api/patrimonial/:path(*)',  nexusAuth, _proxyToEmision);
 // Catálogos INMA (para mostrar datos del vehículo en el checkout)
 app.get('/api/catalogo/:path(*)', _proxyToEmision);
 app.get('/api/valrep/:path(*)',   _proxyToEmision);
