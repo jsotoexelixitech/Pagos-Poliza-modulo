@@ -21,6 +21,7 @@ import {
 import { useNexusTokenMetadata } from './hooks/useNexusTokenMetadata';
 import { useCanalVisibility } from './hooks/useCanalVisibility';
 import { shouldShowPaymentStep, allowsEmitPending, labelTipoEmision, effectiveCanalVisibility } from './lib/canal-visibility';
+import { useUiFlags } from './lib/ui-flags';
 import { toast } from './store/toastStore';
 import {
   emissionPdfHint,
@@ -34,6 +35,7 @@ import type { PaymentEmitContext } from './types';
 export default function App() {
   useNexusTokenMetadata();
   useCanalVisibility();
+  const { hideStepper, hideFooterBar } = useUiFlags(null);
   const store = useWizardStore();
   const { step, goTo, setPolicy, canalVisibility, metadataCanal } = store;
   const [emitting, setEmitting] = useState(false);
@@ -47,7 +49,10 @@ export default function App() {
   const genericCheckout = isGenericCheckoutMode(store);
   const embeddedCheckout = isEmbeddedMetadataCheckout(store);
   const paymentRequired = requiresPaymentBeforeContinue(store, funeralFlow);
-  const hidePaymentStep = shouldShowPaymentStep(canalVisibility, metadataCanal) === false;
+  const hidePaymentStep =
+    patrimonialesFlow
+      ? false
+      : shouldShowPaymentStep(canalVisibility, metadataCanal) === false;
   const emitPendingMode = allowsEmitPending(canalVisibility, metadataCanal);
   const tipoEmisionLabel = labelTipoEmision(
     effectiveCanalVisibility(canalVisibility, metadataCanal)?.tipoEmision,
@@ -532,6 +537,7 @@ export default function App() {
   }
 
   useEffect(() => {
+    if (patrimonialesFlow) return;
     if (!hidePaymentStep || genericCheckout || emitting || step !== 5 || isSuccess) return;
     if (skipPaymentEmittedRef.current) return;
     skipPaymentEmittedRef.current = true;
@@ -542,10 +548,6 @@ export default function App() {
     }
     if (funeralFlow) {
       void handleEmitir();
-      return;
-    }
-    if (patrimonialesFlow) {
-      void handleContinuarPatrimonial();
       return;
     }
     if (rcvFlow) {
@@ -568,9 +570,9 @@ export default function App() {
       <WelcomeSplash />
       <Toaster />
       <AuroraBackground />
-      <div className="lg:hidden">
-        {!genericCheckout && <TopProgressBar />}
-      </div>
+        <div className="lg:hidden">
+          {!genericCheckout && !hideStepper && <TopProgressBar />}
+        </div>
 
       <div>
         <main
@@ -579,7 +581,7 @@ export default function App() {
           }`}
         >
           <div className="max-w-5xl mx-auto">
-            {!genericCheckout && <TopStepper />}
+            {!genericCheckout && !hideStepper && <TopStepper />}
 
             {!isSuccess && (
               <header className="mb-6 animate-fade-in">
@@ -644,7 +646,7 @@ export default function App() {
                 {isSuccess && <SuccessStep />}
               </div>
 
-              {!isSuccess && !embeddedCheckout && !hidePaymentStep && (
+              {!isSuccess && !embeddedCheckout && !hidePaymentStep && !hideFooterBar && (
                 <div className="hidden md:flex items-center justify-between gap-4 px-8 lg:px-10 py-5 border-t border-slate-100/80 bg-gradient-to-b from-slate-50/50 to-white/40 backdrop-blur-sm">
                   <div className="flex items-center gap-2 text-xs text-slate-500">
                     <ShieldCheck size={13} className="text-emerald-500" />
@@ -721,7 +723,7 @@ export default function App() {
         </main>
       </div>
 
-      {!isSuccess && !embeddedCheckout && !hidePaymentStep && (
+      {!isSuccess && !embeddedCheckout && !hidePaymentStep && !hideFooterBar && (
         <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 px-4 py-3 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-[0_-8px_24px_rgba(15,23,42,0.08)]">
           {emitPendingMode && !store.paymentVerified && (
             <p className="text-[0.65rem] font-semibold text-indigo-700 text-center mb-2">
