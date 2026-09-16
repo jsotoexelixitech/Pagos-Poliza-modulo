@@ -42,7 +42,7 @@ jobs:
 
       - name: ♻️ Recargar PM2 (API y Web)
         run: |
-          pm2 reload pagos-api
+          pm2 reload pagos-api --update-env || pm2 restart pagos-api --update-env || true
           pm2 restart pagos-web || true
 
       - name: ✅ Deploy DEV completado
@@ -113,7 +113,7 @@ jobs:
 
       - name: ♻️ Recargar PM2 (API y Web)
         run: |
-          pm2 reload pagos-api || true
+          pm2 reload pagos-api --update-env || pm2 restart pagos-api --update-env || true
           pm2 restart pagos-web || true
           pm2 status
 

@@ -21,12 +21,12 @@ module.exports = {
       max_memory_restart: '256M',
       env_production: {
         NODE_ENV: 'production',
-        PORT: 4003,
+        PORT: 4005,
       },
       /** srv001qa (nexusqa) — CORS y orígenes del portal QA */
       env_qa: {
         NODE_ENV: 'production',
-        PORT: 4003,
+        PORT: 4005,
       },
       out_file:   path.join(ROOT, 'logs', 'pagos-api.out.log'),
       error_file: path.join(ROOT, 'logs', 'pagos-api.err.log'),

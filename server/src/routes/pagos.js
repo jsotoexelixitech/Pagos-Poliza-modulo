@@ -128,21 +128,29 @@ router.post('/verify-mobile', async (req, res) => {
     });
     return res.status(200).json({ success: true, ...result });
   } catch (err) {
+    console.error('[verify-mobile error]', err.message, err.code, err.baCode, err.baMessage);
     const code = err.code || 'MERITOP_ERROR';
+    const message = typeof err.message === 'string' && err.message !== '[object Object]'
+      ? err.message
+      : 'Error al verificar el pago móvil.';
+    const baMessage = typeof err.baMessage === 'string'
+      ? err.baMessage
+      : (err.baMessage && typeof err.baMessage === 'object' ? JSON.stringify(err.baMessage) : null);
+
     if (['MERITOP_CONNECTION_ERROR', 'MERITOP_MISSING_APIKEY', 'MERITOP_DISABLED', 'MERITOP_MISCONFIGURED'].includes(code))
       return res.status(503).json({
         success: false,
         code,
-        message: err.message,
+        message,
         targetUrl: err.targetUrl || null,
         triedUrls: err.triedUrls || null,
         payload: err.payload || null,
         upstreamStatus: err.upstreamStatus || null,
-        baMessage: err.baMessage || null,
+        baMessage,
       });
     if (['MERITOP_INVALID_APIKEY', 'MERITOP_IP_NOT_ALLOWED', 'MERITOP_AUTH_ERROR'].includes(code))
-      return res.status(502).json({ success: false, code, message: err.message });
-    return res.status(422).json({ success: false, code, baCode: err.baCode || null, baMessage: err.baMessage || null, message: err.message || 'Error verificando.' });
+      return res.status(502).json({ success: false, code, message });
+    return res.status(422).json({ success: false, code, baCode: err.baCode || null, baMessage, message });
   }
 });
 
