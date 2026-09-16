@@ -93,8 +93,8 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
   const bridgeChained = typeof window !== 'undefined'
     && Boolean(new URLSearchParams(window.location.search).get('sid'));
   const qaMobileBypass = isPaymentBypassEnabled();
-  // Piloto Exélixi o QA RCV: el pago móvil se simula (sin conexión bancaria real).
-  const mobilePaymentSimulated = isExelixiCatalogProduct() || qaMobileBypass;
+  // Piloto Exélixi o QA RCV: el pago móvil se simula solo en flujos standalone, no en checkout embebido.
+  const mobilePaymentSimulated = !genericCheckout && (isExelixiCatalogProduct() || qaMobileBypass);
 
   const producto = new URLSearchParams(window.location.search).get('product') as 'rcv' | 'funerario' ?? 'rcv';
   const { config } = useProductConfig(EMPRESA_ID, producto, 'pagos');
@@ -419,9 +419,9 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
     if (!fechaPagoM) setFechaM(TODAY_ISO);
   }, [defaultProfile]);
 
-  // QA RCV: prellenar pago móvil desde tomador para auto-verificación.
+  // QA RCV: prellenar pago móvil desde tomador para auto-verificación (solo standalone).
   useEffect(() => {
-    if (!mobilePaymentSimulated || !qaMobileBypass) return;
+    if (!mobilePaymentSimulated || !qaMobileBypass || genericCheckout || isEmbedded) return;
     if (!bankCode) {
       setBankCode('0171');
       setBankLabel('Banco Activo');
@@ -651,14 +651,15 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
     }
   }
 
-  // QA / piloto: verificación automática al completar el formulario (botón deshabilitado).
+  // La verificación siempre requiere confirmación explícita del usuario mediante el botón.
   useEffect(() => {
+    if (genericCheckout || isEmbedded) return;
     if (!mobilePaymentSimulated || paymentMethod !== 'mobile') return;
     if (!pagoMovilListo || verifyStatus !== 'idle' || autoVerifyStarted.current) return;
     autoVerifyStarted.current = true;
     void handleVerificar();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mobilePaymentSimulated, paymentMethod, pagoMovilListo, verifyStatus]);
+  }, [mobilePaymentSimulated, paymentMethod, pagoMovilListo, verifyStatus, genericCheckout, isEmbedded]);
 
   // ── Validaciones OTP (SyPago) ─────────────────────────────────────────
   // Mismo patrón que pago móvil: errores de formato mientras escribe,
@@ -1212,9 +1213,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
             <button
               type="button"
               disabled={
-                mobilePaymentSimulated
-                  ? true
-                  : !pagoMovilListo || verifyStatus === 'loading' || verifyStatus === 'success'
+                !pagoMovilListo || verifyStatus === 'loading' || verifyStatus === 'success'
               }
               onClick={handleVerificar}
               className={`
@@ -1237,7 +1236,6 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
                verifyStatus === 'success' ? (mobilePaymentSimulated ? 'Pago simulado correctamente' : 'Pago verificado correctamente') :
                verifyStatus === 'failed'  ? 'Pago no encontrado · Reintentar' :
                verifyStatus === 'error'   ? 'Error · Reintentar' :
-               mobilePaymentSimulated ? 'Verificación automática (QA)' :
                'Verificar pago móvil'}
 
               {(verifyStatus === 'failed' || verifyStatus === 'error') && (
