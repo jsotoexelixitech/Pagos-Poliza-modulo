@@ -8,9 +8,9 @@ import { WelcomeSplash } from './components/WelcomeSplash';
 import { Button } from './components/ui/Button';
 import { PaymentStep } from './features/payment/PaymentStep';
 import { SuccessStep } from './features/payment/SuccessStep';
-import { emitPolicy, emitFuneral, emitExelixiPolicy, PolicyEmitError } from './lib/api';
+import { emitPolicy, emitFuneral, emitPatrimonial, emitExelixiPolicy, PolicyEmitError } from './lib/api';
 import { registrarDomiciliacionForPolicy } from './lib/domiciliacion';
-import { isFunerario, isRcv, isExelixiCatalogProduct } from './lib/product';
+import { isFunerario, isPatrimoniales, isRcv, isExelixiCatalogProduct } from './lib/product';
 import { readStoredBuilderProduct } from './lib/exelixi-catalog';
 import {
   isEmbeddedMetadataCheckout,
@@ -41,6 +41,7 @@ export default function App() {
 
   const isSuccess = step === 6;
   const funeralFlow = isFunerario();
+  const patrimonialesFlow = isPatrimoniales();
   const rcvFlow = isRcv();
   const exelixiFlow = isExelixiCatalogProduct();
   const genericCheckout = isGenericCheckoutMode(store);
@@ -56,6 +57,11 @@ export default function App() {
   const canEmitFuneral = funeralFlow && !genericCheckout && !emitting;
   const canEmitWithOptionalPayment =
     !paymentRequired || store.paymentVerified || emitPendingMode;
+  const canEmitPatrimonial =
+    patrimonialesFlow &&
+    !genericCheckout &&
+    !emitting &&
+    canEmitWithOptionalPayment;
   /** RCV legacy: exige pago verificado salvo emisión pendiente (tipoEmision emit). */
   const canEmitRcv =
     rcvFlow &&
@@ -127,9 +133,35 @@ export default function App() {
     };
   }
 
+  function buildPatrimonialEmitState(paymentCtx?: PaymentEmitContext) {
+    const snap = useWizardStore.getState();
+    const paymentVerified = paymentCtx?.paymentVerified ?? snap.paymentVerified;
+    const paymentCapture = paymentCtx?.paymentCapture ?? snap.paymentCapture;
+    return {
+      product: 'patrimoniales' as const,
+      tomador: snap.tomador,
+      sameInsured: snap.sameInsured,
+      asegurado: snap.asegurado,
+      patrimoniales: (snap as { patrimoniales?: unknown }).patrimoniales,
+      selectedPlan: snap.selectedPlan,
+      paymentMethod: snap.paymentMethod,
+      paymentVerified,
+      paymentCapture,
+      metadataCanal: snap.metadataCanal,
+      checkout: snap.checkout,
+      checkoutPayload: snap.checkoutPayload,
+      quote: snap.quote,
+      rcv: snap.rcv,
+      paymentSid:
+        typeof window !== 'undefined'
+          ? new URLSearchParams(window.location.search).get('sid') || undefined
+          : snap.paymentSid,
+    };
+  }
+
   async function applyEmissionResult(
     result: Awaited<ReturnType<typeof emitPolicy>>,
-    product: 'rcv' | 'funerario' | 'generic' = 'rcv',
+    product: 'rcv' | 'funerario' | 'patrimoniales' | 'generic' = 'rcv',
   ) {
     const docs = {
       urlpoliza: result.policy.urlpoliza,
@@ -267,6 +299,38 @@ export default function App() {
     }
   }
 
+  async function handleContinuarPatrimonial(paymentCtx?: PaymentEmitContext) {
+    const snap = useWizardStore.getState();
+    const verified = paymentCtx?.paymentVerified ?? snap.paymentVerified;
+    const pendingEmit = allowsEmitPending(snap.canalVisibility, snap.metadataCanal);
+    if (paymentRequired && !verified && !pendingEmit) {
+      toast.warning(
+        'Pago pendiente',
+        'Verifica o confirma el pago con el banco antes de continuar.',
+      );
+      return;
+    }
+
+    if (!snap.selectedPlan?.cplan) {
+      toast.warning('Plan pendiente', 'Selecciona un plan patrimonial antes de emitir.');
+      return;
+    }
+
+    setEmitting(true);
+    try {
+      const result = await emitPatrimonial({
+        state: buildPatrimonialEmitState(paymentCtx),
+        plan: snap.selectedPlan.cplan,
+        frecuencia: snap.rcv?.frecuencia || 'A',
+      });
+      await applyEmissionResult(result, 'patrimoniales');
+    } catch (err) {
+      handleEmissionError(err);
+    } finally {
+      setEmitting(false);
+    }
+  }
+
   async function handleGenericComplete() {
     if (paymentRequired && !store.paymentVerified) {
       toast.warning('Pago pendiente', 'Confirma el pago antes de continuar.');
@@ -284,6 +348,10 @@ export default function App() {
     if (mode === 'emit') {
       if (funeralFlow && store.selectedPlan?.cplan) {
         await handleEmitir();
+        return;
+      }
+      if (patrimonialesFlow) {
+        await handleContinuarPatrimonial();
         return;
       }
       if ((rcvFlow || store.selectedPlan?.cplan) && (store.vehicle?.placa || store.selectedPlan?.cplan)) {
@@ -366,6 +434,10 @@ export default function App() {
       void handleEmitir();
       return;
     }
+    if (patrimonialesFlow) {
+      void handleContinuarPatrimonial();
+      return;
+    }
     void handleContinuarRcv();
   }
 
@@ -374,13 +446,18 @@ export default function App() {
       void handleContinuarExelixi();
       return;
     }
+    if (patrimonialesFlow) {
+      void handleContinuarPatrimonial();
+      return;
+    }
     void handleContinuarRcv();
   }
 
   const showEmitPendingButton =
     emitPendingMode && !store.paymentVerified && !genericCheckout && !funeralFlow;
   const canEmitPendingNow =
-    showEmitPendingButton && (exelixiFlow ? canEmitExelixi : canEmitRcv);
+    showEmitPendingButton &&
+    (exelixiFlow ? canEmitExelixi : patrimonialesFlow ? canEmitPatrimonial : canEmitRcv);
 
   const primaryDisabled = genericCheckout
     ? !canCompleteGeneric
@@ -388,6 +465,8 @@ export default function App() {
       ? !canEmitExelixi
       : funeralFlow
         ? !canEmitFuneral
+        : patrimonialesFlow
+          ? !canEmitPatrimonial
         : showEmitPendingButton
           ? !store.paymentVerified || !canEmitRcv
           : !canEmitRcv;
@@ -465,6 +544,10 @@ export default function App() {
       void handleEmitir();
       return;
     }
+    if (patrimonialesFlow) {
+      void handleContinuarPatrimonial();
+      return;
+    }
     if (rcvFlow) {
       void handleContinuarRcv();
     }
@@ -476,6 +559,7 @@ export default function App() {
     isSuccess,
     exelixiFlow,
     funeralFlow,
+    patrimonialesFlow,
     rcvFlow,
   ]);
 
@@ -546,8 +630,12 @@ export default function App() {
                           ? undefined
                           : exelixiFlow
                             ? handleContinuarExelixi
+                            : patrimonialesFlow
+                              ? handleContinuarPatrimonial
                             : rcvFlow
                               ? handleContinuarRcv
+                              : funeralFlow
+                                ? handleEmitir
                               : undefined
                       }
                     />

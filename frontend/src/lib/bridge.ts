@@ -237,15 +237,42 @@ function makeBridge(): BridgeAPI {
     }
     // Limpieza de datos fantasma y bloqueo de producto en la sesión backend
     const isCatalogFlow = isExelixiCatalogFlow();
-    const prod = sessionStorage.getItem('exelixi_product') || 'rcv';
+    const urlProduct =
+      typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search).get('product')
+        : null;
+    const storedProd = sessionStorage.getItem('exelixi_product');
+    const isFuneral =
+      out.product === 'funerario'
+      || storedProd === 'funerario'
+      || urlProduct === 'funerario'
+      || Boolean(out.funeralSubmissionId);
+    const isPatrimonial =
+      out.product === 'patrimoniales'
+      || storedProd === 'patrimoniales'
+      || urlProduct === 'patrimoniales';
+    const prod = isFuneral
+      ? 'funerario'
+      : isPatrimonial
+        ? 'patrimoniales'
+        : (storedProd || urlProduct || 'rcv');
     if (!isCatalogFlow) {
-      if (prod === 'funerario') {
+      if (prod === 'funerario' || prod === 'patrimoniales') {
         delete out.vehicle;
       } else if (prod === 'rcv') {
         delete out.funeral;
       }
     }
     out.product = prod;
+    if (isFuneral) {
+      try {
+        sessionStorage.setItem('exelixi_product', 'funerario');
+      } catch { /* ignore */ }
+    } else if (isPatrimonial) {
+      try {
+        sessionStorage.setItem('exelixi_product', 'patrimoniales');
+      } catch { /* ignore */ }
+    }
     out.exelixiCatalogFlow = isCatalogFlow;
     try {
       const builderRaw = sessionStorage.getItem(BUILDER_PRODUCT_STORAGE_KEY);
@@ -354,7 +381,7 @@ function makeBridge(): BridgeAPI {
       if (r?.data?.data) {
         applyHydration(r.data.data);
         const sessionProduct = r.data.data.product;
-        if (sessionProduct === 'rcv' || sessionProduct === 'funerario') {
+        if (sessionProduct === 'rcv' || sessionProduct === 'funerario' || sessionProduct === 'patrimoniales') {
           try { sessionStorage.setItem('exelixi_product', sessionProduct); } catch { /* ignore */ }
         }
         if (r.data.data.exelixiCatalogFlow) {

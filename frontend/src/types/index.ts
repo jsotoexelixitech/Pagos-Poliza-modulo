@@ -3,7 +3,7 @@ import type { CanalVisibility } from '../lib/canal-visibility';
 export type DocType = 'cedula' | 'licencia' | 'certificado' | 'rif';
 
 /** Producto de seguro que se está suscribiendo en el flujo. */
-export type ProductId = 'rcv' | 'funerario';
+export type ProductId = 'rcv' | 'funerario' | 'patrimoniales';
 
 export type DocStatus = 'idle' | 'uploading' | 'processing' | 'done' | 'error';
 
