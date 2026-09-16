@@ -1,4 +1,4 @@
-﻿# Dependencias
+# Dependencias
 node_modules/
 **/node_modules/
 
@@ -53,4 +53,7 @@ server/uploads/
 .cache/
 tmp/
 temp/
+
+# Agentes / Configuración de coding
+AGENTS.md
 
