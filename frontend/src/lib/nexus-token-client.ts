@@ -5,6 +5,7 @@
  */
 
 import type { AxiosInstance } from 'axios';
+import { shouldUseTarjetaPublicApi, TARJETA_FLOW_HEADER } from './rcv-tarjeta-flow';
 
 export function getNexusToken(storageKey: string): string | null {
   try {
@@ -47,6 +48,8 @@ export function attachNexusTokenAxios(api: AxiosInstance, storageKey: string): v
     const token = getNexusToken(storageKey);
     if (token) {
       config.headers.set('Authorization', `Bearer ${token}`);
+    } else if (shouldUseTarjetaPublicApi()) {
+      config.headers.set(TARJETA_FLOW_HEADER, '1');
     }
     return config;
   });
