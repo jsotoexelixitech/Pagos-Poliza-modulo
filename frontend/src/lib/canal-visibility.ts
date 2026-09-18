@@ -126,7 +126,6 @@ export function allowsEmitPending(
 ): boolean {
   const effective = effectiveCanalVisibility(canalVisibility, metadataCanal);
   if (!effective?.ui) return false;
-  if (!effective.ui.mostrarPasoPago) return false;
   return (
     effective.tipoEmision === 'emit'
     && !effective.ui.requierePagoVerificado
@@ -185,13 +184,12 @@ export function shouldRequirePaymentVerification(
   return effective.ui.requierePagoVerificado;
 }
 
+/** El módulo Pagos siempre muestra checkout; Sis2000 regula pago obligatorio / emit pendiente. */
 export function shouldShowPaymentStep(
-  canalVisibility: CanalVisibility | null | undefined,
-  metadataCanal?: Record<string, unknown> | null,
-): boolean | null {
-  const effective = effectiveCanalVisibility(canalVisibility, metadataCanal);
-  if (!effective?.ui) return null;
-  return effective.ui.mostrarPasoPago;
+  _canalVisibility?: CanalVisibility | null | undefined,
+  _metadataCanal?: Record<string, unknown> | null,
+): boolean {
+  return true;
 }
 
 export function isCanalPaymentMethodAllowed(
