@@ -18,6 +18,39 @@ export function isStandaloneGenericCheckoutSession(): boolean {
 }
 
 /**
+ * Corrige textos con problemas de encoding o mojibake (p. ej. "PÃliza" o "PÃ³liza" -> "Póliza").
+ */
+export function fixUtf8Mojibake(text: string | null | undefined): string {
+  if (!text || typeof text !== 'string') return '';
+  let cleaned = text;
+  try {
+    if (/[\u00C2\u00C3]/.test(cleaned)) {
+      const fixed = decodeURIComponent(escape(cleaned));
+      if (fixed) cleaned = fixed;
+    }
+  } catch {
+    // Si escape/decodeURIComponent falla, continuar con reemplazos regex
+  }
+  return cleaned
+    .replace(/PÃ³liza/gi, 'Póliza')
+    .replace(/PÃliza/gi, 'Póliza')
+    .replace(/Pago\s+P\?liza/gi, 'Pago Póliza')
+    .replace(/Pago\s+Pliza/gi, 'Pago Póliza')
+    .replace(/Ã¡/g, 'á')
+    .replace(/Ã©/g, 'é')
+    .replace(/Ã­/g, 'í')
+    .replace(/Ã³/g, 'ó')
+    .replace(/Ãº/g, 'ú')
+    .replace(/Ã±/g, 'ñ')
+    .replace(/Ã/g, 'Á')
+    .replace(/Ã‰/g, 'É')
+    .replace(/Ã/g, 'Í')
+    .replace(/Ã“/g, 'Ó')
+    .replace(/Ãš/g, 'Ú')
+    .replace(/Ã‘/g, 'Ñ');
+}
+
+/**
  * Hidrata checkout desde nexus_token antes del primer render de React.
  * Si ya hay checkout en el store (p. ej. bridge hidrató la sesión), no pisa.
  */
@@ -37,8 +70,20 @@ export function hydrateCheckoutFromAccessToken(): boolean {
   // Bridge (?sid=) puede llegar después y sobrescribir; no pisar si ya hay checkout.
   if (hasGenericCheckout(store)) return true;
 
+  const sanitizedCheckout: CheckoutData = {
+    ...checkout,
+    title: fixUtf8Mojibake(checkout.title),
+    subtitle: checkout.subtitle ? fixUtf8Mojibake(checkout.subtitle) : undefined,
+    lines: Array.isArray(checkout.lines)
+      ? checkout.lines.map((line) => ({
+          ...line,
+          label: fixUtf8Mojibake(line.label),
+        }))
+      : checkout.lines,
+  };
+
   store.setCheckout({
-    data: checkout,
+    data: sanitizedCheckout,
     rules: parseCheckoutRules(rules),
     payer: payer && typeof payer === 'object' ? (payer as never) : null,
     payload:
@@ -46,7 +91,7 @@ export function hydrateCheckoutFromAccessToken(): boolean {
         ? (opaque as Record<string, unknown>)
         : null,
   });
-  store.setQuote(quoteFromCheckout(checkout), 'checkout-metadata');
+  store.setQuote(quoteFromCheckout(sanitizedCheckout), 'checkout-metadata');
   store.setQuoteState('ready');
   store.goTo(5);
   return true;
@@ -106,8 +151,10 @@ export function hydrateCheckoutFromQueryParams(): boolean {
   const phone = getBrowserParam('phone') || getBrowserParam('telefono') || getBrowserParam('xtelefono') || '';
   const name = getBrowserParam('name') || getBrowserParam('nombre') || getBrowserParam('xcliente') || '';
   const email = getBrowserParam('email') || getBrowserParam('correo') || '';
-  const title = getBrowserParam('title') || getBrowserParam('titulo') || getBrowserParam('plan') || getBrowserParam('concepto') || 'Pago de Póliza';
-  const referenceId = getBrowserParam('referenceId') || getBrowserParam('idOperacion') || getBrowserParam('cnpoliza') || undefined;
+  const rawTitle = getBrowserParam('title') || getBrowserParam('titulo') || getBrowserParam('plan') || getBrowserParam('concepto') || 'Pago de Póliza';
+  const title = fixUtf8Mojibake(rawTitle);
+  const rawRef = getBrowserParam('referenceId') || getBrowserParam('idOperacion') || getBrowserParam('cnpoliza') || undefined;
+  const referenceId = rawRef ? fixUtf8Mojibake(rawRef) : undefined;
 
   // Datos del asegurado (si es diferente al tomador)
   let asegDocType = (getBrowserParam('asegDocType') || getBrowserParam('asegTipoDoc') || getBrowserParam('asegIcedula') || '').toUpperCase().trim();

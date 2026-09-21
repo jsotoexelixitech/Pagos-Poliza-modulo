@@ -16,7 +16,9 @@ function decodeJwtPayload(token: string): Record<string, unknown> | null {
   try {
     const part = token.split('.')[1];
     if (!part) return null;
-    const json = atob(part.replace(/-/g, '+').replace(/_/g, '/'));
+    const binary = atob(part.replace(/-/g, '+').replace(/_/g, '/'));
+    const bytes = Uint8Array.from(binary, (m) => m.charCodeAt(0));
+    const json = new TextDecoder('utf-8').decode(bytes);
     return JSON.parse(json) as Record<string, unknown>;
   } catch {
     return null;

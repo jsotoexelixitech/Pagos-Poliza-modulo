@@ -19,6 +19,7 @@ import {
   isEmbeddedMetadataCheckout,
   isPaymentBypassEnabled,
   scheduleGenericCheckoutReturn,
+  fixUtf8Mojibake,
 } from '../../lib/checkout';
 import { notifyClientCheckoutStatus, mergePaymentNotifyFields } from '../../lib/checkout-notify';
 import { isPaymentMethodEnabled, isPagoFraccionado, resolveCheckoutFrecuencia } from '../../lib/payment-methods';
@@ -491,9 +492,11 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       : 0;
 
   const displayTitle = genericCheckout
-    ? checkout!.title
+    ? fixUtf8Mojibake(checkout!.title)
     : (selectedPlan?.name ?? 'Plan no seleccionado');
-  const displaySubtitle = genericCheckout ? checkout!.subtitle : null;
+  const displaySubtitle = genericCheckout && checkout?.subtitle
+    ? fixUtf8Mojibake(checkout.subtitle)
+    : null;
 
   const isEmisionPoliza = isEmbedded || checkoutPayload?.source === 'sysip' || !genericCheckout;
 
