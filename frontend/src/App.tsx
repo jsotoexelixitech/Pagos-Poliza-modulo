@@ -21,6 +21,10 @@ import {
 import { useNexusTokenMetadata } from './hooks/useNexusTokenMetadata';
 import { useCanalVisibility } from './hooks/useCanalVisibility';
 import { shouldShowPaymentStep, allowsEmitPending, labelTipoEmision, effectiveCanalVisibility } from './lib/canal-visibility';
+import {
+  buildTarjetaFarmaciaEmitPaymentCtx,
+  shouldSkipPaymentForTarjetaMetadata,
+} from './lib/rcv-tarjeta-flow';
 import { useUiFlags } from './lib/ui-flags';
 import { toast } from './store/toastStore';
 import {
@@ -48,11 +52,13 @@ export default function App() {
   const exelixiFlow = isExelixiCatalogProduct();
   const genericCheckout = isGenericCheckoutMode(store);
   const embeddedCheckout = isEmbeddedMetadataCheckout(store);
+  const tarjetaSkipPayment = shouldSkipPaymentForTarjetaMetadata(metadataCanal);
   const paymentRequired = requiresPaymentBeforeContinue(store, funeralFlow);
   const hidePaymentStep =
     patrimonialesFlow
       ? false
-      : shouldShowPaymentStep(canalVisibility, metadataCanal) === false;
+      : tarjetaSkipPayment
+        || shouldShowPaymentStep(canalVisibility, metadataCanal) === false;
   const emitPendingMode = allowsEmitPending(canalVisibility, metadataCanal);
   const tipoEmisionLabel = labelTipoEmision(
     effectiveCanalVisibility(canalVisibility, metadataCanal)?.tipoEmision,
@@ -551,7 +557,8 @@ export default function App() {
       return;
     }
     if (rcvFlow) {
-      void handleContinuarRcv();
+      const meta = useWizardStore.getState().metadataCanal;
+      void handleContinuarRcv(buildTarjetaFarmaciaEmitPaymentCtx(meta));
     }
   }, [
     hidePaymentStep,

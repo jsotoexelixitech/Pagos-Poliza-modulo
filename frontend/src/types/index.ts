@@ -135,6 +135,10 @@ export interface PaymentCapture {
   correo?: string;
   /** ID de afiliación SyPago tras registrar la domiciliación. */
   sypagoAfiliacionId?: string;
+  /** Referencia alterna (ej. nfactura farmacia). */
+  xreferencia?: string;
+  /** Tarjeta RCV pagada en farmacia (bfactura=1). */
+  tarjetaFarmacia?: boolean;
 }
 
 /** Snapshot de pago pasado al auto-emit (evita race con re-render de React). */

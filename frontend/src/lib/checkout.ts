@@ -7,6 +7,7 @@ import type {
 import { useWizardStore } from '../store/wizardStore';
 import { effectiveCanalVisibility } from './canal-visibility';
 import { getSsoMetadataFromBrowser } from './sso-metadata';
+import { shouldSkipPaymentForTarjetaMetadata } from './rcv-tarjeta-flow';
 
 export { getSsoMetadataFromBrowser } from './sso-metadata';
 
@@ -380,6 +381,8 @@ export function requiresPaymentBeforeContinue(
   state: Pick<WizardState, 'checkout' | 'checkoutRules' | 'canalVisibility' | 'metadataCanal'>,
   funeralFlow: boolean,
 ): boolean {
+  if (shouldSkipPaymentForTarjetaMetadata(state.metadataCanal)) return false;
+
   const canal = effectiveCanalVisibility(state.canalVisibility, state.metadataCanal);
   const canalRequired = canal?.ui
     ? canal.ui.mostrarPasoPago
