@@ -1,7 +1,7 @@
 import { useWizardStore } from '../../store/wizardStore';
 import { Button } from '../../components/ui/Button';
 import { toast } from '../../store/toastStore';
-import { isGenericCheckoutMode } from '../../lib/checkout';
+import { isGenericCheckoutMode, fixUtf8Mojibake } from '../../lib/checkout';
 import {
   CheckCircle2, Download, RefreshCw, ShieldCheck,
   Calendar, Copy, ExternalLink,
@@ -140,9 +140,11 @@ export function SuccessStep() {
                 <p className="text-[0.6rem] font-bold text-slate-500 uppercase tracking-widest mb-1.5">
                   Concepto
                 </p>
-                <p className="font-semibold text-slate-900 text-lg">{checkout?.title ?? 'Pago en línea'}</p>
+                <p className="font-semibold text-slate-900 text-lg">
+                  {fixUtf8Mojibake(checkout?.title ?? 'Pago en línea')}
+                </p>
                 {checkout?.subtitle && (
-                  <p className="text-sm text-slate-500 mt-1">{checkout.subtitle}</p>
+                  <p className="text-sm text-slate-500 mt-1">{fixUtf8Mojibake(checkout.subtitle)}</p>
                 )}
               </div>
               <div className="pt-4 border-t border-slate-100 flex items-end justify-between gap-4 flex-wrap">
