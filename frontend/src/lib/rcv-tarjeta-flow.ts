@@ -1,7 +1,42 @@
 import { useWizardStore } from '../store/wizardStore';
 import { readFlowHandoff } from './flow-handoff';
+import type { PaymentEmitContext } from '../types';
 
 export const TARJETA_FLOW_HEADER = 'X-Rcv-Tarjeta-Flow';
+
+function isTruthyFlag(value: unknown): boolean {
+  return value === true || value === 1 || value === '1' || value === 'true';
+}
+
+/** Farmatodo: pago en caja + factura OCR (bfactura=1) — no paso pago móvil en Pagos. */
+export function shouldSkipPaymentForTarjetaMetadata(
+  metadataCanal?: Record<string, unknown> | null,
+): boolean {
+  if (!metadataCanal) return false;
+  if (String(metadataCanal.flujo ?? '').trim().toLowerCase() !== 'tarjeta') return false;
+  return isTruthyFlag(metadataCanal.skipPayment) || isTruthyFlag(metadataCanal.bfactura);
+}
+
+export function normalizeTarjetaNfactura(raw: unknown): string {
+  return String(raw ?? '').replace(/\D/g, '').slice(0, 16);
+}
+
+/** Contexto de emisión tarjeta farmacia (recibo activado con nfactura). */
+export function buildTarjetaFarmaciaEmitPaymentCtx(
+  metadataCanal?: Record<string, unknown> | null,
+): PaymentEmitContext | undefined {
+  if (!shouldSkipPaymentForTarjetaMetadata(metadataCanal)) return undefined;
+  const nfactura = normalizeTarjetaNfactura(metadataCanal?.nfactura);
+  const ref = nfactura || 'FARMACIA';
+  return {
+    paymentVerified: true,
+    paymentCapture: {
+      reference: ref,
+      xreferencia: ref,
+      tarjetaFarmacia: true,
+    },
+  };
+}
 
 const TARJETA_SESSION_KEY = 'rcv_tarjeta_public_flow';
 const TARJETA_METADATA_KEY = 'rcv_tarjeta_metadata_canal';
@@ -24,7 +59,13 @@ export function hydrateTarjetaMetadataCanal(): void {
   const stored = readTarjetaMetadataCanal();
   if (!stored?.cplan) return;
   const store = useWizardStore.getState();
-  store.setMetadataCanal({ ...(store.metadataCanal || {}), ...stored });
+  const merged = { ...(store.metadataCanal || {}), ...stored };
+  const handoff = readFlowHandoff() as { tarjeta?: { nfactura?: string | null } } | null;
+  const fromTarjeta = handoff?.tarjeta?.nfactura;
+  if (!merged.nfactura && fromTarjeta) {
+    merged.nfactura = normalizeTarjetaNfactura(fromTarjeta);
+  }
+  store.setMetadataCanal(merged);
 }
 
 export function isTarjetaRcvFlow(): boolean {
