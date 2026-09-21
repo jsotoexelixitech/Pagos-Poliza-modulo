@@ -8,6 +8,13 @@ import { NexusGuard } from './nexus/NexusGuard'
 import { applyExelixiWizardHandoff } from './lib/exelixi-catalog'
 import { applyExelixiBranding } from './lib/exelixi-branding'
 import { useWizardStore } from './store/wizardStore'
+import {
+  hydrateTarjetaHandoff,
+  hydrateTarjetaMetadataCanal,
+  isTarjetaRcvFlow,
+  markTarjetaPublicSession,
+} from './lib/rcv-tarjeta-flow'
+import { applyWizardStepFromUrl } from './lib/wizard-step'
 
 import { PagosConfigPanel } from './config/PagosConfigPanel'
 
@@ -15,6 +22,13 @@ import { PagosConfigPanel } from './config/PagosConfigPanel'
 applyExelixiBranding('Pagos');
 
 hydrateCheckoutFromAccessToken() || hydrateCheckoutFromQueryParams();
+
+if (isTarjetaRcvFlow()) {
+  markTarjetaPublicSession();
+  hydrateTarjetaHandoff();
+  hydrateTarjetaMetadataCanal();
+  applyWizardStepFromUrl(useWizardStore.getState().goTo);
+}
 
 function ExelixiHandoffBootstrap({ children }: { children: ReactNode }) {
   useEffect(() => {
