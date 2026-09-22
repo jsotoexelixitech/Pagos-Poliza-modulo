@@ -405,6 +405,26 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
     confirmInFlight.current = false;
   }, [paymentMethod, setPaymentVerified]);
 
+  // Notificar al contenedor padre (SysIP / modal embebido) el estado del paso de pago (ej. ocultar emitir como pendiente en paso 2 OTP)
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.parent || window.parent === window) return;
+    try {
+      const isAwaiting = paymentMethod === 'otp' && (otpStep === 'awaiting_otp' || otpStep === 'confirming' || otpStep === 'polling');
+      const payload = {
+        type: 'PAGOS_CHECKOUT_STEP_CHANGE',
+        method: paymentMethod,
+        otpStep,
+        isAwaitingOtp: isAwaiting,
+      };
+      window.parent.postMessage(payload, '*');
+      if (window.top && window.top !== window.parent) {
+        window.top.postMessage(payload, '*');
+      }
+    } catch (e) {
+      console.warn('[PagosCheckout] Failed to emit step change postMessage:', e);
+    }
+  }, [otpStep, paymentMethod]);
+
   // Prellenar datos iniciales sugeridos si los campos están vacíos
   useEffect(() => {
     if (defaultProfile.formattedPhone && !telefonoPago) {
