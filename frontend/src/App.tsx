@@ -486,21 +486,15 @@ export default function App() {
     ? 'Autoriza la domiciliación para continuar'
     : 'Confirma el pago con el banco para continuar';
 
-  const verifyToEmitLabel = store.paymentMethod === 'domiciliacion'
-    ? 'Autoriza la domiciliación para emitir'
-    : 'Verificar pago para emitir';
+  const showPrimaryButton = !paymentRequired || store.paymentVerified;
 
   const primaryLabel = genericCheckout
     ? (emitting ? 'Procesando...' : 'Continuar')
     : exelixiFlow
-      ? store.paymentVerified
-        ? (emitting ? 'Emitiendo póliza Exélixi...' : 'Emitir póliza')
-        : (emitting ? 'Emitiendo...' : verifyToEmitLabel)
+      ? (emitting ? 'Emitiendo póliza Exélixi...' : 'Emitir póliza')
       : funeralFlow
       ? (emitting ? 'Emitiendo póliza...' : 'Emitir póliza')
-      : store.paymentVerified
-        ? (emitting ? 'Emitiendo y activando recibo...' : 'Reemitir póliza')
-        : (emitting ? 'Emitiendo póliza...' : verifyToEmitLabel);
+      : (emitting ? 'Emitiendo y activando recibo...' : 'Reemitir póliza');
 
   async function handleEmitir() {
     if (!funeralFlow) return;
@@ -653,7 +647,7 @@ export default function App() {
                 {isSuccess && <SuccessStep />}
               </div>
 
-              {!isSuccess && !embeddedCheckout && !hidePaymentStep && !hideFooterBar && (
+              {!isSuccess && !embeddedCheckout && !hidePaymentStep && !hideFooterBar && (showEmitPendingButton || showPrimaryButton) && (
                 <div className="hidden md:flex items-center justify-between gap-4 px-8 lg:px-10 py-5 border-t border-slate-100/80 bg-gradient-to-b from-slate-50/50 to-white/40 backdrop-blur-sm">
                   <div className="flex items-center gap-2 text-xs text-slate-500">
                     <ShieldCheck size={13} className="text-emerald-500" />
@@ -688,29 +682,26 @@ export default function App() {
                         )}
                       </Button>
                     )}
-                    <Button
-                      variant="primary"
-                      onClick={handlePrimaryAction}
-                      disabled={primaryDisabled}
-                      className="min-w-[180px]"
-                      title={
-                        paymentRequired && !store.paymentVerified && !emitPendingMode
-                          ? pendingPaymentHint
-                          : undefined
-                      }
-                    >
-                      {emitting && !showEmitPendingButton ? (
-                        <>
-                          <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin-slow" />
-                          {primaryLabel}
-                        </>
-                      ) : (
-                        <>
-                          <Zap size={15} fill="currentColor" />
-                          {primaryLabel}
-                        </>
-                      )}
-                    </Button>
+                    {showPrimaryButton && (
+                      <Button
+                        variant="primary"
+                        onClick={handlePrimaryAction}
+                        disabled={primaryDisabled}
+                        className="min-w-[180px]"
+                      >
+                        {emitting && !showEmitPendingButton ? (
+                          <>
+                            <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin-slow" />
+                            {primaryLabel}
+                          </>
+                        ) : (
+                          <>
+                            <Zap size={15} fill="currentColor" />
+                            {primaryLabel}
+                          </>
+                        )}
+                      </Button>
+                    )}
                   </div>
                 </div>
                 </div>
@@ -730,7 +721,7 @@ export default function App() {
         </main>
       </div>
 
-      {!isSuccess && !embeddedCheckout && !hidePaymentStep && !hideFooterBar && (
+      {!isSuccess && !embeddedCheckout && !hidePaymentStep && !hideFooterBar && (showEmitPendingButton || showPrimaryButton) && (
         <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 px-4 py-3 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-[0_-8px_24px_rgba(15,23,42,0.08)]">
           {emitPendingMode && !store.paymentVerified && (
             <p className="text-[0.65rem] font-semibold text-indigo-700 text-center mb-2">
@@ -752,19 +743,16 @@ export default function App() {
               {emitting ? 'Emitiendo…' : 'Emitir como pendiente'}
             </Button>
           )}
-          <Button
-            variant="primary"
-            className="w-full"
-            onClick={handlePrimaryAction}
-            disabled={primaryDisabled}
-            title={
-              paymentRequired && !store.paymentVerified && !emitPendingMode
-                ? pendingPaymentHint
-                : undefined
-            }
-          >
-            {primaryLabel}
-          </Button>
+          {showPrimaryButton && (
+            <Button
+              variant="primary"
+              className="w-full"
+              onClick={handlePrimaryAction}
+              disabled={primaryDisabled}
+            >
+              {primaryLabel}
+            </Button>
+          )}
         </div>
       )}
     </div>
