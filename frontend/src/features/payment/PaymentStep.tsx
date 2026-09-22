@@ -308,6 +308,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
     // 1. Avisar inmediatamente a la ventana padre (SysIP / iframe embebido)
     const isIframe = typeof window !== 'undefined' && window.parent && window.parent !== window;
     if (genericCheckout || isIframe) {
+      releaseEmissionPopupSlots();
       try {
         if (isIframe) {
           const idOperacion =
@@ -539,7 +540,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
   // ── Función verificar pago móvil ─────────────────────────────────────
   async function handleVerificar() {
     if (!pagoMovilListo) return;
-    if (onPaymentVerified) reserveEmissionPopupSlots();
+    if (onPaymentVerified && !isEmbedded && !genericCheckout) reserveEmissionPopupSlots();
     setVerifyStatus('loading');
     setVerifyResult(null);
     setVerifyError('');
@@ -753,7 +754,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
     if (confirmInFlight.current) return;
     confirmInFlight.current = true;
 
-    if (onPaymentVerified) reserveEmissionPopupSlots();
+    if (onPaymentVerified && !isEmbedded && !genericCheckout) reserveEmissionPopupSlots();
 
     setOtpStep('confirming');
     setOtpError('');
@@ -847,7 +848,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
   }
 
   async function handleDomiciliacionAuthorized(capture: PaymentCapture) {
-    if (onPaymentVerified) reserveEmissionPopupSlots();
+    if (onPaymentVerified && !isEmbedded && !genericCheckout) reserveEmissionPopupSlots();
     const merged: PaymentCapture = {
       ...(firstCuotaCapture || {}),
       ...capture,
