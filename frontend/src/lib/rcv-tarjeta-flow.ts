@@ -24,16 +24,19 @@ export function normalizeTarjetaNfactura(raw: unknown): string {
 /** Contexto de emisión tarjeta farmacia (recibo activado con nfactura). */
 export function buildTarjetaFarmaciaEmitPaymentCtx(
   metadataCanal?: Record<string, unknown> | null,
+  amountBs?: number | null,
 ): PaymentEmitContext | undefined {
   if (!shouldSkipPaymentForTarjetaMetadata(metadataCanal)) return undefined;
   const nfactura = normalizeTarjetaNfactura(metadataCanal?.nfactura);
   const ref = nfactura || 'FARMACIA';
+  const amount = amountBs != null && Number(amountBs) > 0 ? Number(amountBs) : undefined;
   return {
     paymentVerified: true,
     paymentCapture: {
       reference: ref,
       xreferencia: ref,
       tarjetaFarmacia: true,
+      ...(amount != null ? { amount } : {}),
     },
   };
 }

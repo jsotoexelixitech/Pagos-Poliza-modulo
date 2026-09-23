@@ -277,6 +277,16 @@ export default function App() {
     }
   }
 
+  function handleTarjetaFarmaciaEmitClick() {
+    const snap = useWizardStore.getState();
+    if (emitting || skipPaymentEmittedRef.current) return;
+    skipPaymentEmittedRef.current = true;
+    reserveEmissionPopupSlots();
+    const amountBs = snap.quote?.mprima ?? snap.checkout?.totalVes;
+    const ctx = buildTarjetaFarmaciaEmitPaymentCtx(snap.metadataCanal, amountBs);
+    void handleContinuarRcv(ctx);
+  }
+
   async function handleContinuarRcv(paymentCtx?: PaymentEmitContext) {
     const snap = useWizardStore.getState();
     const verified = paymentCtx?.paymentVerified ?? snap.paymentVerified;
@@ -289,7 +299,9 @@ export default function App() {
       return;
     }
 
-    if (!paymentCtx) reserveEmissionPopupSlots();
+    if (!paymentCtx?.paymentCapture?.tarjetaFarmacia) {
+      if (!paymentCtx) reserveEmissionPopupSlots();
+    }
 
     setEmitting(true);
     try {
@@ -540,6 +552,9 @@ export default function App() {
     if (patrimonialesFlow) return;
     if (!hidePaymentStep || genericCheckout || emitting || step !== 5 || isSuccess) return;
     if (skipPaymentEmittedRef.current) return;
+    // Tarjeta farmacia: emitir con clic (reserva pestañas → ingreso de caja como RCV normal).
+    if (rcvFlow && tarjetaSkipPayment) return;
+
     skipPaymentEmittedRef.current = true;
 
     if (exelixiFlow) {
@@ -549,10 +564,6 @@ export default function App() {
     if (funeralFlow) {
       void handleEmitir();
       return;
-    }
-    if (rcvFlow) {
-      const meta = useWizardStore.getState().metadataCanal;
-      void handleContinuarRcv(buildTarjetaFarmaciaEmitPaymentCtx(meta));
     }
   }, [
     hidePaymentStep,
@@ -564,6 +575,7 @@ export default function App() {
     funeralFlow,
     patrimonialesFlow,
     rcvFlow,
+    tarjetaSkipPayment,
   ]);
 
   return (
@@ -618,14 +630,45 @@ export default function App() {
               <div className="p-6 sm:p-8 lg:p-10">
                 {!isSuccess && (
                   hidePaymentStep ? (
-                    <div className="flex flex-col items-center justify-center gap-4 py-16 text-center">
-                      <Loader2 className="h-10 w-10 animate-spin text-indigo-500" />
-                      <p className="text-slate-600 font-medium">
-                        {emitting
-                          ? 'Emitiendo póliza sin paso de pago…'
-                          : 'Preparando emisión según configuración del canal…'}
-                      </p>
-                    </div>
+                    rcvFlow && tarjetaSkipPayment ? (
+                      <div className="flex flex-col items-center justify-center gap-6 py-12 text-center max-w-md mx-auto">
+                        {emitting ? (
+                          <>
+                            <Loader2 className="h-10 w-10 animate-spin text-indigo-500" />
+                            <p className="text-slate-600 font-medium">
+                              Emitiendo póliza y abriendo documentos…
+                            </p>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-slate-600 leading-relaxed">
+                              Pago registrado en farmacia con tu factura. Al confirmar se emite la póliza
+                              y se abrirán el PDF, anexos e{' '}
+                              <span className="font-semibold text-slate-800">ingreso de caja</span>{' '}
+                              en pestañas nuevas (igual que el flujo RCV con pago móvil).
+                            </p>
+                            <Button
+                              variant="primary"
+                              className="min-w-[220px]"
+                              onClick={handleTarjetaFarmaciaEmitClick}
+                              disabled={emitting}
+                            >
+                              <Zap size={15} fill="currentColor" className="mr-1" />
+                              Emitir póliza
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center gap-4 py-16 text-center">
+                        <Loader2 className="h-10 w-10 animate-spin text-indigo-500" />
+                        <p className="text-slate-600 font-medium">
+                          {emitting
+                            ? 'Emitiendo póliza sin paso de pago…'
+                            : 'Preparando emisión según configuración del canal…'}
+                        </p>
+                      </div>
+                    )
                   ) : (
                     <PaymentStep
                       onPaymentVerified={
