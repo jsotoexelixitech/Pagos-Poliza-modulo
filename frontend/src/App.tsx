@@ -499,14 +499,14 @@ export default function App() {
   async function handleEmitir() {
     if (!funeralFlow) return;
 
-    if (!store.funeral?.healthQuestionnaireDone) {
+    if (store.funeral?.healthQuestionnaireDone === false) {
       toast.warning(
         'Cuestionario pendiente',
         'Completa el cuestionario de salud al confirmar el plan antes de emitir.',
       );
       return;
     }
-    if (!store.funeral?.aceptaTerminos) {
+    if (store.funeral?.aceptaTerminos === false) {
       toast.warning(
         'Términos pendientes',
         'Debes aceptar los términos en el cuestionario de salud.',
