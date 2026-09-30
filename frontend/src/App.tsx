@@ -8,7 +8,12 @@ import { WelcomeSplash } from './components/WelcomeSplash';
 import { Button } from './components/ui/Button';
 import { PaymentStep } from './features/payment/PaymentStep';
 import { SuccessStep } from './features/payment/SuccessStep';
-import { emitPolicy, emitFuneral, emitPatrimonial, emitExelixiPolicy, PolicyEmitError } from './lib/api';
+import { emitPolicy, emitFuneral, emitPatrimonial, emitExelixiPolicy, PolicyEmitError, registerPolicyProveedor } from './lib/api';
+import {
+  resolveProveedorData,
+  shouldRegisterProveedor,
+  buildRegisterPolicyProveedorPayload,
+} from './lib/proveedor';
 import { registrarDomiciliacionForPolicy } from './lib/domiciliacion';
 import { isFunerario, isPatrimoniales, isRcv, isExelixiCatalogProduct } from './lib/product';
 import { readStoredBuilderProduct } from './lib/exelixi-catalog';
@@ -95,6 +100,7 @@ export default function App() {
   /** Estado para emisión RCV — lee el store fresco (evita race tras verificar pago). */
   function buildRcvEmitState(paymentCtx?: PaymentEmitContext) {
     const snap = useWizardStore.getState();
+    const prov = resolveProveedorData(snap);
     const paymentVerified = paymentCtx?.paymentVerified ?? snap.paymentVerified;
     const paymentCapture = paymentCtx?.paymentCapture ?? snap.paymentCapture;
     return {
@@ -112,6 +118,13 @@ export default function App() {
       vehicle: snap.vehicle,
       category: snap.category,
       selectedPlan: snap.selectedPlan,
+      selectedProveedor: prov.selectedProveedor,
+      cproveedor: prov.cproveedor,
+      xproveedor: prov.xproveedor,
+      cplan_proveedor: prov.cplan_proveedor,
+      cramo_proveedor: prov.cramo_proveedor,
+      cclave_num: prov.cclave_num,
+      itiposerv: prov.itiposerv,
       paymentMethod: snap.paymentMethod,
       paymentVerified,
       paymentCapture,
@@ -124,6 +137,7 @@ export default function App() {
   /** Estado para emisión funerario — incluye pago verificado para ingreso de caja. */
   function buildFuneralEmitState(paymentCtx?: PaymentEmitContext) {
     const snap = useWizardStore.getState();
+    const prov = resolveProveedorData(snap);
     const paymentVerified = paymentCtx?.paymentVerified ?? snap.paymentVerified;
     const paymentCapture = paymentCtx?.paymentCapture ?? snap.paymentCapture;
     return {
@@ -135,6 +149,13 @@ export default function App() {
       hasBeneficiary: snap.hasBeneficiary,
       beneficiario: snap.beneficiario,
       selectedPlan: snap.selectedPlan,
+      selectedProveedor: prov.selectedProveedor,
+      cproveedor: prov.cproveedor,
+      xproveedor: prov.xproveedor,
+      cplan_proveedor: prov.cplan_proveedor,
+      cramo_proveedor: prov.cramo_proveedor,
+      cclave_num: prov.cclave_num,
+      itiposerv: prov.itiposerv,
       paymentMethod: snap.paymentMethod,
       paymentVerified,
       paymentCapture,
@@ -204,6 +225,7 @@ export default function App() {
     );
 
     await maybeRegisterDomiciliacion(result.policy);
+    await maybeRegisterPolicyProveedor(result.policy);
 
     const meta = result.policy.metadata as { collectionError?: string; collectionSkipped?: string } | undefined;
     if (meta?.collectionError) {
@@ -226,6 +248,7 @@ export default function App() {
   /** Estado para emisión Exélixi genérica (product-builder + nest-api). */
   function buildExelixiEmitState(paymentCtx?: PaymentEmitContext) {
     const snap = useWizardStore.getState();
+    const prov = resolveProveedorData(snap);
     const paymentVerified = paymentCtx?.paymentVerified ?? snap.paymentVerified;
     const paymentCapture = paymentCtx?.paymentCapture ?? snap.paymentCapture;
     const builder = readStoredBuilderProduct();
@@ -245,6 +268,13 @@ export default function App() {
       funeral: snap.funeral,
       category: snap.category,
       selectedPlan: snap.selectedPlan,
+      selectedProveedor: prov.selectedProveedor,
+      cproveedor: prov.cproveedor,
+      xproveedor: prov.xproveedor,
+      cplan_proveedor: prov.cplan_proveedor,
+      cramo_proveedor: prov.cramo_proveedor,
+      cclave_num: prov.cclave_num,
+      itiposerv: prov.itiposerv,
       quote: snap.quote,
       paymentMethod: snap.paymentMethod,
       paymentVerified,
@@ -807,6 +837,29 @@ async function maybeRegisterDomiciliacion(
         : 'No se pudo afiliar la cuenta. Puedes registrarla luego en el módulo de domiciliación.',
       10000,
     );
+  }
+}
+
+async function maybeRegisterPolicyProveedor(
+  policy: { cnpoliza?: string | number; number?: string | number },
+) {
+  const snap = useWizardStore.getState();
+  if (!shouldRegisterProveedor(snap)) return;
+
+  const prov = resolveProveedorData(snap);
+  const poliza = policy.cnpoliza || policy.number;
+  try {
+    const payload = buildRegisterPolicyProveedorPayload(policy, snap);
+    const res = await registerPolicyProveedor(payload);
+    toast.success(
+      'Proveedor registrado en póliza',
+      `Póliza: ${poliza} · Proveedor: ${prov.selectedProveedor?.xcliente || prov.xproveedor || payload.cci_rif} · Ramo: ${payload.cramo}`,
+    );
+    return res;
+  } catch (err: any) {
+    const msg = err?.response?.data?.message || err?.message || 'Error al registrar proveedor en póliza';
+    toast.error('Error en registro de proveedor', msg);
+    console.warn('[maybeRegisterPolicyProveedor] Error:', err);
   }
 }
 

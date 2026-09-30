@@ -3,7 +3,7 @@ import type { CanalVisibility } from '../lib/canal-visibility';
 export type DocType = 'cedula' | 'licencia' | 'certificado' | 'rif';
 
 /** Producto de seguro que se está suscribiendo en el flujo. */
-export type ProductId = 'rcv' | 'funerario' | 'patrimoniales';
+export type ProductId = 'rcv' | 'funerario' | 'patrimoniales' | 'com-fam' | 'combinado_familiar' | 'proveedor';
 
 export type DocStatus = 'idle' | 'uploading' | 'processing' | 'done' | 'error';
 
@@ -323,6 +323,13 @@ export interface WizardState {
   vehicle: VehicleData;
   category: string;
   selectedPlan: Plan | null;
+  cproveedor?: number | string;
+  xproveedor?: string;
+  cplan_proveedor?: string;
+  cramo_proveedor?: number;
+  cclave_num?: number;
+  itiposerv?: string;
+  selectedProveedor?: ProveedorItem | null;
   paymentMethod: PaymentMethod;
   paymentVerified: boolean;
   /** Datos del pago verificado para activar recibo en Sis2000 al emitir. */
@@ -346,4 +353,38 @@ export interface WizardState {
   metadataCanal: Record<string, unknown> | null;
   /** Reglas de visibilidad del canal (SysIP / nest-api). */
   canalVisibility: CanalVisibility | null;
+}
+
+export interface ProveedorItem {
+  xproveedor?: string;
+  xcliente?: string;
+  cci_rif: number | string;
+  cplan?: string;
+  cramo?: number;
+  cclave_num?: number;
+  itiposerv?: string;
+  cproducto?: number | string;
+  [key: string]: any;
+}
+
+export interface RegisterPolicyProveedorDto {
+  cpoliza?: number | string;
+  fanopol?: number;
+  fmespol?: number;
+  cramo?: number;
+  ccerti?: number;
+  cplan?: string;
+  u_version?: string;
+  fdesde?: string | Date;
+  fhasta?: string | Date;
+  cci_rif?: number | string;
+  cclave_num?: number;
+  itiposerv?: string;
+  mcosto?: number;
+  mcostoext?: number;
+  cmoneda?: string;
+  ptasamon?: number;
+  fingreso?: string | Date;
+  cusuario?: number;
+  [key: string]: any;
 }

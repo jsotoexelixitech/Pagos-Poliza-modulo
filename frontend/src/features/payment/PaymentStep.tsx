@@ -6,13 +6,14 @@ import type { PaymentMethod, PaymentCapture, PaymentEmitContext } from '../../ty
 import {
   Smartphone, Lock, ShieldCheck, KeyRound, Landmark,
   Check, Receipt, Sparkles, Loader2, BadgeCheck, AlertTriangle,
-  CheckCircle2, XCircle, RefreshCw, Send, ClipboardCheck,
+  CheckCircle2, XCircle, RefreshCw, Send, ClipboardCheck, Building2,
 } from 'lucide-react';
 import { formatUsdShort, vesAnnual, formatVesAmount, parseVesAmount } from '../../lib/money';
 import { formatTelefono, phoneDigits, isCompletePhoneVe, PHONE_MASK_MAX_LENGTH } from '../../lib/phone';
 import { formatCedulaRif, validateCedulaRif } from '../../lib/cedula-rif';
 import { useProductConfig } from '../../hooks/useProductConfig';
-import { isExelixiCatalogProduct } from '../../lib/product';
+import { isExelixiCatalogProduct, getProductConfig } from '../../lib/product';
+import { toast } from '../../store/toastStore';
 import {
   getCheckoutPaymentConcept,
   isGenericCheckoutMode,
@@ -48,7 +49,13 @@ import {
   type SypagoOtpConfirmResponse,
   SypagoError,
   quotePolicy,
+  registerPolicyProveedor,
 } from '../../lib/api';
+import {
+  resolveProveedorData,
+  shouldRegisterProveedor as checkShouldRegisterProveedor,
+  buildRegisterPolicyProveedorPayload,
+} from '../../lib/proveedor';
 
 /** Pago móvil usa SUDEBAN local (Meritop / Banco Activo), no la red SyPago. */
 const BANCOS_MOVIL = BANCOS_VE;
@@ -99,6 +106,7 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
 
   const producto = new URLSearchParams(window.location.search).get('product') as 'rcv' | 'funerario' ?? 'rcv';
   const { config } = useProductConfig(EMPRESA_ID, producto, 'pagos');
+  const product = getProductConfig();
 
   const frecuenciaCode = resolveCheckoutFrecuencia({
     checkoutPayload,
@@ -273,6 +281,43 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
     const formattedPhone = phone ? formatTelefono(phone) : '';
     return { docType, docNum, phone, formattedPhone, name, formattedDoc };
   }, [checkoutPayload, tomador, checkoutPayer]);
+
+  // ── Registro de Proveedor en Póliza (Combinado Familiar / cproducto=51 / adproveedor) ────
+  const [providerRegStatus, setProviderRegStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [providerRegResult, setProviderRegResult] = useState<any>(null);
+  const [providerRegError,  setProviderRegError]  = useState<string>('');
+
+  function shouldRegisterProveedor(): boolean {
+    return checkShouldRegisterProveedor(useWizardStore.getState());
+  }
+  const providerView = resolveProveedorData(useWizardStore.getState());
+
+  async function handleRegisterProveedorPolicy(overridePoliza?: number | string) {
+    const snap = useWizardStore.getState();
+    const prov = resolveProveedorData(snap);
+    const poliza = overridePoliza || snap.policy?.cnpoliza;
+
+    setProviderRegStatus('loading');
+    setProviderRegError('');
+
+    try {
+      const payload = buildRegisterPolicyProveedorPayload({ cnpoliza: poliza }, snap, { quote, fallbackCramo: product.cramo });
+      const res = await registerPolicyProveedor(payload);
+      setProviderRegResult(res);
+      setProviderRegStatus('success');
+      toast.success(
+        'Proveedor registrado en póliza',
+        `Póliza: ${poliza} · Proveedor: ${prov.selectedProveedor?.xcliente || prov.xproveedor || payload.cci_rif} · Ramo: ${payload.cramo}`,
+      );
+      return res;
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || 'Error al registrar proveedor en póliza';
+      setProviderRegError(msg);
+      setProviderRegStatus('error');
+      toast.error('Error en registro de proveedor', msg);
+      throw err;
+    }
+  }
 
   const triggerAutoEmit = async (capture: PaymentCapture) => {
     if (genericCheckout || isEmbeddedMetadataCheckout({ checkout })) {
@@ -578,6 +623,9 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       if (!completeFirstCuotaOrFinish(capture)) return;
       setPaymentVerified(true);
       setPaymentCapture(capture);
+      if (shouldRegisterProveedor()) {
+        void handleRegisterProveedorPolicy();
+      }
       await handlePaymentSuccessActions(capture, {
         code: simulated.code || 'SIMULATED',
         message: simulated.message || 'Pago simulado',
@@ -618,6 +666,9 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
         if (!completeFirstCuotaOrFinish(capture)) return;
         setPaymentVerified(true);
         setPaymentCapture(capture);
+        if (shouldRegisterProveedor()) {
+          void handleRegisterProveedorPolicy();
+        }
         await handlePaymentSuccessActions(capture, {
           code: result.code,
           message: result.message,
@@ -815,6 +866,9 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
       }
       setPaymentVerified(true);
       setPaymentCapture(capture);
+      if (shouldRegisterProveedor()) {
+        void handleRegisterProveedorPolicy();
+      }
       await handlePaymentSuccessActions(capture, {
         code: final.status || 'ACCP',
         message: final.statusInfo?.label || 'Pago OTP confirmado',
@@ -858,6 +912,9 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
     };
     setPaymentVerified(true);
     setPaymentCapture(merged);
+    if (shouldRegisterProveedor()) {
+      void handleRegisterProveedorPolicy();
+    }
     await handlePaymentSuccessActions(merged, {
       code: capture.sypagoAfiliacionId ? 'DOMICILIACION_ACTIVA' : 'DOMICILIACION_AUTORIZADA',
       message: requireFirstThenDomiciliar
@@ -1599,6 +1656,86 @@ export function PaymentStep({ onPaymentVerified }: PaymentStepProps = {}) {
           />
         </div>
       </div>
+
+      {/* Sección Registro de Proveedor en Póliza (Combinado Familiar / cproducto=51 / Proveedor) */}
+      {shouldRegisterProveedor() && (
+        <div className="rounded-2xl border-2 border-indigo-200/80 bg-gradient-to-br from-indigo-50/50 via-white to-violet-50/40 p-5 shadow-sm space-y-4 animate-fade-in">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 text-white grid place-items-center shadow-md shadow-indigo-100">
+                <Building2 size={18} />
+              </div>
+              <div>
+                <h4 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+                  Registro de Proveedor en Póliza
+                  <span className="text-[0.62rem] font-extrabold uppercase px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 border border-indigo-200">
+                    dbo.adproveedor
+                  </span>
+                </h4>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Inserta dinámicamente el proveedor asociado al emitir Combinado Familiar (cproducto 51).
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              disabled={providerRegStatus === 'loading'}
+              onClick={() => handleRegisterProveedorPolicy()}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-indigo-600 text-white shadow-sm hover:bg-indigo-700 active:scale-95 transition-all disabled:opacity-50"
+            >
+              {providerRegStatus === 'loading' ? (
+                <><Loader2 size={13} className="animate-spin" /> Registrando...</>
+              ) : (
+                <><Send size={13} /> Registrar Proveedor</>
+              )}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-3.5 rounded-xl bg-white border border-indigo-100 font-mono text-xs text-slate-700">
+            <div>
+              <span className="text-[0.65rem] uppercase text-slate-400 font-sans font-bold block">Proveedor / RIF</span>
+              <strong className="text-indigo-900">{providerView.selectedProveedor?.xcliente || providerView.xproveedor || '—'}</strong>
+              <span className="block text-[0.65rem] text-slate-500">{String(providerView.cproveedor || '—')}</span>
+            </div>
+            <div>
+              <span className="text-[0.65rem] uppercase text-slate-400 font-sans font-bold block">cplan / cramo</span>
+              <strong className="text-indigo-900">{providerView.cplan_proveedor || '—'}</strong>
+              <span className="block text-[0.65rem] text-slate-500">Ramo: {providerView.cramo_proveedor ?? product.cramo ?? '—'}</span>
+            </div>
+            <div>
+              <span className="text-[0.65rem] uppercase text-slate-400 font-sans font-bold block">cclave_num</span>
+              <strong className="text-indigo-900">{providerView.cclave_num ?? '—'}</strong>
+            </div>
+            <div>
+              <span className="text-[0.65rem] uppercase text-slate-400 font-sans font-bold block">itiposerv</span>
+              <strong className="text-indigo-900">{providerView.itiposerv || '—'}</strong>
+            </div>
+          </div>
+
+          {providerRegStatus === 'success' && (
+            <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 flex items-start gap-2.5 animate-spring-in">
+              <CheckCircle2 size={18} className="text-emerald-600 shrink-0 mt-0.5" />
+              <div className="text-xs text-emerald-900">
+                <p className="font-bold">Proveedor vinculado a la póliza en adproveedor exitosamente</p>
+                <p className="text-[0.7rem] text-emerald-700 mt-0.5 font-mono">
+                  Endpoint: /v1/partner/starter/proveedores/register-policy · Status: 200 OK {providerRegResult?.message && `· ${providerRegResult.message}`}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {providerRegStatus === 'error' && (
+            <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 flex items-start gap-2.5 animate-fade-in">
+              <XCircle size={18} className="text-rose-600 shrink-0 mt-0.5" />
+              <div className="text-xs text-rose-900">
+                <p className="font-bold">Error en registro de proveedor</p>
+                <p className="text-[0.7rem] text-rose-700 mt-0.5">{providerRegError}</p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Trust badges */}
       <div className="flex items-center justify-center gap-6 flex-wrap pt-2 text-[0.7rem] text-slate-500">

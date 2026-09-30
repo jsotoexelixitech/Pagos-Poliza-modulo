@@ -8,6 +8,7 @@ import { useWizardStore } from '../store/wizardStore';
 import { effectiveCanalVisibility } from './canal-visibility';
 import { getSsoMetadataFromBrowser } from './sso-metadata';
 import { shouldSkipPaymentForTarjetaMetadata } from './rcv-tarjeta-flow';
+import { applyProveedorFromPayload } from './proveedor';
 
 export { getSsoMetadataFromBrowser } from './sso-metadata';
 
@@ -65,6 +66,7 @@ export function hydrateCheckoutFromAccessToken(): boolean {
   if (Object.keys(canal).length > 0) {
     store.setMetadataCanal({ ...(store.metadataCanal || {}), ...canal });
   }
+  applyProveedorFromPayload({ ...canal, ...((opaque as Record<string, unknown>) || {}) });
 
   if (!isValidCheckoutInput(checkout)) return false;
 

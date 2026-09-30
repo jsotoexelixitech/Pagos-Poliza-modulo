@@ -33,6 +33,7 @@ import { getSsoMetadataFromBrowser } from './sso-metadata';
 import type { CanalVisibility } from './canal-visibility';
 import { resolveEntityFromMetadata, visibilityMatchesEntity } from './canal-visibility';
 import type { CheckoutPayer } from '../types';
+import { applyProveedorFromPayload } from './proveedor';
 
 const CANAL_META_KEYS = [
   'centidad', 'citem', 'cproducto', 'cramo', 'cproductor',
@@ -315,6 +316,7 @@ function makeBridge(): BridgeAPI {
     }
     const set = (useWizardStore as unknown as { setState: (p: Partial<Record<string, unknown>>) => void }).setState;
     set(filtered);
+    applyProveedorFromPayload(data);
 
     const store = useWizardStore.getState();
 
