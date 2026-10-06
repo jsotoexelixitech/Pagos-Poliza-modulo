@@ -99,14 +99,20 @@ export function applyTarjetaFarmaciaPaymentSkip(): boolean {
   return true;
 }
 
-export type TarjetaPlanCurrencyKind = 'usd' | 'ves';
+export type TarjetaPlanCurrencyKind = 'usd' | 'ves' | 'eur';
 
 export function resolveTarjetaPlanCurrency(cmoneda?: unknown): TarjetaPlanCurrencyKind {
   const code = String(cmoneda ?? '$').trim().toUpperCase();
   if (code === 'BS' || code === 'B' || code === 'BOLIVAR' || code === 'BOLÍVAR' || code === 'VES') {
     return 'ves';
   }
+  if (code === 'EUR' || code === 'EU' || code === '€' || code === 'EURO') return 'eur';
   return 'usd';
+}
+
+/** Plan de tarjeta en EUR (TCR): montos con € y tasa EUR. */
+export function tarjetaPlanIsEur(cmoneda?: unknown): boolean {
+  return resolveTarjetaPlanCurrency(cmoneda) === 'eur';
 }
 
 export function getTarjetaPlanCmoneda(metadataCanal?: Record<string, unknown> | null): string {

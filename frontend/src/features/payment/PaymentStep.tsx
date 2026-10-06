@@ -8,7 +8,7 @@ import {
   Check, Receipt, Sparkles, Loader2, BadgeCheck, AlertTriangle,
   CheckCircle2, XCircle, RefreshCw, Send, ClipboardCheck,
 } from 'lucide-react';
-import { formatUsdShort, formatQuoteUsdMoney, formatQuoteVesLabel, formatQuoteVesPaymentInput, formatQuoteTasa } from '../../lib/money';
+import { formatUsdShort, formatQuoteUsd, formatQuoteUsdMoney, formatQuoteVesLabel, formatQuoteVesPaymentInput, formatQuoteTasa } from '../../lib/money';
 import { formatTelefono, FORMATTED_PHONE_MAX_LENGTH, isValidPhonePrefix, phoneDigitsOnly } from '../../lib/phone';
 import { formatCedulaRif, validateCedulaRif } from '../../lib/cedula-rif';
 import { useProductConfig } from '../../hooks/useProductConfig';
@@ -43,6 +43,7 @@ import {
   resolveTarjetaPaymentMeta,
   shouldSkipTarjetaPayment,
   shouldUseTarjetaPublicApi,
+  tarjetaPlanIsEur,
   tarjetaQuoteShowsVes,
 } from '../../lib/rcv-tarjeta-flow';
 
@@ -552,7 +553,10 @@ export function PaymentStep({
     ? getTarjetaPlanCmoneda(metadataCanal as Record<string, unknown> | null)
     : null;
   const tarjetaVesPrimary = Boolean(tarjetaFlow && tarjetaQuoteShowsVes(tarjetaCmoneda));
-  const tarjetaUsdOnly = Boolean(tarjetaFlow && !tarjetaVesPrimary);
+  // Plan en EUR/TCR: monto en € con equivalente en Bs y tasa EUR.
+  const tarjetaEur = Boolean(tarjetaFlow && tarjetaPlanIsEur(tarjetaCmoneda));
+  const tarjetaUsdOnly = Boolean(tarjetaFlow && !tarjetaVesPrimary && !tarjetaEur);
+  const planMoney = (n: number) => (tarjetaEur ? `€${formatQuoteUsd(n)}` : formatQuoteUsdMoney(n));
   const tarjetaFarmaciaPaid = shouldSkipTarjetaPayment(metadataCanal);
   const tarjetaNfactura = String(resolveTarjetaPaymentMeta(metadataCanal).nfactura ?? '').trim();
 
@@ -997,7 +1001,7 @@ export function PaymentStep({
                 {tarjetaVesPrimary
                   ? `${formatQuoteVesLabel(annualVes)}${headerSuffix ? ` ${headerSuffix}` : ''}`
                   : showProductQuoteBar
-                    ? formatQuoteUsdMoney(annualUsd)
+                    ? planMoney(annualUsd)
                     : formatUsdShort(annualUsd)}
               </span>
             )}
@@ -1005,7 +1009,7 @@ export function PaymentStep({
               <span className="text-xs text-slate-500 font-semibold pb-1">{headerSuffix}</span>
             )}
           </div>
-          {!tarjetaFlow && (hasRealQuote || (genericCheckout && !funeralProductUi)) && annualVes > 0 && (
+          {(!tarjetaFlow || tarjetaEur) && (hasRealQuote || (genericCheckout && !funeralProductUi)) && annualVes > 0 && (
             <p className="text-sm font-display font-black text-indigo-700 mt-1 tabular-nums">
               {showProductQuoteBar
                 ? `${formatQuoteVesLabel(annualVes)}${headerSuffix ? ` ${headerSuffix}` : ''}`
@@ -1016,7 +1020,7 @@ export function PaymentStep({
             <p className="text-[0.6rem] text-slate-500 mt-0.5 tabular-nums">
               1er recibo: {tarjetaVesPrimary
                 ? formatQuoteVesLabel(freqAmounts.installmentVes)
-                : formatQuoteUsdMoney(freqAmounts.installmentUsd)} ({freqAmounts.periodSuffix.trim()})
+                : planMoney(freqAmounts.installmentUsd)} ({freqAmounts.periodSuffix.trim()})
             </p>
           )}
           {!showProductQuoteBar && hasRealQuote && quote?.ptasa && quote.ptasa > 0 && (
@@ -1026,7 +1030,7 @@ export function PaymentStep({
           )}
           {showProductQuoteBar && !tarjetaUsdOnly && hasRealQuote && quote?.ptasa && quote.ptasa > 0 && (
             <p className="text-[0.6rem] text-slate-500 mt-0.5 tabular-nums">
-              Tasa BCV: {formatQuoteTasa(quote.ptasa)}
+              {tarjetaEur ? 'Tasa EUR' : 'Tasa BCV'}: {formatQuoteTasa(quote.ptasa)}
             </p>
           )}
         </div>

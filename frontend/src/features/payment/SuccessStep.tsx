@@ -5,8 +5,9 @@ import {
   CheckCircle2, RefreshCw, ShieldCheck,
   Calendar, Copy, ExternalLink, FileDown, Receipt,
 } from 'lucide-react';
-import { formatQuoteUsdMoney, formatQuoteVesLabel, formatQuoteTasaValue, resolveQuoteVesAmount } from '../../lib/money';
+import { formatQuoteUsd, formatQuoteUsdMoney, formatQuoteVesLabel, formatQuoteTasaValue, resolveQuoteVesAmount } from '../../lib/money';
 import { diligenciaLabel } from '../../lib/diligencia';
+import { getTarjetaPlanCmoneda, shouldUseTarjetaPublicApi, tarjetaPlanIsEur } from '../../lib/rcv-tarjeta-flow';
 
 /**
  * Reinicio OCR desde cero: sin sid (nueva sesión bridge) + wizardStep=1.
@@ -55,7 +56,7 @@ function clearClientFlowState() {
 
 export function SuccessStep() {
   const {
-    policy, tomador, selectedPlan, checkout, paymentCapture, paymentMethod, reset, diligencia,
+    policy, tomador, selectedPlan, checkout, paymentCapture, paymentMethod, reset, diligencia, metadataCanal,
   } = useWizardStore();
 
   const genericCheckout = isGenericCheckoutMode({ checkout });
@@ -75,6 +76,9 @@ export function SuccessStep() {
   const primaUsd = policy?.quote?.mprimaext;
   const ptasa = policy?.quote?.ptasa;
   const primaVes = resolveQuoteVesAmount(primaUsd, ptasa, policy?.quote?.mprima);
+  // Tarjeta con plan en EUR/TCR: la prima emitida va en € y la tasa es la del euro.
+  const planEur = shouldUseTarjetaPublicApi()
+    && tarjetaPlanIsEur(getTarjetaPlanCmoneda(metadataCanal as Record<string, unknown> | null));
   const copyPolicy = async () => {
     try {
       await navigator.clipboard.writeText(policyNum);
@@ -292,7 +296,7 @@ export function SuccessStep() {
                     Prima anual emitida
                   </p>
                   <p className="font-display font-bold text-xl sm:text-2xl text-slate-900 leading-none tabular-nums">
-                    {formatQuoteUsdMoney(primaUsd)}
+                    {planEur ? `€${formatQuoteUsd(primaUsd)}` : formatQuoteUsdMoney(primaUsd)}
                   </p>
                   {primaVes > 0 ? (
                     <p className="text-[0.65rem] font-semibold text-slate-600 mt-1 tabular-nums">
@@ -301,7 +305,7 @@ export function SuccessStep() {
                   ) : null}
                   {ptasa ? (
                     <p className="text-[0.58rem] text-slate-500 mt-0.5 tabular-nums">
-                      Tasa BCV: {formatQuoteTasaValue(ptasa)}
+                      {planEur ? 'Tasa EUR' : 'Tasa BCV'}: {formatQuoteTasaValue(ptasa)}
                     </p>
                   ) : null}
                 </div>
