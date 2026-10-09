@@ -58,7 +58,7 @@ const defaultRcv = (): RcvPlanData => ({
 const defaultFuneral = (): FuneralData => ({
   asegurados: [],
   beneficiarios: [],
-  frecuencia: 'M',
+  frecuencia: 'A',
   diagnosticoEnfermedad: false,
   descripcionEnfermedad: '',
   aceptaTerminos: false,

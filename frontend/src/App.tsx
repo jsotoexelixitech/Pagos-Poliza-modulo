@@ -433,7 +433,7 @@ export default function App() {
     try {
       const result = await emitFuneral({
         state: buildFuneralEmitState(paymentCtx),
-        frecuencia: (snap.funeral?.frecuencia as 'A' | 'S' | 'M' | 'T' | 'C') ?? 'M',
+        frecuencia: (snap.funeral?.frecuencia as 'A' | 'S' | 'M' | 'T' | 'C') ?? 'A',
       });
       await applyEmissionResult(result, 'funerario');
     } catch (err) {
