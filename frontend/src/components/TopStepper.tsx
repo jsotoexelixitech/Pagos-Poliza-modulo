@@ -17,8 +17,9 @@ import { toast } from '../store/toastStore';
 /**
  * Stepper horizontal en barra blanca (estilo píldora).
  * Flechas ◀ ▶ navegan entre pasos del flujo guardando estado vía bridge.
+ * `locked`: emisión en curso; con pago verificado tampoco se vuelve atrás.
  */
-export function TopStepper() {
+export function TopStepper({ locked = false }: { locked?: boolean } = {}) {
   const checkout = useWizardStore((s) => s.checkout);
   const checkoutRules = useWizardStore((s) => s.checkoutRules);
   const funeralApproved = useWizardStore((s) =>
@@ -32,6 +33,7 @@ export function TopStepper() {
   const ocrDone = useWizardStore((s) => s.ocrDone);
   const documents = useWizardStore((s) => s.documents);
   const selectedPlan = useWizardStore((s) => s.selectedPlan);
+  const paymentVerified = useWizardStore((s) => s.paymentVerified);
   const product = getProductConfig();
   const [navigating, setNavigating] = useState(false);
 
@@ -44,6 +46,7 @@ export function TopStepper() {
     documents,
     selectedPlan,
     requiredDocTypes: getDefaultRequiredDocs(product.id),
+    paymentLocked: locked || paymentVerified,
   };
 
   // Misma visual que RCV: stepper completo también en Exélixi (paridad de flujo).

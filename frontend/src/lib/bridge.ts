@@ -458,6 +458,7 @@ function makeBridge(): BridgeAPI {
       documents: state.documents,
       selectedPlan: state.selectedPlan,
       requiredDocTypes: getDefaultRequiredDocs(getProductConfig().id),
+      paymentLocked: state.paymentVerified,
     };
     if (!canNavigateToStep(currentStep, targetStep, navSnapshot)) {
       console.warn('[bridge] navigateToStep blocked', currentStep, '->', targetStep);

@@ -464,7 +464,7 @@ export default function App() {
           } ${genericCheckout ? 'pt-10' : 'pt-[72px] lg:pt-10'}`}
         >
           <div className="max-w-5xl mx-auto">
-            {!genericCheckout && !hideStepper && <TopStepper />}
+            {!genericCheckout && !hideStepper && <TopStepper locked={emitting} />}
 
             {!isSuccess && (
               <header className="mb-8 animate-fade-in">
