@@ -412,6 +412,18 @@ export function PaymentStep({
   const funeralPayDisabled =
     funeralApproved &&
     (funeralLinkExpired || paymentBlocked || funeralValidation === 'loading' || funeralValidation === 'idle');
+  // Motivo del bloqueo junto a los botones de pago: el aviso de arriba puede quedar fuera de la vista.
+  const funeralPayBlockReason = funeralLinkExpired
+    ? 'Este enlace de pago expiró. Solicita un nuevo correo con el enlace de pago.'
+    : paymentBlocked
+      ? funeralValidationMsg || 'No es posible emitir la póliza con los datos actuales.'
+      : '';
+  const funeralPayBlockNotice = funeralPayBlockReason ? (
+    <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 flex items-start gap-2.5 animate-fade-in">
+      <AlertTriangle size={16} className="text-amber-500 shrink-0 mt-0.5" />
+      <p className="text-xs text-amber-700 font-medium">{funeralPayBlockReason}</p>
+    </div>
+  ) : null;
 
   // Resetear estados al cambiar método de pago
   useEffect(() => {
@@ -1292,6 +1304,8 @@ export function PaymentStep({
               </Field>
             </div>
 
+            {funeralPayBlockNotice}
+
             {/* Botón verificar */}
             <button
               type="button"
@@ -1507,6 +1521,8 @@ export function PaymentStep({
                     <p className="text-xs text-amber-700 font-medium">Completa todos los campos correctamente para solicitar la OTP.</p>
                   </div>
                 )}
+
+                {funeralPayBlockNotice}
 
                 <button
                   type="button"
