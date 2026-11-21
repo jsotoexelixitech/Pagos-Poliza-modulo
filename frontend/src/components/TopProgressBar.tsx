@@ -2,6 +2,7 @@ import { useWizardStore } from '../store/wizardStore';
 import { isGenericCheckoutMode } from '../lib/checkout';
 import { getProductConfig } from '../lib/product';
 import { publicAsset } from '../lib/app-base';
+import { esMarcaNeutra, MARCA_NEUTRA_NOMBRE } from '../lib/marca';
 
 export function TopProgressBar() {
   const { step, product: productType, checkout } = useWizardStore();
@@ -55,6 +56,11 @@ export function TopProgressBar() {
                 className="h-7 max-w-[140px] object-contain object-left"
                 draggable={false}
               />
+            ) : esMarcaNeutra() ? (
+              // Marca neutra: wordmark tipográfico, sin isotipo ni nombre de La Mundial.
+              <p className="font-display font-black text-indigo-700 text-[0.95rem] leading-none truncate">
+                {MARCA_NEUTRA_NOMBRE}
+              </p>
             ) : (
               <>
                 <div className="relative w-7 h-7 rounded-lg bg-white grid place-items-center shadow-[0_4px_12px_rgba(15,26,90,0.32)] ring-1 ring-slate-200 flex-shrink-0 overflow-hidden">

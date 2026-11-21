@@ -46,6 +46,8 @@ import {
   tarjetaPlanIsEur,
   tarjetaQuoteShowsVes,
 } from '../../lib/rcv-tarjeta-flow';
+import { esMarcaNeutra } from '../../lib/marca';
+import { usePagoSimuladoNeutra } from '../../hooks/usePagoSimuladoNeutra';
 
 const EMPRESA_ID = Number(import.meta.env.VITE_EMPRESA_ID ?? 1);
 
@@ -118,7 +120,9 @@ export function PaymentStep({
     checkoutRules,
     product: wizardProduct,
   });
-  const qaMobileBypass = isPaymentBypassEnabled();
+  // Marca neutra (MarketPlace, fuera de producción y confirmado por el server): mismo bypass QA.
+  const pagoSimuladoNeutra = usePagoSimuladoNeutra();
+  const qaMobileBypass = isPaymentBypassEnabled() || pagoSimuladoNeutra;
   // Piloto Exélixi o QA RCV: el pago móvil se simula (sin conexión bancaria real).
   const mobilePaymentSimulated = !genericCheckout && (isExelixiCatalogProduct() || qaMobileBypass);
 
@@ -460,9 +464,9 @@ export function PaymentStep({
       setCedulaPago(formatCedulaRif('V12345678'));
     }
     if (!fechaPagoM) setFechaM(TODAY_ISO);
-  // Solo al montar en modo QA
+  // Solo al montar en modo QA (o al confirmar el pago simulado de marca neutra)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [qaMobileBypass]);
 
   // Sincroniza el monto en Bs (checkout SSO o cotización legacy).
   useEffect(() => {
@@ -985,7 +989,7 @@ export function PaymentStep({
               {showProductQuoteBar && hasRealQuote && !quote?.vehicleFallback && (
                 <span className="inline-flex items-center gap-1 text-[0.55rem] font-black text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-md border border-emerald-100 uppercase tracking-wider">
                   <BadgeCheck size={9} strokeWidth={2.4} />
-                  {isExelixiCatalogProduct() ? 'Tarifa Exélixi' : 'Tarifa La Mundial'}
+                  {isExelixiCatalogProduct() || esMarcaNeutra() ? 'Tarifa Exélixi' : 'Tarifa La Mundial'}
                 </span>
               )}
               {showProductQuoteBar && hasRealQuote && quote?.vehicleFallback && (
@@ -1198,6 +1202,8 @@ export function PaymentStep({
                     <p className="text-sm font-bold text-slate-800 leading-tight truncate">Banco Activo</p>
                   </div>
                 </div>
+                {/* Marca neutra: sin el RIF de La Mundial como beneficiario. */}
+                {!esMarcaNeutra() && (
                 <div className="flex items-center gap-3 rounded-xl bg-white/80 border border-indigo-100 px-3 py-2.5 shadow-sm">
                   <div className="w-8 h-8 rounded-lg bg-violet-500 grid place-items-center shrink-0 shadow-[0_3px_8px_rgba(139,92,246,0.35)]">
                     <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
@@ -1207,6 +1213,7 @@ export function PaymentStep({
                     <p className="text-sm font-bold text-slate-800 leading-tight font-mono">J-000846448</p>
                   </div>
                 </div>
+                )}
                 <div className="flex items-center gap-3 rounded-xl bg-white/80 border border-indigo-100 px-3 py-2.5 shadow-sm">
                   <div className="w-8 h-8 rounded-lg bg-emerald-500 grid place-items-center shrink-0 shadow-[0_3px_8px_rgba(16,185,129,0.35)]">
                     <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.99 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.92 1.27h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9a16 16 0 0 0 6.29 6.29l1.079-1.079a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>

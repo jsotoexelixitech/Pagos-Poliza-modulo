@@ -33,6 +33,7 @@ import { useProductConfig } from './hooks/useProductConfig';
 import { useUiFlags } from './lib/ui-flags';
 import { getProductId } from './lib/product';
 import { shouldSkipTarjetaPayment } from './lib/rcv-tarjeta-flow';
+import { esMarcaNeutra } from './lib/marca';
 
 const EMPRESA_ID = Number(import.meta.env.VITE_EMPRESA_ID ?? 1);
 
@@ -657,7 +658,9 @@ function handleEmissionError(err: unknown) {
       case 'LAMUNDIAL_PLATE_ALREADY_INSURED':
         toast.warning(
           'Vehículo con póliza vigente',
-          'La Mundial detectó que la placa o el serial de carrocería ya tienen una póliza activa.',
+          esMarcaNeutra()
+            ? 'Detectamos que la placa o el serial de carrocería ya tienen una póliza activa.'
+            : 'La Mundial detectó que la placa o el serial de carrocería ya tienen una póliza activa.',
           8000,
         );
         return;
@@ -688,7 +691,9 @@ function handleEmissionError(err: unknown) {
       case 'LAMUNDIAL_SP_OUTDATED':
         toast.error(
           'Servicio temporalmente no disponible',
-          'La Mundial está revisando el servicio. Inténtalo en unos minutos.',
+          esMarcaNeutra()
+            ? 'Estamos revisando el servicio. Inténtalo en unos minutos.'
+            : 'La Mundial está revisando el servicio. Inténtalo en unos minutos.',
           7000,
         );
         return;
@@ -696,12 +701,18 @@ function handleEmissionError(err: unknown) {
       case 'LAMUNDIAL_APIKEY_MISSING':
         toast.error(
           'Configuración pendiente',
-          'La integración con La Mundial no está disponible. Avisa a soporte.',
+          esMarcaNeutra()
+            ? 'La integración con la aseguradora no está disponible. Avisa a soporte.'
+            : 'La integración con La Mundial no está disponible. Avisa a soporte.',
           7000,
         );
         return;
       case 'LAMUNDIAL_NETWORK':
-        toast.error('Sin conexión con La Mundial', 'Verifica tu red e inténtalo de nuevo.', 6000);
+        toast.error(
+          esMarcaNeutra() ? 'Sin conexión con la aseguradora' : 'Sin conexión con La Mundial',
+          'Verifica tu red e inténtalo de nuevo.',
+          6000,
+        );
         return;
       default:
         toast.error('No pudimos emitir la póliza', err.message, 7000);

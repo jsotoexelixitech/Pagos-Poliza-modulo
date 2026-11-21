@@ -1,3 +1,5 @@
+// Primero: fija la marca (?marca=) antes de que otro módulo toque la URL.
+import { aplicarMarcaNeutra } from './lib/marca'
 import { StrictMode, useEffect, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
@@ -20,6 +22,8 @@ import { PagosConfigPanel } from './config/PagosConfigPanel'
 
 // Identidad Exélixi (colores + favicon) solo si el flujo activo es el catálogo.
 applyExelixiBranding('Pagos');
+// Marca neutra (?marca=neutra): título, favicon y data-marca antes del primer render.
+aplicarMarcaNeutra();
 
 if (isTarjetaRcvFlow()) {
   markTarjetaPublicSession();

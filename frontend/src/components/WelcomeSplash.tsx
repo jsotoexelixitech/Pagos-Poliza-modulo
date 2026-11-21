@@ -2,6 +2,7 @@
 import { publicAsset } from '../lib/app-base';
 import { isExelixiCatalogFlow } from '../lib/exelixi-catalog';
 import { isTarjetaRcvFlow } from '../lib/rcv-tarjeta-flow';
+import { esMarcaNeutra } from '../lib/marca';
 
 const VISIBLE_MS = 2400;
 const FADE_MS = 700;
@@ -20,6 +21,8 @@ const BRAND = {
 /** No mostrar splash La Mundial en bridge, checkout SSO, tarjeta ni flujo Exélixi. */
 function shouldSkipSplash(): boolean {
   try {
+    // Marca neutra: sin bienvenida de La Mundial.
+    if (esMarcaNeutra()) return true;
     if (isExelixiCatalogFlow()) return true;
     if (isTarjetaRcvFlow()) return true;
     const p = new URLSearchParams(window.location.search);

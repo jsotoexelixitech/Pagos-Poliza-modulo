@@ -26,6 +26,7 @@ const checkoutRoutes = require('./routes/checkout');
 const domiciliacionRoutes = require('./routes/domiciliacion');
 const { getVerifyMobileTargetUrl } = require('./services/meritopClient');
 const nexusAuth   = require('./middleware/nexusAuth');
+const { evaluarPagoSimuladoMarcaNeutra } = require('./services/pagoSimuladoMarcaNeutra');
 
 const app = express();
 
@@ -113,6 +114,19 @@ app.post('/api/valrep/validate-vehicle', nexusAuth, _proxyToEmision);
 // Webhook de SyPago — PÚBLICO (lo invoca SyPago, valida con firma propia).
 // Se monta antes del router protegido para que no exija nexus_token.
 app.post('/api/payments/otp/webhook', pagosRoutes.handleSypagoWebhook);
+
+// Marca neutra (MarketPlace de prueba): ¿se permite el pago simulado? Solo
+// responde true con PAGO_SIMULADO_MARCA_NEUTRA=1 (120) y fuera de producción.
+// Público (solo devuelve un booleano); se monta antes del router protegido.
+app.get('/api/payments/simulacion-marca-neutra', (req, res) => {
+  const { permitido, motivo } = evaluarPagoSimuladoMarcaNeutra({
+    env: process.env,
+    headers: req.headers,
+    query: req.query,
+  });
+  res.set('Cache-Control', 'no-store');
+  res.json({ success: true, permitido, motivo });
+});
 
 // Multi-tenant: pagos y notificación checkout requieren nexus_token
 app.use('/api/checkout', nexusAuth, checkoutRoutes);

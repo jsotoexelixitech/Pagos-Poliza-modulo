@@ -8,6 +8,7 @@ import {
 import { formatQuoteUsd, formatQuoteUsdMoney, formatQuoteVesLabel, formatQuoteTasaValue, resolveQuoteVesAmount } from '../../lib/money';
 import { diligenciaLabel } from '../../lib/diligencia';
 import { getTarjetaPlanCmoneda, shouldUseTarjetaPublicApi, tarjetaPlanIsEur } from '../../lib/rcv-tarjeta-flow';
+import { esMarcaNeutra, MARCA_NEUTRA_NOMBRE } from '../../lib/marca';
 
 /**
  * Reinicio OCR desde cero: sin sid (nueva sesión bridge) + wizardStep=1.
@@ -209,7 +210,7 @@ export function SuccessStep() {
             </div>
 
             <p className="px-5 sm:px-6 py-3 text-[11px] text-slate-400 border-t border-slate-100 bg-slate-50/80">
-              La Mundial de Seguros · operación verificada
+              {esMarcaNeutra() ? MARCA_NEUTRA_NOMBRE : 'La Mundial de Seguros'} · operación verificada
             </p>
           </div>
         </div>
@@ -262,7 +263,7 @@ export function SuccessStep() {
               <p className="text-[0.65rem] font-bold tracking-widest text-slate-500 uppercase">
                 Certificado digital
               </p>
-              <p className="text-xs text-slate-500 mt-0.5">La Mundial de Seguros</p>
+              <p className="text-xs text-slate-500 mt-0.5">{esMarcaNeutra() ? MARCA_NEUTRA_NOMBRE : 'La Mundial de Seguros'}</p>
             </div>
             <div className="flex items-center gap-1.5 text-[0.6rem] font-bold text-emerald-700 bg-emerald-50 ring-1 ring-emerald-200 px-2.5 py-1 rounded-full uppercase tracking-wider">
               <CheckCircle2 size={10} />
