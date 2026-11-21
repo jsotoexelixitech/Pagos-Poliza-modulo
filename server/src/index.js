@@ -88,6 +88,14 @@ async function _proxyToEmision(req, res) {
         ...(req.headers['x-nexus-token']
           ? { 'x-nexus-token': req.headers['x-nexus-token'] }
           : {}),
+        // Marca neutra: Emisión decide si simula (planes/póliza de prueba) con su propio criterio.
+        // Emisión valida que no sea producción también por host: se le pasa el host original.
+        ...(req.headers['x-exelixi-marca']
+          ? {
+              'X-Exelixi-Marca': String(req.headers['x-exelixi-marca']),
+              'X-Forwarded-Host': String(req.headers['x-forwarded-host'] || req.headers.host || ''),
+            }
+          : {}),
       },
       timeout: 90_000,
       validateStatus: () => true,

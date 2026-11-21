@@ -2,11 +2,19 @@ import axios, { AxiosError } from 'axios';
 import type { CheckoutData, DocType, OcrResult, DocumentFile } from '../types';
 import { moduleApiBase } from './app-base';
 import { attachNexusTokenAxios } from './nexus-token-client';
+import { esMarcaNeutra } from './marca';
 
 const api = axios.create({ baseURL: moduleApiBase() });
 
 const NEXUS_TOKEN_KEY = 'nexus_access_token_pagos';
 attachNexusTokenAxios(api, NEXUS_TOKEN_KEY);
+
+// Marca neutra: el server de Pagos reenvía este header a Emisión, que responde planes, cotización
+// y póliza de PRUEBA (no emite en Sis2000).
+api.interceptors.request.use((config) => {
+  if (esMarcaNeutra()) config.headers.set('X-Exelixi-Marca', 'neutra');
+  return config;
+});
 
 export interface UploadResponse {
   success: boolean;
