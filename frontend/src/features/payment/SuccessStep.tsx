@@ -60,6 +60,7 @@ function clearClientFlowState() {
 export function SuccessStep() {
   const {
     policy, tomador, selectedPlan, checkout, paymentCapture, paymentMethod, reset, diligencia, metadataCanal,
+    funeral, vehicle, asegurado, sameInsured, rcv, quote,
   } = useWizardStore();
 
   const genericCheckout = isGenericCheckoutMode({ checkout });
@@ -70,15 +71,65 @@ export function SuccessStep() {
   // Marca neutra: la póliza simulada (PRUEBA-…) no trae PDF; se genera un cuadro de prueba neutro.
   const pdfPrueba = useMemo(() => {
     if (policy?.urlpoliza || !esMarcaNeutra() || !esPolizaPrueba(policyNum)) return '';
+    const nombre = (n?: string, a?: string) => [n, a].filter(Boolean).join(' ').trim();
+    const doc = (tipo?: string, id?: string) => (id ? `${(tipo || 'V').toUpperCase()}-${id}` : '');
+    const esFun = /^PRUEBA-FUN/i.test(policyNum);
+    const titularFun = funeral?.asegurados?.[0];
+    const cotizada = (policy?.quote ?? quote) as (typeof quote & {
+      coberturas?: { name?: string; sumaAsegurada?: number; prima?: number }[];
+    }) | null;
+    const persTomador = {
+      nombre: nombre(tomador.nombre, tomador.apellido) || nombre(titularFun?.nombre, titularFun?.apellido),
+      documento: doc(tomador.tipoDoc, tomador.identificacion) || doc(titularFun?.tipoDoc, titularFun?.identificacion),
+    };
+    const parentescos: Record<string, string> = { '1': 'TITULAR', '2': 'CÓNYUGE', '3': 'HIJO(A)' };
     return crearUrlPolizaPrueba({
       numero: policyNum,
+      recibo: policy?.cnrecibo || null,
       plan: selectedPlan?.name || checkout?.title || '',
-      titular: [tomador.nombre, tomador.apellido].filter(Boolean).join(' '),
-      montoUsd: checkout?.totalUsd || policy?.quote?.mprimaext || null,
+      tomador: {
+        ...persTomador,
+        email: tomador.email,
+        telefono: tomador.telefono,
+        direccion: tomador.direccion,
+        ciudad: tomador.ciudad,
+        estado: tomador.estado,
+      },
+      asegurado: esFun
+        ? (titularFun ? { nombre: nombre(titularFun.nombre, titularFun.apellido), documento: doc(titularFun.tipoDoc, titularFun.identificacion) } : null)
+        : (sameInsured === false && asegurado?.identificacion
+          ? { nombre: nombre(asegurado.nombre, asegurado.apellido), documento: doc(asegurado.tipoDoc, asegurado.identificacion) }
+          : null),
+      asegurados: esFun
+        ? (funeral?.asegurados ?? []).map((p) => ({
+          nombre: nombre(p.nombre, p.apellido),
+          documento: doc(p.tipoDoc, p.identificacion),
+          fechaNac: p.fechaNac,
+          parentesco: parentescos[String(p.parentesco)] ?? 'DEPENDIENTE',
+        }))
+        : undefined,
+      vehiculo: esFun ? null : {
+        marca: vehicle?.marca,
+        modelo: vehicle?.modelo,
+        anio: vehicle?.año,
+        placa: vehicle?.placa,
+        serial: vehicle?.serial,
+        serialMotor: vehicle?.serialMotor,
+        color: vehicle?.color,
+        uso: vehicle?.xcategoria_uso || vehicle?.uso,
+      },
+      coberturas: (cotizada?.coberturas ?? []).map((c) => ({
+        nombre: c.name || 'Cobertura',
+        suma: c.sumaAsegurada ?? null,
+        prima: c.prima ?? null,
+      })),
+      primaUsd: cotizada?.mprimaext || checkout?.totalUsd || null,
+      tasa: cotizada?.ptasa || checkout?.exchangeRate || null,
+      frecuencia: esFun ? funeral?.frecuencia : rcv?.frecuencia,
       referencia: paymentCapture?.reference || null,
       emitida: policy?.emittedAt ? new Date(policy.emittedAt) : new Date(),
     });
-  }, [policy, policyNum, selectedPlan, checkout, tomador.nombre, tomador.apellido, paymentCapture]);
+  }, [policy, policyNum, selectedPlan, checkout, tomador, paymentCapture, funeral, vehicle, asegurado, sameInsured, rcv, quote]);
   useEffect(() => () => { if (pdfPrueba) URL.revokeObjectURL(pdfPrueba); }, [pdfPrueba]);
   const pdfUrl = policy?.urlpoliza || pdfPrueba;
   const conductorUrl = policy?.url_conductor_habitual || '';
@@ -230,16 +281,19 @@ export function SuccessStep() {
           </div>
         </div>
 
-        <div className="text-center mb-4">
-          <button
-            type="button"
-            onClick={emitAnotherPolicy}
-            className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-indigo-700 transition-colors font-semibold"
-          >
-            <RefreshCw size={13} />
-            Emitir otra póliza
-          </button>
-        </div>
+        {/* Marca neutra: sin «Emitir otra póliza». */}
+        {!esMarcaNeutra() && (
+          <div className="text-center mb-4">
+            <button
+              type="button"
+              onClick={emitAnotherPolicy}
+              className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-indigo-700 transition-colors font-semibold"
+            >
+              <RefreshCw size={13} />
+              Emitir otra póliza
+            </button>
+          </div>
+        )}
       </div>
     );
   }
@@ -426,16 +480,19 @@ export function SuccessStep() {
         </div>
       </div>
 
-      <div className="text-center mb-8">
-        <button
-          type="button"
-          onClick={emitAnotherPolicy}
-          className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-indigo-600 transition-colors font-semibold"
-        >
-          <RefreshCw size={13} />
-          Emitir otra póliza
-        </button>
-      </div>
+      {/* Marca neutra: sin «Emitir otra póliza». */}
+      {!esMarcaNeutra() && (
+        <div className="text-center mb-8">
+          <button
+            type="button"
+            onClick={emitAnotherPolicy}
+            className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-indigo-600 transition-colors font-semibold"
+          >
+            <RefreshCw size={13} />
+            Emitir otra póliza
+          </button>
+        </div>
+      )}
     </div>
   );
 }
