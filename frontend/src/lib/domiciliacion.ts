@@ -2,6 +2,8 @@ import axios, { AxiosError } from 'axios';
 import { moduleApiBase } from './app-base';
 import { attachNexusTokenAxios } from './nexus-token-client';
 import type { CheckoutData, PaymentCapture } from '../types';
+import { esMarcaNeutra } from './marca';
+import { esPolizaPrueba } from './polizaPruebaPdf';
 
 const api = axios.create({ baseURL: `${moduleApiBase()}/domiciliacion` });
 attachNexusTokenAxios(api, 'nexus_access_token_pagos');
@@ -219,6 +221,20 @@ export class DomiciliacionError extends Error {
   }
 }
 
+/**
+ * Marca neutra con póliza de prueba (PRUEBA-…): la domiciliación se simula completa (bancos,
+ * póliza, recibos y afiliación) sin llamar a nest-api ni a SyPago. Las pólizas reales no cambian.
+ */
+function domiciliacionSimulada(numeroPoliza?: string | null): boolean {
+  return esMarcaNeutra() && esPolizaPrueba(numeroPoliza);
+}
+
+const ID_POLIZA_PRUEBA = 'PRUEBA-POL-';
+
+function afiliacionPrueba(): string {
+  return `PRUEBA-DOM-${Date.now().toString().slice(-8)}`;
+}
+
 function messageFromAxios(err: unknown, fallback: string): string {
   const ax = err as AxiosError<{ message?: string; error?: string }>;
   const data = ax.response?.data;
@@ -226,6 +242,8 @@ function messageFromAxios(err: unknown, fallback: string): string {
 }
 
 export async function getSypagoBanks(soloActivos = true): Promise<BancoSypago[]> {
+  // Marca neutra: sin consultar SyPago (el hook usa el catálogo SUDEBAN local).
+  if (esMarcaNeutra()) return [];
   try {
     const { data } = await api.get<BancoSypago[]>(
       `/sypago/banks?solo_activos=${soloActivos ? 'true' : 'false'}`,
@@ -237,6 +255,10 @@ export async function getSypagoBanks(soloActivos = true): Promise<BancoSypago[]>
 }
 
 export async function buscarPolizaDomiciliacion(numeroPoliza: string): Promise<PolizaDomiciliacion> {
+  if (domiciliacionSimulada(numeroPoliza)) {
+    const numero = numeroPoliza.trim();
+    return { id: `${ID_POLIZA_PRUEBA}${numero}`, numeroPoliza: numero, asegurado: '', ramo: 'PRUEBA', estado: 'ACTIVA' };
+  }
   try {
     const { data } = await api.get<PolizaDomiciliacion[]>(
       `/polizas?numeroPoliza=${encodeURIComponent(numeroPoliza)}`,
@@ -262,6 +284,20 @@ export async function buscarPolizaDomiciliacion(numeroPoliza: string): Promise<P
 }
 
 export async function getRecibosPendientes(polizaId: string): Promise<ReciboPendiente[]> {
+  if (esMarcaNeutra() && polizaId.startsWith(ID_POLIZA_PRUEBA)) {
+    const vence = new Date();
+    vence.setMonth(vence.getMonth() + 1);
+    return [{
+      id: `${polizaId}-R2`,
+      polizaId,
+      numeroRecibo: 'PRUEBA-REC-2',
+      monto: 1,
+      montoExt: 1,
+      qcuotas: 1,
+      fechaVencimiento: vence.toISOString().slice(0, 10),
+      estado: 'PENDIENTE',
+    }];
+  }
   try {
     const { data } = await api.get<ReciboPendiente[]>(`/polizas/${polizaId}/recibos-pendientes`);
     return Array.isArray(data) ? data : [];
@@ -277,6 +313,22 @@ export async function registrarDomiciliacion(
     throw new DomiciliacionError('El cliente debe aceptar la autorización de domiciliación.');
   }
   try {
+    if (domiciliacionSimulada(input.numeroPoliza)) {
+      const afiliacion = afiliacionPrueba();
+      return {
+        id: afiliacion,
+        polizaId: input.polizaId,
+        banco: input.banco,
+        tipoCuenta: input.tipoCuenta,
+        numeroCuenta: input.numeroCuenta,
+        titularCuenta: input.titularCuenta,
+        cedulaTitular: input.cedulaTitular,
+        correo: input.correo,
+        estado: 'ACTIVA',
+        sypagoAfiliacionId: afiliacion,
+        sypagoMensaje: 'Domiciliación de prueba activada (simulada: no se envió a ningún banco).',
+      };
+    }
     const { data } = await api.post<DomiciliacionResult>('/domiciliaciones', input);
     return data;
   } catch (err) {

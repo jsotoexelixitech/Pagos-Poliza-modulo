@@ -11,6 +11,7 @@ import { getTarjetaPlanCmoneda, shouldUseTarjetaPublicApi, tarjetaPlanIsEur } fr
 import { esMarcaNeutra, MARCA_NEUTRA_NOMBRE } from '../../lib/marca';
 import { useEffect, useMemo } from 'react';
 import { crearUrlPolizaPrueba, esPolizaPrueba } from '../../lib/polizaPruebaPdf';
+import { BANCOS_VE } from '../../lib/bancos-ve';
 
 /**
  * Reinicio OCR desde cero: sin sid (nueva sesión bridge) + wizardStep=1.
@@ -128,8 +129,17 @@ export function SuccessStep() {
       frecuencia: esFun ? funeral?.frecuencia : rcv?.frecuencia,
       referencia: paymentCapture?.reference || null,
       emitida: policy?.emittedAt ? new Date(policy.emittedAt) : new Date(),
+      ncuotas: (policy as { ncuotas?: number } | null)?.ncuotas ?? null,
+      cobro: paymentMethod === 'domiciliacion' && paymentCapture?.numeroCuenta
+        ? {
+          modalidad: 'DOMICILIACIÓN',
+          banco: BANCOS_VE.find((b) => b.code === paymentCapture.bankCode)?.label || paymentCapture.bankCode,
+          cuenta: `****${paymentCapture.numeroCuenta.slice(-4)}`,
+          afiliacion: paymentCapture.sypagoAfiliacionId,
+        }
+        : null,
     });
-  }, [policy, policyNum, selectedPlan, checkout, tomador, paymentCapture, funeral, vehicle, asegurado, sameInsured, rcv, quote]);
+  }, [paymentMethod, policy, policyNum, selectedPlan, checkout, tomador, paymentCapture, funeral, vehicle, asegurado, sameInsured, rcv, quote]);
   useEffect(() => () => { if (pdfPrueba) URL.revokeObjectURL(pdfPrueba); }, [pdfPrueba]);
   const pdfUrl = policy?.urlpoliza || pdfPrueba;
   const conductorUrl = policy?.url_conductor_habitual || '';

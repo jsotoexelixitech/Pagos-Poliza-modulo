@@ -54,6 +54,18 @@ export interface DatosPolizaPrueba {
   frecuencia?: string | null;
   referencia?: string | null;
   emitida?: Date;
+  /** Cuotas de la frecuencia (A=1, S=2, T=4, M=12). Sin dato: se deduce de `frecuencia`. */
+  ncuotas?: number | null;
+  /** Modalidad de cobro de los recibos siguientes (domiciliación simulada). */
+  cobro?: { modalidad: string; banco?: string; cuenta?: string; afiliacion?: string } | null;
+}
+
+const CUOTAS: Record<string, number> = { A: 1, S: 2, C: 3, T: 4, M: 12 };
+
+function sumarMeses(d: Date, meses: number): Date {
+  const r = new Date(d);
+  r.setMonth(r.getMonth() + meses);
+  return r;
 }
 
 /** Póliza simulada por la emisión de prueba (Emisión → datosPruebaMarcaNeutra). */
@@ -252,7 +264,7 @@ export function construirPdfPolizaPrueba(d: DatosPolizaPrueba): Uint8Array {
   t = lz.pares(t, [
     ['CANAL DE VENTA', 'MARKETPLACE'],
     ['PLAN CONTRATADO', d.plan],
-    ['FRECUENCIA DE PAGO', FRECUENCIAS[String(d.frecuencia ?? 'A').toUpperCase()] ?? 'ANUAL'],
+    ['FRECUENCIA DE PAGO', FRECUENCIAS[String(d.frecuencia ?? 'A').trim().toUpperCase().charAt(0)] ?? 'ANUAL'],
   ], colsPoliza);
   t = lz.pares(t, [
     ['REFERENCIA DE PAGO', d.referencia ?? ''],
@@ -311,11 +323,40 @@ export function construirPdfPolizaPrueba(d: DatosPolizaPrueba): Uint8Array {
   );
   lz.derecha(DER, t, 'PRIMA', { bold: true });
   t += 12;
-  [recibo, 'Primer Año (Nuevo)', desde, hastaTxt, desde, 'DÓLARES ($)'].forEach(
-    (v, i) => lz.texto(rc[i], t, ajustar(v, false, 7.5, (rc[i + 1] ?? 525) - rc[i] - 6)),
-  );
-  lz.derecha(DER, t, monto(prima));
-  t += 20;
+  const frec = String(d.frecuencia ?? 'A').trim().toUpperCase().charAt(0) || 'A';
+  const n = Math.max(1, Math.min(12, Math.round(Number(d.ncuotas) || CUOTAS[frec] || 1)));
+  const meses = 12 / n;
+  const total = Number(prima) || 0;
+  const cuota = Math.round((total / n) * 100) / 100;
+  const alto = n > 4 ? 10 : 12;
+  // En la tabla basta el sufijo único del recibo (REC-123456-1, -2…); el número completo va arriba.
+  const reciboCorto = recibo.replace(/^PRUEBA-REC-\d{8}-/i, 'REC-');
+  for (let i = 0; i < n; i += 1) {
+    const ini = sumarMeses(emitida, i * meses);
+    const fin = sumarMeses(emitida, (i + 1) * meses);
+    const montoCuota = i === n - 1 ? Math.round((total - cuota * (n - 1)) * 100) / 100 : cuota;
+    const cobro = i === 0 ? desde : d.cobro ? 'Domiciliado' : 'Pendiente';
+    [
+      n === 1 ? reciboCorto : `${reciboCorto}-${i + 1}`,
+      i === 0 ? 'Primer Año (Nuevo)' : `Cuota ${i + 1} de ${n}`,
+      fecha(ini),
+      fecha(fin),
+      cobro,
+      'DÓLARES ($)',
+    ].forEach((v, j) => lz.texto(rc[j], t, ajustar(v, false, 7.5, (rc[j + 1] ?? 525) - rc[j] - 6)));
+    lz.derecha(DER, t, total ? monto(montoCuota) : '-');
+    t += alto;
+  }
+  if (d.cobro) {
+    t += 4;
+    t = lz.pares(t, [
+      ['MODALIDAD DE COBRO', d.cobro.modalidad],
+      d.cobro.banco ? ['BANCO', d.cobro.banco] : null,
+      d.cobro.cuenta ? ['CUENTA', d.cobro.cuenta] : null,
+    ], [IZQ, 245, 420]);
+    if (d.cobro.afiliacion) t = lz.pares(t, [['AFILIACIÓN', d.cobro.afiliacion], null, null], [IZQ, 245, 420]);
+  }
+  t += 8;
 
   // Observaciones.
   t = lz.franja(t, 'OBSERVACIONES');
