@@ -9,6 +9,8 @@ import { formatQuoteUsd, formatQuoteUsdMoney, formatQuoteVesLabel, formatQuoteTa
 import { diligenciaLabel } from '../../lib/diligencia';
 import { getTarjetaPlanCmoneda, shouldUseTarjetaPublicApi, tarjetaPlanIsEur } from '../../lib/rcv-tarjeta-flow';
 import { esMarcaNeutra, MARCA_NEUTRA_NOMBRE } from '../../lib/marca';
+import { useEffect, useMemo } from 'react';
+import { crearUrlPolizaPrueba, esPolizaPrueba } from '../../lib/polizaPruebaPdf';
 
 /**
  * Reinicio OCR desde cero: sin sid (nueva sesión bridge) + wizardStep=1.
@@ -65,7 +67,20 @@ export function SuccessStep() {
   const holder = [tomador.nombre, tomador.apellido].filter(Boolean).join(' ') || 'Cliente';
   const policyNum = policy?.cnpoliza || policy?.number || 'LM-2026-000000';
   const reciboNum = policy?.cnrecibo || '';
-  const pdfUrl = policy?.urlpoliza || '';
+  // Marca neutra: la póliza simulada (PRUEBA-…) no trae PDF; se genera un cuadro de prueba neutro.
+  const pdfPrueba = useMemo(() => {
+    if (policy?.urlpoliza || !esMarcaNeutra() || !esPolizaPrueba(policyNum)) return '';
+    return crearUrlPolizaPrueba({
+      numero: policyNum,
+      plan: selectedPlan?.name || checkout?.title || '',
+      titular: [tomador.nombre, tomador.apellido].filter(Boolean).join(' '),
+      montoUsd: checkout?.totalUsd || policy?.quote?.mprimaext || null,
+      referencia: paymentCapture?.reference || null,
+      emitida: policy?.emittedAt ? new Date(policy.emittedAt) : new Date(),
+    });
+  }, [policy, policyNum, selectedPlan, checkout, tomador.nombre, tomador.apellido, paymentCapture]);
+  useEffect(() => () => { if (pdfPrueba) URL.revokeObjectURL(pdfPrueba); }, [pdfPrueba]);
+  const pdfUrl = policy?.urlpoliza || pdfPrueba;
   const conductorUrl = policy?.url_conductor_habitual || '';
   const arysUrl = policy?.url_club_arys || '';
   const ingresoCajaUrl = policy?.url_ingreso_caja || '';
@@ -245,7 +260,9 @@ export function SuccessStep() {
         </h2>
         <p className="text-slate-500 max-w-md mx-auto leading-relaxed text-sm">
           La póliza fue emitida correctamente.
-          {hasDocuments
+          {pdfPrueba
+            ? ' Abajo puedes abrir el cuadro de póliza de prueba.'
+            : hasDocuments
             ? ' Los documentos se abren automáticamente en nuevas pestañas al emitir.'
             : ' Contacta soporte si necesitas el certificado digital.'}
         </p>
